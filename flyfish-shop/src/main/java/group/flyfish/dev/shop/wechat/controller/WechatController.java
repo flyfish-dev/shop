@@ -1,6 +1,6 @@
 package group.flyfish.dev.shop.wechat.controller;
 
-import group.flyfish.dev.customer.service.CustomerMessageGateway;
+import group.flyfish.dev.customer.service.CustomerWechatActivityService;
 import group.flyfish.dev.shop.wechat.protocol.WechatInboundMessage;
 import group.flyfish.dev.shop.wechat.protocol.WechatMessageCrypto;
 import group.flyfish.dev.shop.wechat.protocol.WechatReplyMessage;
@@ -31,7 +31,7 @@ public class WechatController {
 
     private final WechatMessageRouter messageRouter;
 
-    private final CustomerMessageGateway customerMessageGateway;
+    private final CustomerWechatActivityService customerWechatActivityService;
 
     /**
      * 微信认证请求
@@ -98,9 +98,9 @@ public class WechatController {
                             : requestBody;
                     WechatInboundMessage inMessage = xmlCodec.parseInbound(plainXml);
                     log.debug("\n微信消息明文内容为：\n{} ", plainXml);
-                    return customerMessageGateway.recordInbound(inMessage, plainXml)
+                    return customerWechatActivityService.recordInbound(inMessage, plainXml)
                             .onErrorResume(e -> {
-                                log.warn("微信客服消息入库失败，继续执行消息路由。openid={}, error={}",
+                                log.warn("微信用户动态入库失败，继续执行消息路由。openid={}, error={}",
                                         inMessage.getFromUserName(), e.getMessage());
                                 return Mono.empty();
                             })

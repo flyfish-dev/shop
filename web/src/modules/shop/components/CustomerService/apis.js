@@ -18,6 +18,11 @@ export const getManagedCustomerConversations = params => get(`${BASE}/management
   credential: true
 });
 
+export const getManagedWechatActivities = params => get(`${BASE}/management/wechat-activities`, {
+  params,
+  credential: true
+});
+
 export const getManagedCustomerConversation = conversationId => get(`${BASE}/management/conversations/${conversationId}`, {
   credential: true
 });

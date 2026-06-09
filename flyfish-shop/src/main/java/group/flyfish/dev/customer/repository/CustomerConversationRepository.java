@@ -2,9 +2,7 @@ package group.flyfish.dev.customer.repository;
 
 import group.flyfish.dev.common.repository.DefaultReactiveRepository;
 import group.flyfish.dev.customer.domain.po.CustomerConversation;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.r2dbc.repository.Query;
-import org.springframework.data.relational.core.query.Criteria;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -25,11 +23,20 @@ public interface CustomerConversationRepository extends DefaultReactiveRepositor
             """)
     Flux<CustomerConversation> findAllByUserId(Long userId);
 
-    default Flux<CustomerConversation> findAllForManagement(String keyword) {
-        return findAllBy(Criteria.where("id").greaterThan(0), newestSort());
-    }
-
-    private Sort newestSort() {
-        return Sort.by(Sort.Order.desc("lastMessageTime"), Sort.Order.desc("updateTime"), Sort.Order.desc("id"));
-    }
+    @Query("""
+            SELECT conversation.*
+            FROM customer_conversation conversation
+            WHERE conversation.is_delete = false
+              AND EXISTS (
+                SELECT 1
+                FROM customer_message message
+                WHERE message.is_delete = false
+                  AND message.conversation_id = conversation.id
+                  AND message.channel = 'WEB'
+              )
+            ORDER BY COALESCE(conversation.last_message_time, conversation.update_time) DESC,
+                     conversation.update_time DESC,
+                     conversation.id DESC
+            """)
+    Flux<CustomerConversation> findAllForManagement();
 }

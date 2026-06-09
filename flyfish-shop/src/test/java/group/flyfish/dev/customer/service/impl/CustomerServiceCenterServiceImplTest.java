@@ -14,7 +14,6 @@ import group.flyfish.dev.user.domain.vo.PortalUserOauthVo;
 import group.flyfish.dev.user.domain.vo.PortalUserVo;
 import group.flyfish.dev.user.repository.PortalUserOauthRepository;
 import group.flyfish.dev.user.repository.PortalUserRepository;
-import group.flyfish.dev.shop.wechat.protocol.WechatInboundMessage;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -38,34 +37,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class CustomerServiceCenterServiceImplTest {
-
-    @Test
-    void recordsWechatInboundMessageAndCreatesConversation() {
-        Fixture fixture = new Fixture();
-
-        StepVerifier.create(fixture.service.recordInbound(WechatInboundMessage.builder()
-                        .msgType(WechatInboundMessage.MSG_TYPE_TEXT)
-                        .fromUserName("wechat-openid")
-                        .toUserName("gh-test")
-                        .content("我想咨询订单")
-                        .msgId("10001")
-                        .build(), "<xml>raw</xml>"))
-                .assertNext(message -> {
-                    assertEquals(CustomerMessage.Direction.INBOUND.name(), message.getDirection());
-                    assertEquals(CustomerMessage.Channel.WECHAT.name(), message.getChannel());
-                    assertEquals("我想咨询订单", message.getContent());
-                    assertEquals("10001", message.getWechatMsgId());
-                    assertEquals(100L, message.getUserId());
-                })
-                .verifyComplete();
-
-        CustomerConversation conversation = fixture.conversations.get(0);
-        assertEquals("微信客户", conversation.getDisplayName());
-        assertEquals(1, conversation.getAdminUnreadCount());
-        assertEquals("我想咨询订单", conversation.getLastMessage());
-        assertEquals("user:100", conversation.getCreateBy());
-        assertEquals("user:100", fixture.messages.get(0).getCreateBy());
-    }
 
     @Test
     void managerReplyPersistsBrowserMessageAndUnreadCount() {
@@ -208,7 +179,7 @@ class CustomerServiceCenterServiceImplTest {
                 return Flux.defer(() -> Flux.fromIterable(conversations)
                         .filter(conversation -> userId.equals(conversation.getUserId())));
             });
-            when(conversationRepository.findAllForManagement(anyString()))
+            when(conversationRepository.findAllForManagement())
                     .thenReturn(Flux.defer(() -> Flux.fromIterable(conversations)));
             when(conversationRepository.save(any(CustomerConversation.class))).thenAnswer(invocation -> {
                 CustomerConversation conversation = invocation.getArgument(0);

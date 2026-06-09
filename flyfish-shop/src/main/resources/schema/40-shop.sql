@@ -387,3 +387,32 @@ ALTER TABLE `customer_message`
 
 CREATE INDEX IF NOT EXISTS `idx_customer_message_conversation`
     ON `customer_message` (`conversation_id`, `create_time`);
+
+CREATE TABLE IF NOT EXISTS `customer_wechat_activity`
+(
+    `id`             bigint        NOT NULL COMMENT '主键' AUTO_INCREMENT,
+    `user_id`        bigint        NULL COMMENT '绑定门户用户id',
+    `wechat_openid`  varchar(128)  NOT NULL COMMENT '微信公众号openid',
+    `wechat_union_id` varchar(128) NULL COMMENT '微信unionid',
+    `display_name`   varchar(128) NULL COMMENT '用户展示名快照',
+    `avatar`         varchar(512) NULL COMMENT '用户头像快照',
+    `activity_type`  varchar(24)  NOT NULL COMMENT '动态类型',
+    `message_type`   varchar(24)  NULL COMMENT '微信消息类型',
+    `event_type`     varchar(32)  NULL COMMENT '微信事件类型',
+    `event_key`      varchar(128) NULL COMMENT '微信事件key',
+    `title`          varchar(128) NOT NULL COMMENT '动态标题',
+    `content`        varchar(4096) NOT NULL COMMENT '动态内容',
+    `wechat_msg_id`  varchar(128) NULL COMMENT '微信消息id',
+    `raw_payload`    text         NULL COMMENT '原始微信明文XML',
+    `create_by`      varchar(32)  NOT NULL COMMENT '创建人',
+    `update_by`      varchar(32)  NOT NULL COMMENT '修改人',
+    `create_time`    datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time`    datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
+    `is_delete`      boolean      NOT NULL DEFAULT false COMMENT '删除标记',
+    PRIMARY KEY (`id`)
+);
+
+CREATE INDEX IF NOT EXISTS `idx_customer_wechat_activity_time`
+    ON `customer_wechat_activity` (`activity_type`, `create_time`);
+CREATE INDEX IF NOT EXISTS `idx_customer_wechat_activity_openid`
+    ON `customer_wechat_activity` (`wechat_openid`, `create_time`);

@@ -24,4 +24,8 @@ public class CustomerRealtimeNotifier {
     public void ticketsChanged() {
         sink.tryEmitNext(CustomerRealtimeEvent.allUsers());
     }
+
+    public void wechatActivitiesChanged() {
+        sink.tryEmitNext(CustomerRealtimeEvent.allUsers());
+    }
 }

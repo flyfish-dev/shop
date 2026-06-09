@@ -9,6 +9,7 @@ import CustomerChatDrawer from './CustomerChatDrawer.vue';
 import CustomerNotificationDrawer from './CustomerNotificationDrawer.vue';
 import { useCustomerServiceChat } from './useCustomerServiceChat.js';
 import { useCustomerServiceNotifications } from './useCustomerServiceNotifications.js';
+import { useCustomerWechatActivities } from './useCustomerWechatActivities.js';
 
 const store = useClientStore();
 const router = useRouter();
@@ -43,6 +44,16 @@ const {
   send
 } = useCustomerServiceChat();
 
+const {
+  loading: activityLoading,
+  activities: wechatActivities,
+  keyword: activityKeyword,
+  activityType,
+  hasFilter: hasActivityFilter,
+  loadActivities,
+  resetFilters: resetActivityFilters
+} = useCustomerWechatActivities();
+
 let removeOpenListener;
 
 const visible = computed(() => Boolean(user.value?.id));
@@ -76,6 +87,9 @@ const handleOpenNotice = () => {
 const handleOpenChat = payload => {
   requestNotificationPermission();
   openChat(payload);
+  if (manager.value) {
+    loadActivities();
+  }
 };
 
 const updateAttachmentUploading = value => {
@@ -137,9 +151,18 @@ onBeforeUnmount(() => {
       :conversations='filteredConversations'
       :selected-conversation='selectedConversation'
       :messages='messages'
+      :wechat-activities='wechatActivities'
+      :activity-loading='activityLoading'
+      :activity-keyword='activityKeyword'
+      :activity-type='activityType'
+      :has-activity-filter='hasActivityFilter'
       @refresh='refresh'
       @select='selectConversation'
       @uploading-change='updateAttachmentUploading'
+      @refresh-activities='loadActivities'
+      @reset-activity-filters='resetActivityFilters'
+      @update:activity-keyword='value => activityKeyword = value'
+      @update:activity-type='value => activityType = value'
       @send='send'
       @close='closeChat'
     />

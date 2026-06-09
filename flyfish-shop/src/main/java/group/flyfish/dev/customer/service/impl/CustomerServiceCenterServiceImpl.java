@@ -13,7 +13,6 @@ import group.flyfish.dev.customer.domain.vo.CustomerMessageVo;
 import group.flyfish.dev.customer.domain.vo.CustomerServiceSummaryVo;
 import group.flyfish.dev.customer.repository.CustomerConversationRepository;
 import group.flyfish.dev.customer.repository.CustomerMessageRepository;
-import group.flyfish.dev.customer.service.CustomerMessageGateway;
 import group.flyfish.dev.customer.service.CustomerRealtimeNotifier;
 import group.flyfish.dev.customer.service.CustomerServiceCenterService;
 import group.flyfish.dev.shop.support.ShopAuthorizationUtils;
@@ -27,7 +26,6 @@ import group.flyfish.dev.user.domain.vo.PortalUserVo;
 import group.flyfish.dev.user.repository.PortalUserOauthRepository;
 import group.flyfish.dev.user.repository.PortalUserRepository;
 import group.flyfish.dev.user.support.FunNicknameGenerator;
-import group.flyfish.dev.shop.wechat.protocol.WechatInboundMessage;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
@@ -45,11 +43,10 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-public class CustomerServiceCenterServiceImpl implements CustomerServiceCenterService, CustomerMessageGateway {
+public class CustomerServiceCenterServiceImpl implements CustomerServiceCenterService {
 
     private static final int CONTENT_MAX_LENGTH = 4096;
     private static final int LAST_MESSAGE_MAX_LENGTH = 1024;
-    private static final int RAW_PAYLOAD_MAX_LENGTH = 8192;
     private static final int SUMMARY_CONVERSATION_LIMIT = 8;
     private static final int SUMMARY_TICKET_LIMIT = 5;
     private static final int ATTACHMENT_MAX_COUNT = 6;
@@ -65,18 +62,6 @@ public class CustomerServiceCenterServiceImpl implements CustomerServiceCenterSe
     private final PortalUserRepository userRepository;
     private final SupportTicketService supportTicketService;
     private final CustomerRealtimeNotifier realtimeNotifier;
-
-    @Override
-    @Transactional
-    public Mono<CustomerMessage> recordInbound(WechatInboundMessage inbound, String rawXml) {
-        if (inbound == null || StringUtils.isBlank(inbound.getFromUserName())) {
-            return Mono.empty();
-        }
-        String openid = inbound.getFromUserName().trim();
-        return findWechatAuthorization(openid)
-                .flatMap(optional -> findOrCreateConversation(openid, optional)
-                        .flatMap(conversation -> saveInboundMessage(conversation, inbound, rawXml, optional)));
-    }
 
     @Override
     public Mono<CustomerServiceSummaryVo> summary(PortalUserVo user) {
@@ -130,7 +115,7 @@ public class CustomerServiceCenterServiceImpl implements CustomerServiceCenterSe
     public Flux<CustomerConversationVo> getManagementConversations(PortalUserVo user, String keyword) {
         ShopAuthorizationUtils.requireShopMaintainer(user);
         String normalizedKeyword = StringUtils.trimToEmpty(keyword);
-        return conversationRepository.findAllForManagement(normalizedKeyword)
+        return conversationRepository.findAllForManagement()
                 .filter(conversation -> matchesKeyword(conversation, normalizedKeyword))
                 .flatMap(conversation -> toConversationVo(conversation, true));
     }
@@ -192,21 +177,6 @@ public class CustomerServiceCenterServiceImpl implements CustomerServiceCenterSe
                 .flatMap(conversation -> toConversationVo(conversation, false));
     }
 
-    private Mono<CustomerMessage> saveInboundMessage(CustomerConversation conversation, WechatInboundMessage inbound,
-                                                     String rawXml, Optional<PortalUserOauth> oauth) {
-        LocalDateTime now = LocalDateTime.now();
-        String content = inboundContent(inbound);
-        applyIdentity(conversation, oauth);
-        conversation.setLastMessage(clamp(content, LAST_MESSAGE_MAX_LENGTH));
-        conversation.setLastMessageTime(now);
-        conversation.setLastInboundTime(now);
-        conversation.setAdminUnreadCount(safe(conversation.getAdminUnreadCount()) + 1);
-        conversation.setStatus(CustomerConversation.Status.OPEN.name());
-        return saveConversation(conversation)
-                .flatMap(saved -> saveCustomerMessage(inboundMessage(saved, inbound, content, rawXml))
-                        .doOnNext(ignored -> realtimeNotifier.conversationChanged(saved)));
-    }
-
     private Mono<CustomerMessage> saveUserWebMessage(CustomerConversation conversation, Long userId, String content,
                                                     CustomerMessageSendDto dto) {
         LocalDateTime now = LocalDateTime.now();
@@ -238,25 +208,6 @@ public class CustomerServiceCenterServiceImpl implements CustomerServiceCenterSe
         return saveConversation(conversation)
                 .flatMap(saved -> saveCustomerMessage(message)
                         .doOnNext(ignored -> realtimeNotifier.conversationChanged(saved)));
-    }
-
-    private CustomerMessage inboundMessage(CustomerConversation conversation, WechatInboundMessage inbound,
-                                           String content, String rawXml) {
-        CustomerMessage message = new CustomerMessage();
-        message.setConversationId(conversation.getId());
-        message.setUserId(conversation.getUserId());
-        message.setWechatOpenid(conversation.getWechatOpenid());
-        message.setDirection(CustomerMessage.Direction.INBOUND.name());
-        message.setChannel(CustomerMessage.Channel.WECHAT.name());
-        message.setSenderRole(CustomerMessage.SenderRole.USER.name());
-        message.setMessageType(StringUtils.defaultIfBlank(inbound.getMsgType(), "unknown"));
-        message.setContent(content);
-        message.setRawPayload(clamp(rawXml, RAW_PAYLOAD_MAX_LENGTH));
-        message.setWechatMsgId(inbound.getMsgId());
-        message.setSendStatus(CustomerMessage.SendStatus.RECEIVED.name());
-        message.setReadByAdmin(false);
-        message.setReadByUser(true);
-        return message;
     }
 
     private CustomerMessage webUserMessage(CustomerConversation conversation, Long userId, String content,
@@ -395,13 +346,6 @@ public class CustomerServiceCenterServiceImpl implements CustomerServiceCenterSe
         conversation.setDisplayName(StringUtils.firstNonBlank(user.getUsername(), conversation.getDisplayName(),
                 "用户 " + user.getId()));
         conversation.setAvatar(StringUtils.defaultIfBlank(user.getAvatar(), conversation.getAvatar()));
-    }
-
-    private Mono<Optional<PortalUserOauth>> findWechatAuthorization(String openid) {
-        return oauthRepository.findAllByTypeAndOpenid(OAuthType.WECHAT, openid)
-                .next()
-                .map(Optional::of)
-                .defaultIfEmpty(Optional.empty());
     }
 
     private Mono<PortalUserOauth> currentWechatAuthorization(PortalUserVo user) {
@@ -606,27 +550,6 @@ public class CustomerServiceCenterServiceImpl implements CustomerServiceCenterSe
     private boolean allImages(List<FileAttachmentVo> attachments) {
         return attachments != null && !attachments.isEmpty()
                 && attachments.stream().allMatch(attachment -> Boolean.TRUE.equals(attachment.getImage()));
-    }
-
-    private String inboundContent(WechatInboundMessage message) {
-        if (message.isText()) {
-            return clamp(StringUtils.defaultIfBlank(message.getContent(), "[空消息]"), CONTENT_MAX_LENGTH);
-        }
-        if (message.isEvent()) {
-            return clamp("[" + StringUtils.defaultIfBlank(message.getEvent(), "event") + "] "
-                    + StringUtils.defaultString(message.getEventKey()), CONTENT_MAX_LENGTH);
-        }
-        if (message.isLocationMessage()) {
-            return "发送了地理位置：" + StringUtils.defaultString(message.getLatitude())
-                    + "," + StringUtils.defaultString(message.getLongitude());
-        }
-        if (StringUtils.isNotBlank(message.getPicUrl())) {
-            return "发送了图片：" + message.getPicUrl();
-        }
-        if (StringUtils.isNotBlank(message.getMediaId())) {
-            return "发送了媒体消息：" + message.getMediaId();
-        }
-        return "[" + StringUtils.defaultIfBlank(message.getMsgType(), "unknown") + "] 用户发送了一条消息";
     }
 
     private boolean matchesKeyword(CustomerConversation conversation, String keyword) {

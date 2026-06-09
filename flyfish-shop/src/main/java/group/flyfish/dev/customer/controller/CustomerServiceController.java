@@ -6,7 +6,9 @@ import group.flyfish.dev.customer.domain.dto.CustomerMessageSendDto;
 import group.flyfish.dev.customer.domain.vo.CustomerConversationDetailVo;
 import group.flyfish.dev.customer.domain.vo.CustomerConversationVo;
 import group.flyfish.dev.customer.domain.vo.CustomerServiceSummaryVo;
+import group.flyfish.dev.customer.domain.vo.CustomerWechatActivityVo;
 import group.flyfish.dev.customer.service.CustomerServiceCenterService;
+import group.flyfish.dev.customer.service.CustomerWechatActivityService;
 import group.flyfish.dev.user.domain.vo.PortalUserVo;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +31,8 @@ import java.util.List;
 public class CustomerServiceController {
 
     private final CustomerServiceCenterService customerServiceCenterService;
+
+    private final CustomerWechatActivityService customerWechatActivityService;
 
     @GetMapping("summary")
     public Mono<Result<CustomerServiceSummaryVo>> summary(@CurrentUser PortalUserVo user) {
@@ -55,6 +59,17 @@ public class CustomerServiceController {
     public Mono<Result<List<CustomerConversationVo>>> managementConversations(@CurrentUser PortalUserVo user,
                                                                               @RequestParam(required = false) String keyword) {
         return customerServiceCenterService.getManagementConversations(user, keyword)
+                .collectList()
+                .map(Result::ok);
+    }
+
+    @GetMapping("management/wechat-activities")
+    public Mono<Result<List<CustomerWechatActivityVo>>> managementWechatActivities(
+            @CurrentUser PortalUserVo user,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String activityType,
+            @RequestParam(defaultValue = "80") int limit) {
+        return customerWechatActivityService.getManagementActivities(user, keyword, activityType, limit)
                 .collectList()
                 .map(Result::ok);
     }
