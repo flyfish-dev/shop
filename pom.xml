@@ -16,6 +16,14 @@
     <name>flyfish-dev-next</name>
     <description>flyfish-dev-next</description>
 
+    <licenses>
+        <license>
+            <name>GNU Affero General Public License v3.0 only</name>
+            <url>https://www.gnu.org/licenses/agpl-3.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
     <modules>
         <module>flyfish-ddl</module>
         <module>flyfish-portal-api</module>

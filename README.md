@@ -211,4 +211,6 @@ scripts/smoke-ui-authenticated-pages.sh
 
 ## 开源许可
 
-请在正式公开前补充适合项目的 `LICENSE` 文件。未提供许可证时，默认不授予复制、修改、分发或商用权利。
+本项目采用 [GNU Affero General Public License v3.0 only](LICENSE)，SPDX 标识为 `AGPL-3.0-only`。
+
+AGPLv3 是强 copyleft 协议：修改、分发或通过网络提供服务时，需要按协议要求向用户提供对应源码，并保留相同许可证。
