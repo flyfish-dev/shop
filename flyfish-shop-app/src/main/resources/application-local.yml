@@ -1,0 +1,17 @@
+spring:
+  sql:
+    init:
+      mode: always
+  r2dbc:
+    url: r2dbc:h2:file:///./db/shop-db;MODE=MySQL
+    username: sa
+    password:
+
+shop:
+  payment:
+    h5zhifu:
+      app-id: ${H5ZHIFU_APP_ID:0}
+      key: ${H5ZHIFU_KEY:}
+      notify-url: http://127.0.0.1:9999/shops/payments/h5zhifu/notify
+      default-pay-type: wechat
+      default-trade-type: native

@@ -1,0 +1,41 @@
+<svg width="720" height="540" viewBox="0 0 720 540" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="84" y1="42" x2="628" y2="506" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F6FFF8"/>
+      <stop offset="0.58" stop-color="#F4F9FF"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <linearGradient id="box" x1="242" y1="156" x2="478" y2="380" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4FB969"/>
+      <stop offset="1" stop-color="#1F7A36"/>
+    </linearGradient>
+    <filter id="shadow" x="164" y="102" width="392" height="338" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="16"/>
+      <feGaussianBlur stdDeviation="22"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.09 0 0 0 0 0.22 0 0 0 0 0.15 0 0 0 0.12 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_1" result="shape"/>
+    </filter>
+  </defs>
+  <rect width="720" height="540" rx="28" fill="url(#bg)"/>
+  <path d="M96 95H624" stroke="#DCEBE1" stroke-width="2" stroke-linecap="round" stroke-dasharray="8 14"/>
+  <path d="M96 445H624" stroke="#E6EDF5" stroke-width="2" stroke-linecap="round" stroke-dasharray="8 14"/>
+  <circle cx="594" cy="132" r="38" fill="#EAF7EE"/>
+  <circle cx="126" cy="391" r="54" fill="#EEF6FF"/>
+  <circle cx="587" cy="389" r="8" fill="#1677FF"/>
+  <circle cx="603" cy="405" r="5" fill="#33A204"/>
+  <g filter="url(#shadow)">
+    <rect x="214" y="146" width="292" height="246" rx="26" fill="white"/>
+    <path d="M254 220L360 159L466 220V342L360 403L254 342V220Z" fill="url(#box)"/>
+    <path d="M296 243L360 206L424 243V317L360 354L296 317V243Z" fill="white" fill-opacity="0.9"/>
+    <path d="M312 252L360 225L408 252L360 280L312 252Z" fill="#EAF7EE"/>
+    <path d="M312 252V308L360 336V280L312 252Z" fill="#D7F0DE"/>
+    <path d="M408 252V308L360 336V280L408 252Z" fill="#BDE5C8"/>
+    <circle cx="430" cy="348" r="30" fill="#F4F8FF"/>
+    <path d="M418 349L428 359L445 340" stroke="#1677FF" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="360" y="452" text-anchor="middle" fill="#203626" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="700">Flyfish Market</text>
+  <text x="360" y="486" text-anchor="middle" fill="#7B8A83" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="500">Digital product preview</text>
+</svg>

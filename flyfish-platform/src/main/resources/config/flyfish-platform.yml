@@ -1,0 +1,12 @@
+spring:
+  web:
+    resources:
+      static-locations:
+        - file:./data/
+        - classpath:/static/
+        - classpath:/public/
+        - classpath:/resources/
+        - classpath:/META-INF/resources/
+      static-path-pattern: /**
+  mvc:
+    static-path-pattern: /**

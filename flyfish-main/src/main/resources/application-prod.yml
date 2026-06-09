@@ -1,0 +1,8 @@
+spring:
+  r2dbc:
+    url: ${SPRING_R2DBC_URL:r2dbc:mysql://127.0.0.1:3306/flyfish_dev}
+    username: ${SPRING_R2DBC_USERNAME:flyfish}
+    password: ${SPRING_R2DBC_PASSWORD:}
+
+oauth:
+  callback-url: ${OAUTH_CALLBACK_URL:https://example.com/oauth/callback}

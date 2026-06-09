@@ -1,0 +1,53 @@
+oauth:
+  callback-url: ${OAUTH_CALLBACK_URL:http://127.0.0.1:9999/oauth/callback}
+  gitea:
+    app-name: ${OAUTH_GITEA_APP_NAME:飞鱼}
+    server: ${OAUTH_GITEA_SERVER:https://git.flyfish.dev}
+    client-id: ${OAUTH_GITEA_CLIENT_ID:}
+    client-secret: ${OAUTH_GITEA_CLIENT_SECRET:}
+    admin-token: ${OAUTH_GITEA_ADMIN_TOKEN:}
+  gitee:
+    app-name: ${OAUTH_GITEE_APP_NAME:飞鱼}
+    server: ${OAUTH_GITEE_SERVER:https://gitee.com}
+    api-base-url: ${OAUTH_GITEE_API_BASE_URL:https://gitee.com/api/v5}
+    client-id: ${OAUTH_GITEE_CLIENT_ID:}
+    client-secret: ${OAUTH_GITEE_CLIENT_SECRET:}
+    scope: ${OAUTH_GITEE_SCOPE:user_info emails}
+  github:
+    app-name: ${OAUTH_GITHUB_APP_NAME:飞鱼}
+    server: ${OAUTH_GITHUB_SERVER:https://github.com}
+    api-base-url: ${OAUTH_GITHUB_API_BASE_URL:https://api.github.com}
+    client-id: ${OAUTH_GITHUB_CLIENT_ID:}
+    client-secret: ${OAUTH_GITHUB_CLIENT_SECRET:}
+    scope: ${OAUTH_GITHUB_SCOPE:read:user user:email}
+
+pac4j:
+  callback:
+    path: /oauth/callback
+
+wx:
+  quick-login:
+    default-redirect: ${WX_QUICK_LOGIN_DEFAULT_REDIRECT:/}
+
+spring:
+  mail:
+    host: ${SPRING_MAIL_HOST:${SMTP_ADDR:}}
+    port: ${SPRING_MAIL_PORT:${SMTP_PORT:587}}
+    username: ${SPRING_MAIL_USERNAME:${SMTP_USER:${USER:}}}
+    password: ${SPRING_MAIL_PASSWORD:${SMTP_PASSWD:${PASSWD:}}}
+    protocol: ${SPRING_MAIL_PROTOCOL:${SMTP_PROTOCOL:smtp}}
+    default-encoding: UTF-8
+    properties:
+      mail.smtp.auth: ${SPRING_MAIL_AUTH:true}
+      mail.smtp.starttls.enable: ${SPRING_MAIL_STARTTLS_ENABLE:true}
+      mail.smtp.starttls.required: ${SPRING_MAIL_STARTTLS_REQUIRED:false}
+      mail.smtp.ssl.enable: ${SPRING_MAIL_SSL_ENABLE:false}
+      mail.smtps.auth: ${SPRING_MAIL_AUTH:true}
+
+email:
+  magic-link:
+    enabled: ${EMAIL_MAGIC_LINK_ENABLED:true}
+    base-url: ${EMAIL_MAGIC_LINK_BASE_URL:http://127.0.0.1:9999}
+    from: ${EMAIL_MAGIC_LINK_FROM:${SPRING_MAIL_USERNAME:${SMTP_USER:}}}
+    subject: ${EMAIL_MAGIC_LINK_SUBJECT:飞鱼邮箱快速登录}
+    expires-in: ${EMAIL_MAGIC_LINK_EXPIRES_IN:15m}
