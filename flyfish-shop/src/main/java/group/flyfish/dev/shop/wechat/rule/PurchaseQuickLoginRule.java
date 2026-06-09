@@ -51,7 +51,7 @@ public class PurchaseQuickLoginRule implements WechatMessageRule {
     private String buildQuickLoginLink(String scene) {
         String baseUrl = StringUtils.removeEnd(StringUtils.trimToEmpty(quickLoginProperties.getBaseUrl()), "/");
         if (StringUtils.isBlank(baseUrl)) {
-            baseUrl = "https://dev.flyfish.group";
+            baseUrl = "https://shop.example.com";
         }
         String redirect = URLEncoder.encode(
                 StringUtils.defaultIfBlank(quickLoginProperties.getPurchaseRedirect(), "/shop/item-list"),

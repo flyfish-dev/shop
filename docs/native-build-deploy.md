@@ -83,13 +83,13 @@ GraalVM 25 会按实际可达代码生成配套 JDK native 库，上线时必须
 前端由 nginx 直接托管，构建成功后同步 `web/dist`：
 
 ```bash
-rsync -av --delete web/dist/ root@101.200.59.238:/opt/flyfish-dev/web/
+rsync -av --delete web/dist/ root@your-server.example.com:/opt/flyfish-dev/web/
 ```
 
 发布后验证：
 
 ```bash
-curl -k -sS -D - https://dev.flyfish.group/shop/item-list -o /tmp/flyfish-shop.html
+curl -k -sS -D - https://shop.example.com/shop/item-list -o /tmp/flyfish-shop.html
 head -20 /tmp/flyfish-shop.html
 ```
 
@@ -139,14 +139,14 @@ docker run --platform linux/amd64 --rm \
 commit="$(git rev-parse --short HEAD)"
 release="/opt/flyfish-dev/releases/$(date +%Y%m%d%H%M)-native-${commit}-graal25"
 
-ssh root@101.200.59.238 "mkdir -p ${release}/native"
+ssh root@your-server.example.com "mkdir -p ${release}/native"
 
 rsync -av \
   flyfish-main/target/flyfish-main \
   flyfish-main/target/lib*.so \
-  root@101.200.59.238:${release}/native/
+  root@your-server.example.com:${release}/native/
 
-ssh root@101.200.59.238 "
+ssh root@your-server.example.com "
   cd ${release}/native &&
   mv -f flyfish-main flyfish-dev &&
   chmod 755 flyfish-dev libjava.so libjvm.so &&
@@ -168,7 +168,7 @@ ssh root@101.200.59.238 "
 release="/opt/flyfish-dev/releases/替换为本次release"
 unit="flyfish-native-smoke-$(date +%H%M)"
 
-ssh root@101.200.59.238 "
+ssh root@your-server.example.com "
   systemctl stop ${unit}.service 2>/dev/null || true
   systemd-run --unit=${unit} \
     --property=User=flyfish \
@@ -185,20 +185,20 @@ ssh root@101.200.59.238 "
 冒烟接口：
 
 ```bash
-ssh root@101.200.59.238 'curl -fsS http://127.0.0.1:10082/portal/users/current'
-ssh root@101.200.59.238 'curl -fsS "http://127.0.0.1:10082/shops/items?page=1&size=3"'
+ssh root@your-server.example.com 'curl -fsS http://127.0.0.1:10082/portal/users/current'
+ssh root@your-server.example.com 'curl -fsS "http://127.0.0.1:10082/shops/items?page=1&size=3"'
 ```
 
 通过后停止临时 unit：
 
 ```bash
-ssh root@101.200.59.238 "systemctl stop ${unit}.service"
+ssh root@your-server.example.com "systemctl stop ${unit}.service"
 ```
 
 如果失败，查看日志：
 
 ```bash
-ssh root@101.200.59.238 "journalctl -u ${unit} --no-pager -l | tail -200"
+ssh root@your-server.example.com "journalctl -u ${unit} --no-pager -l | tail -200"
 ```
 
 ## 切换生产服务
@@ -208,7 +208,7 @@ ssh root@101.200.59.238 "journalctl -u ${unit} --no-pager -l | tail -200"
 ```bash
 release="/opt/flyfish-dev/releases/替换为本次release"
 
-ssh root@101.200.59.238 "
+ssh root@your-server.example.com "
   ln -sfn ${release}/native /opt/flyfish-dev/app/native
   rm -f /etc/systemd/system/flyfish-dev.service.d/override.conf
   rmdir /etc/systemd/system/flyfish-dev.service.d 2>/dev/null || true
@@ -227,16 +227,16 @@ Environment=LD_LIBRARY_PATH=/opt/flyfish-dev/app/native
 切换后验证：
 
 ```bash
-ssh root@101.200.59.238 '
+ssh root@your-server.example.com '
   systemctl show flyfish-dev -p ActiveState -p SubState -p MainPID --no-pager
   ps -o pid,comm,rss,args -p $(systemctl show -p MainPID --value flyfish-dev)
   curl -fsS http://127.0.0.1:10081/portal/users/current
   curl -fsS "http://127.0.0.1:10081/shops/items?page=1&size=3" | head -c 1000
 '
 
-curl -k -sS -D - https://api.flyfish.group/portal/users/current
-curl -k -sS -D - 'https://api.flyfish.group/shops/items?page=1&size=3'
-curl -k -sS -D - https://dev.flyfish.group/shop/item-list
+curl -k -sS -D - https://api.example.com/portal/users/current
+curl -k -sS -D - 'https://api.example.com/shops/items?page=1&size=3'
+curl -k -sS -D - https://shop.example.com/shop/item-list
 ```
 
 `ps` 中进程名应为 `flyfish-dev`，不是 `java`。
@@ -248,7 +248,7 @@ curl -k -sS -D - https://dev.flyfish.group/shop/item-list
 ```bash
 previous="/opt/flyfish-dev/releases/替换为上一个可用native/native"
 
-ssh root@101.200.59.238 "
+ssh root@your-server.example.com "
   ln -sfn ${previous} /opt/flyfish-dev/app/native
   systemctl restart flyfish-dev
 "
@@ -257,7 +257,7 @@ ssh root@101.200.59.238 "
 如果需要临时回滚到 jar：
 
 ```bash
-ssh root@101.200.59.238 "
+ssh root@your-server.example.com "
   mkdir -p /etc/systemd/system/flyfish-dev.service.d
   cat >/etc/systemd/system/flyfish-dev.service.d/override.conf <<'EOF'
 [Service]
@@ -289,7 +289,7 @@ EOF
 - 减重关键点：`build.sh` 改为 `-Pnative,!local`，确保生产 native 不再把本地 H2 驱动与元数据打进二进制；构建前清理旧 `lib*.so`，避免误上传历史配套库。
 - 剩余主要体积来源集中在 JDK/SVM、Spring、FreeMarker、Thymeleaf、Jackson、pac4j 等真实可达依赖；后续如继续减重，应优先评估模板引擎、pac4j 的 Jackson 2 传递依赖和不必要的运行期功能。
 - 上线前用 `flyfish-native-smoke-100241.service` 在 `10082` 端口完成冒烟，确认 `/portal/users/current` 与 `/shops/items?page=1&size=3` 均返回 `200`，且烟测服务无 warning/error。
-- 正式切换后 `flyfish-dev` 主服务进程为 native 二进制，`api.flyfish.group` 与 `dev.flyfish.group` 均返回 `200`；内置浏览器检查商城页可见飞鱼小铺、推荐商品、工单入口和商品卡片，控制台无错误。
+- 正式切换后 `flyfish-dev` 主服务进程为 native 二进制，`api.example.com` 与 `shop.example.com` 均返回 `200`；内置浏览器检查商城页可见飞鱼小铺、推荐商品、工单入口和商品卡片，控制台无错误。
 
 ## 2026-06-01 商品仓库参数迁移上线记录
 
@@ -298,7 +298,7 @@ EOF
 - 本次 native release：`/opt/flyfish-dev/releases/202606011143-native-gitrepo-provider-a82b070-graal25/native`。
 - 上线前用 `flyfish-native-smoke-gitrepo.service` 在 `10082` 端口完成冒烟，确认 `/portal/users/current` 可访问，启动期迁移能正确执行。
 - 本次迁移重点验证商品仓库参数：所有商品的 `repositoryIds` 都能关联到 `git_repository`，商品参数快照中的 `provider`、`owner`、`repo` 与仓库表一致；`rtsp本地浏览器播放` 已补全为 GitHub `flyfish-dev/rtsp-source`。
-- 正式切换后 `flyfish-dev` 主服务进程为 native 二进制，`api.flyfish.group` 与 `dev.flyfish.group` 均返回 `200`，浏览器检查商品列表和商品详情页无新的控制台错误。
+- 正式切换后 `flyfish-dev` 主服务进程为 native 二进制，`api.example.com` 与 `shop.example.com` 均返回 `200`，浏览器检查商品列表和商品详情页无新的控制台错误。
 
 ## 2026-05-25 成功上线记录
 
@@ -312,9 +312,9 @@ EOF
   - `http://127.0.0.1:10082/portal/users/current` 返回 200
   - `http://127.0.0.1:10082/shops/items?page=1&size=3` 返回 200
 - 生产验证：
-  - `https://api.flyfish.group/portal/users/current` 返回 200
-  - `https://api.flyfish.group/shops/items?page=1&size=3` 返回 200
-  - `https://dev.flyfish.group/shop/item-list` 返回 200
+  - `https://api.example.com/portal/users/current` 返回 200
+  - `https://api.example.com/shops/items?page=1&size=3` 返回 200
+  - `https://shop.example.com/shop/item-list` 返回 200
 
 ## 2026-05-31 仓库同步功能 native 上线记录
 
@@ -338,7 +338,7 @@ EOF
   - 主服务符号链接指向 `/opt/flyfish-dev/releases/202605312301-native-700b801-graal25/native`
   - `systemctl status flyfish-dev`：`active (running)`
   - `ps` 进程名：`flyfish-dev`，RSS 约 `69MB`
-  - `https://api.flyfish.group/portal/users/current` 返回 200
-  - `https://api.flyfish.group/shops/items?page=1&size=3` 返回 200
-  - `https://api.flyfish.group/shops/managements/git/repositories/sync` 未登录返回 401
-  - `https://dev.flyfish.group/shop/manage/repositories` 返回 200
+  - `https://api.example.com/portal/users/current` 返回 200
+  - `https://api.example.com/shops/items?page=1&size=3` 返回 200
+  - `https://api.example.com/shops/managements/git/repositories/sync` 未登录返回 401
+  - `https://shop.example.com/shop/manage/repositories` 返回 200

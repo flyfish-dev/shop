@@ -43,7 +43,7 @@ class H5ZhiFuSignerTest {
         dto.setPayType(H5ZhiFuPayDto.PayType.wechat);
         dto.setAmount(1);
         dto.setAttach("FF200");
-        dto.setNotifyUrl("https://api.flyfish.group/shops/payments/h5zhifu/notify");
+        dto.setNotifyUrl("https://api.example.com/shops/payments/h5zhifu/notify");
 
         Map<String, Object> samePayload = new LinkedHashMap<>();
         samePayload.put("app_id", 10001L);
@@ -52,7 +52,7 @@ class H5ZhiFuSignerTest {
         samePayload.put("pay_type", "wechat");
         samePayload.put("amount", 1);
         samePayload.put("attach", "FF200");
-        samePayload.put("notify_url", "https://api.flyfish.group/shops/payments/h5zhifu/notify");
+        samePayload.put("notify_url", "https://api.example.com/shops/payments/h5zhifu/notify");
 
         assertEquals(H5ZhiFuSigner.sign(samePayload, "secret"), H5ZhiFuSigner.sign(dto, "secret"));
     }

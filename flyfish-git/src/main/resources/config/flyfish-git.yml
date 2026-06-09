@@ -1,6 +1,6 @@
 git:
   gitea:
-    server: ${oauth.gitea.server:https://git.flyfish.dev}
+    server: ${oauth.gitea.server:https://git.example.com}
     admin-token: ${oauth.gitea.admin-token:}
   github:
     api-base-url: ${GIT_GITHUB_API_BASE_URL:https://api.github.com}

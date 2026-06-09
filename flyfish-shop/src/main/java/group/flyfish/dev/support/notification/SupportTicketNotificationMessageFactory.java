@@ -183,7 +183,7 @@ public class SupportTicketNotificationMessageFactory {
 
     private String baseUrl() {
         return StringUtils.removeEnd(StringUtils.defaultIfBlank(properties.getPortalBaseUrl(),
-                "https://dev.flyfish.group"), "/");
+                "https://shop.example.com"), "/");
     }
 
     private String creatorName(PortalUser creator, Long fallbackId) {

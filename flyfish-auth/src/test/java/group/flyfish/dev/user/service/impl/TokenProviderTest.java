@@ -66,7 +66,7 @@ class TokenProviderTest {
         assertNotNull(cookieToken);
 
         MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/portal/users/logout")
-                .header("X-Forwarded-Host", "dev.flyfish.group")
+                .header("X-Forwarded-Host", "shop.example.com")
                 .header("X-Forwarded-Proto", "https")
                 .cookie(new HttpCookie(TokenProvider.AUTHORIZATION_COOKIE, cookieToken.getToken())));
 
@@ -76,7 +76,7 @@ class TokenProviderTest {
         assertNotNull(cookies);
         assertEquals(2, cookies.size());
         assertTrue(cookies.stream().anyMatch(cookie -> cookie.getDomain() == null));
-        assertTrue(cookies.stream().anyMatch(cookie -> "flyfish.group".equals(cookie.getDomain())));
+        assertTrue(cookies.stream().anyMatch(cookie -> "example.com".equals(cookie.getDomain())));
         assertTrue(cookies.stream().allMatch(cookie -> cookie.getMaxAge().isZero()));
         assertTrue(cookies.stream().allMatch(ResponseCookie::isSecure));
     }

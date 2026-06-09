@@ -32,7 +32,7 @@ public class OAuthProperties {
 
         private String appName = "飞鱼";
 
-        private String server = "https://git.flyfish.dev";
+        private String server = "https://git.example.com";
 
         private String clientId = "";
 

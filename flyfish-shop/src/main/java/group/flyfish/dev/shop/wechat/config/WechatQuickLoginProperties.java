@@ -20,7 +20,7 @@ public class WechatQuickLoginProperties {
     /**
      * 用户从微信里点击快捷登录时访问的公网域名。
      */
-    private String baseUrl = "https://dev.flyfish.group";
+    private String baseUrl = "https://shop.example.com";
 
     /**
      * “购买”关键词登录成功后的默认页面。

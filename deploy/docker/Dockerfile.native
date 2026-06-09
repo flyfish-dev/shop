@@ -1,0 +1,82 @@
+# syntax=docker/dockerfile:1.7
+
+ARG GRAAL_IMAGE=container-registry.oracle.com/graalvm/native-image:25
+ARG ALINUX_IMAGE=registry.cn-hangzhou.aliyuncs.com/alinux/alinux3:latest
+
+FROM ${GRAAL_IMAGE} AS graal
+
+FROM ${ALINUX_IMAGE} AS native-builder
+
+RUN dnf install -y \
+        bash \
+        findutils \
+        gcc \
+        gcc-c++ \
+        glibc-devel \
+        gzip \
+        make \
+        tar \
+        which \
+        zlib-devel \
+    && dnf clean all
+
+COPY --from=graal /usr/lib64/graalvm/graalvm-java25 /opt/graalvm
+ENV JAVA_HOME=/opt/graalvm
+ENV PATH=/opt/graalvm/bin:/opt/graalvm/lib/svm/bin:${PATH}
+
+WORKDIR /workspace
+COPY . .
+
+ARG NATIVE_MARCH=x86-64-v3
+ARG NATIVE_OPTIMIZATION_LEVEL=-O3
+ARG NATIVE_BUILD_PARALLELISM=2
+ARG NATIVE_BUILD_XMX=8g
+
+RUN chmod +x ./mvnw \
+    && java -version \
+    && native-image --version \
+    && ./mvnw -q -N -DskipTests install \
+    && ./mvnw -q -DskipTests -pl flyfish-ddl clean install \
+    && rm -f flyfish-main/target/flyfish-main flyfish-main/target/lib*.so \
+    && ./mvnw -q -DskipTests -Pnative,!local \
+        -Dnative.build.parallelism=${NATIVE_BUILD_PARALLELISM} \
+        -Dnative.build.xmx=${NATIVE_BUILD_XMX} \
+        -Dnative.optimization.level=${NATIVE_OPTIMIZATION_LEVEL} \
+        -Dnative.march=${NATIVE_MARCH} \
+        -pl flyfish-main native:compile \
+    && mkdir -p /native \
+    && cp flyfish-main/target/flyfish-main /native/flyfish-dev \
+    && find flyfish-main/target -maxdepth 1 -name 'lib*.so' -exec cp {} /native/ \;
+
+FROM ${ALINUX_IMAGE} AS runtime
+
+RUN dnf install -y \
+        ca-certificates \
+        curl \
+        fontconfig \
+        freetype \
+        glibc \
+        libstdc++ \
+        shadow-utils \
+        tzdata \
+        zlib \
+    && dnf clean all \
+    && groupadd -r flyfish \
+    && useradd -r -g flyfish -d /app -s /sbin/nologin flyfish
+
+WORKDIR /app
+COPY --from=native-builder /native/ /app/
+
+RUN mkdir -p /app/data \
+    && chmod 755 /app/flyfish-dev \
+    && chown -R flyfish:flyfish /app
+
+ENV LD_LIBRARY_PATH=/app
+ENV SPRING_PROFILES_ACTIVE=prod
+ENV SERVER_PORT=10081
+ENV TZ=Asia/Shanghai
+
+EXPOSE 10081
+USER flyfish
+
+ENTRYPOINT ["/app/flyfish-dev"]

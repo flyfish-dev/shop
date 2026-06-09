@@ -91,8 +91,8 @@ class EmailMagicLinkServiceTest {
 
     private EmailMagicLinkProperties properties() {
         EmailMagicLinkProperties properties = new EmailMagicLinkProperties();
-        properties.setBaseUrl("https://dev.flyfish.group");
-        properties.setFrom("noreply@flyfish.group");
+        properties.setBaseUrl("https://shop.example.com");
+        properties.setFrom("noreply@example.com");
         properties.setExpiresIn(Duration.ofMinutes(15));
         return properties;
     }

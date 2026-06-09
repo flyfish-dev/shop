@@ -64,7 +64,7 @@ class H5ZhiFuPayServiceTest {
         H5ZhiFuProperties properties = new H5ZhiFuProperties();
         properties.setAppId(10001L);
         properties.setKey("test-secret");
-        properties.setNotifyUrl("https://api.flyfish.group/shops/payments/h5zhifu/notify");
+        properties.setNotifyUrl("https://api.example.com/shops/payments/h5zhifu/notify");
         return properties;
     }
 

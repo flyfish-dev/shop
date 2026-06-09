@@ -2,7 +2,7 @@ oauth:
   callback-url: ${OAUTH_CALLBACK_URL:http://127.0.0.1:9999/oauth/callback}
   gitea:
     app-name: ${OAUTH_GITEA_APP_NAME:飞鱼}
-    server: ${OAUTH_GITEA_SERVER:https://git.flyfish.dev}
+    server: ${OAUTH_GITEA_SERVER:https://git.example.com}
     client-id: ${OAUTH_GITEA_CLIENT_ID:}
     client-secret: ${OAUTH_GITEA_CLIENT_SECRET:}
     admin-token: ${OAUTH_GITEA_ADMIN_TOKEN:}

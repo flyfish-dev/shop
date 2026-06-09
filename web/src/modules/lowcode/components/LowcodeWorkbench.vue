@@ -34,7 +34,7 @@
 
         <section class="quick-actions">
           <h3>快捷操作</h3>
-          <a class="product-suite-link" href="https://product.flyfish.group" target="_blank" rel="noreferrer">
+          <a class="product-suite-link" href="https://product.example.com" target="_blank" rel="noreferrer">
             <span>
               office预览套件
               <em>HOT</em>

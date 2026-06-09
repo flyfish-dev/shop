@@ -15,7 +15,7 @@ public class SupportNotificationProperties {
     /**
      * 用户和管理员在消息中打开工单详情时使用的前端域名。
      */
-    private String portalBaseUrl = "https://dev.flyfish.group";
+    private String portalBaseUrl = "https://shop.example.com";
 
     private Mail mail = new Mail();
 

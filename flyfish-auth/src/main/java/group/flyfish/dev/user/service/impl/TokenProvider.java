@@ -38,7 +38,7 @@ public class TokenProvider implements TokenService, InitializingBean {
 
     public static final String AUTHORIZATION_COOKIE = "FF_ACCESS_TOKEN";
 
-    private static final String FLYFISH_ROOT_DOMAIN = "flyfish.group";
+    private static final String FLYFISH_ROOT_DOMAIN = "example.com";
 
     private final JwtProperties jwtProperties;
 

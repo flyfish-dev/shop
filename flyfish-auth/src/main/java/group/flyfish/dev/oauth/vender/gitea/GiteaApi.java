@@ -51,7 +51,7 @@ public class GiteaApi extends DefaultApi20 {
         return Optional.ofNullable(OAuthProperties.instance())
                 .map(properties -> properties.getGitea().getServer())
                 .filter(StringUtils::isNotBlank)
-                .orElse("https://git.flyfish.dev");
+                .orElse("https://git.example.com");
     }
 
     private static class InstanceHolder {

@@ -29,7 +29,7 @@ class WechatMessageRouterTest {
     void purchaseKeywordRepliesWithQuickLoginTextLink() {
         WechatMessageRuleResult text = handleText(" 购 买 ");
 
-        assertTrue(text.content().contains("<a href=\"https://dev.flyfish.group/wx/quick-login/"));
+        assertTrue(text.content().contains("<a href=\"https://shop.example.com/wx/quick-login/"));
         assertTrue(text.content().contains("redirect=%2Fshop%2Fitem-list"));
         assertTrue(text.content().contains("15分钟内有效"));
         assertTrue(text.content().contains("点击进入飞鱼小铺</a>"));
@@ -146,7 +146,7 @@ class WechatMessageRouterTest {
 
     private WechatMessageRuleResult handleText(String content) {
         WechatQuickLoginProperties properties = new WechatQuickLoginProperties();
-        properties.setBaseUrl("https://dev.flyfish.group");
+        properties.setBaseUrl("https://shop.example.com");
         properties.setPurchaseRedirect("/shop/item-list");
         properties.setExpireSeconds(900);
         WechatServiceImpl wechatService = new WechatServiceImpl(new MemoryLoginStorage());
@@ -163,7 +163,7 @@ class WechatMessageRouterTest {
 
     private WechatMessageRuleEngine ruleEngine() {
         WechatQuickLoginProperties properties = new WechatQuickLoginProperties();
-        properties.setBaseUrl("https://dev.flyfish.group");
+        properties.setBaseUrl("https://shop.example.com");
         properties.setPurchaseRedirect("/shop/item-list");
         properties.setExpireSeconds(900);
         return ruleEngine(new WechatServiceImpl(new MemoryLoginStorage()), properties);

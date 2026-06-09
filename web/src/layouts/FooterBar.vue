@@ -48,8 +48,8 @@ const productLinks = computed(() => [
 const resourceLinks = [
   { label: '博客', href: 'https://blog.flyfish.dev', icon: BookOutlined },
   { label: '文件预览', href: 'https://viewer.flyfish.dev', icon: FileTextOutlined },
-  { label: 'Office 预览套件', href: 'https://product.flyfish.group', icon: FileTextOutlined },
-  { label: '代码仓库', href: 'https://git.flyfish.dev', icon: GithubOutlined }
+  { label: 'Office 预览套件', href: 'https://product.example.com', icon: FileTextOutlined },
+  { label: '代码仓库', href: 'https://git.example.com', icon: GithubOutlined }
 ];
 
 const serviceItems = computed(() => [
