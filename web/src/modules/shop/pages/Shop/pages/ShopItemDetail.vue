@@ -54,6 +54,9 @@ const {
   gitBindTitle,
   gitAuthorization,
   gitAccount,
+  gitBindingReminderVisible,
+  gitBindingReminderTitle,
+  gitBindingReminderDescription,
   authorize,
   validateGitCheckout
 } = useGitRepositoryBinding({ item: data, user, store, router });
@@ -325,6 +328,18 @@ const handleTabChange = key => {
                 </div>
                 <span class='count'>{{ data.buyCount ?? 0 }}人购买</span>
               </div>
+              <a-alert
+                v-if='gitBindingReminderVisible'
+                class='git-binding-reminder'
+                :message='gitBindingReminderTitle'
+                :description='gitBindingReminderDescription'
+                type='warning'
+                show-icon
+              >
+                <template #action>
+                  <a-button size='small' type='link' @click.stop='authorize'>去绑定</a-button>
+                </template>
+              </a-alert>
               <a-card v-if='isGitRepositoryAccessType(data.type)' size='small' :title='gitBindTitle' class='account-bind'
                       :class='{loading: bindingLoading}' @click='authorize'>
                 <template #extra>
@@ -770,6 +785,29 @@ const handleTabChange = key => {
           margin-top: 4px;
           color: #1677ff;
           font-size: 12px;
+        }
+      }
+
+      .git-binding-reminder {
+        width: min(100%, 520px);
+        margin: 18px 0 0;
+        text-align: left;
+        border-color: #faad14;
+        background: linear-gradient(135deg, #fffbe6, #fff7e6);
+        box-shadow: 0 10px 28px rgba(250, 173, 20, 0.12);
+
+        :deep(.ant-alert-message) {
+          color: #ad6800;
+          font-weight: 700;
+        }
+
+        :deep(.ant-alert-description) {
+          color: #5f4b1b;
+          line-height: 1.6;
+        }
+
+        :deep(.ant-alert-action) {
+          align-self: center;
         }
       }
 

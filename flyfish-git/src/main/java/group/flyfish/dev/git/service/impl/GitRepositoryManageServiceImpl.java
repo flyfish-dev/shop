@@ -20,6 +20,7 @@ import group.flyfish.dev.git.service.GitRepositoryManageService;
 import group.flyfish.dev.git.domain.vo.GitRepositoryOptionVo;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
@@ -35,7 +36,7 @@ import java.util.function.Function;
 @RequiredArgsConstructor
 public class GitRepositoryManageServiceImpl implements GitRepositoryManageService {
 
-    private static final int REMOTE_PAGE_SIZE = 100;
+    private static final int REMOTE_PAGE_SIZE = 50;
     private static final int REMOTE_SYNC_MAX_PAGES = 20;
 
     private final GitManagedRepositoryRepository repositoryRepository;
@@ -118,7 +119,7 @@ public class GitRepositoryManageServiceImpl implements GitRepositoryManageServic
                                                               Integer page, Integer size) {
         String normalizedProvider = GitProvider.normalizeCode(provider);
         int pageNo = Math.max(page == null ? 1 : page, 1);
-        int pageSize = Math.min(Math.max(size == null ? 50 : size, 1), 100);
+        int pageSize = Math.min(Math.max(size == null ? REMOTE_PAGE_SIZE : size, 1), REMOTE_PAGE_SIZE);
         return tokenService.resolveTokenValue(normalizedProvider, tokenId)
                 .flatMapMany(token -> listRemotePage(normalizedProvider, token, keyword, pageNo, pageSize))
                 .filter(repo -> matches(repo, keyword))
@@ -248,14 +249,46 @@ public class GitRepositoryManageServiceImpl implements GitRepositoryManageServic
         String owner = cleanSegment(remote.ownerName());
         String repo = cleanRepo(remote.repoName());
         String fullName = fullName(owner, repo);
-        return repositoryRepository.findByProviderAndFullName(provider, fullName)
+        return repositoryRepository.findByProviderAndFullNameIncludingDeleted(provider, fullName)
                 .map(repository -> new SyncedRepository(repository, false))
                 .switchIfEmpty(Mono.fromSupplier(() -> new SyncedRepository(new GitManagedRepository(), true)))
                 .flatMap(synced -> {
                     applyRemoteRepository(synced.repository(), synced.created(), provider, tokenId, remote);
-                    return repositoryRepository.save(synced.repository())
-                            .map(saved -> new SyncedRepository(saved, synced.created()));
+                    return saveSyncedRepository(synced, provider, fullName, tokenId, remote);
                 });
+    }
+
+    private Mono<SyncedRepository> saveSyncedRepository(SyncedRepository synced, String provider, String fullName,
+                                                       Long tokenId, GitRepositoryApiRepo remote) {
+        return repositoryRepository.save(synced.repository())
+                .map(saved -> new SyncedRepository(saved, synced.created()))
+                .onErrorResume(this::isDuplicateRepositoryKey,
+                        error -> recoverDuplicateRepository(provider, fullName, tokenId, remote, error));
+    }
+
+    private Mono<SyncedRepository> recoverDuplicateRepository(String provider, String fullName, Long tokenId,
+                                                             GitRepositoryApiRepo remote, Throwable error) {
+        return repositoryRepository.findByProviderAndFullNameIncludingDeleted(provider, fullName)
+                .switchIfEmpty(Mono.error(error))
+                .flatMap(repository -> {
+                    applyRemoteRepository(repository, false, provider, tokenId, remote);
+                    return repositoryRepository.save(repository);
+                })
+                .map(repository -> new SyncedRepository(repository, false));
+    }
+
+    private boolean isDuplicateRepositoryKey(Throwable error) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            if (current instanceof DuplicateKeyException) {
+                return true;
+            }
+            String message = current.getMessage();
+            if (StringUtils.containsIgnoreCase(message, "Duplicate entry")
+                    && StringUtils.containsIgnoreCase(message, "git_repository")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void applyRemoteRepository(GitManagedRepository repository, boolean created, String provider, Long tokenId,
@@ -263,18 +296,20 @@ public class GitRepositoryManageServiceImpl implements GitRepositoryManageServic
         String owner = cleanSegment(remote.ownerName());
         String repo = cleanRepo(remote.repoName());
         String fullName = fullName(owner, repo);
+        boolean resetFromRemote = created || Boolean.TRUE.equals(repository.getDelete());
+        repository.setDelete(false);
         repository.setProvider(provider);
         repository.setAccessTokenId(tokenId);
         repository.setOwner(owner);
         repository.setRepo(repo);
         repository.setFullName(fullName);
-        if (created || StringUtils.isBlank(repository.getName())) {
+        if (resetFromRemote || StringUtils.isBlank(repository.getName())) {
             repository.setName(fullName);
         }
-        if (StringUtils.isBlank(repository.getDescription())) {
+        if (resetFromRemote || StringUtils.isBlank(repository.getDescription())) {
             repository.setDescription(StringUtils.trimToNull(remote.description()));
         }
-        if (created || StringUtils.isBlank(repository.getPermission())) {
+        if (resetFromRemote || StringUtils.isBlank(repository.getPermission())) {
             repository.setPermission(GitProvider.normalizePermission(provider, remote.permission()));
         }
         String remoteUrl = StringUtils.trimToNull(remote.url());
@@ -282,10 +317,10 @@ public class GitRepositoryManageServiceImpl implements GitRepositoryManageServic
             repository.setUrl(remoteUrl);
         }
         repository.setPrivateRepo(remote.isPrivate());
-        if (repository.getEnabled() == null) {
+        if (resetFromRemote || repository.getEnabled() == null) {
             repository.setEnabled(true);
         }
-        if (repository.getSort() == null) {
+        if (resetFromRemote || repository.getSort() == null) {
             repository.setSort(0);
         }
     }

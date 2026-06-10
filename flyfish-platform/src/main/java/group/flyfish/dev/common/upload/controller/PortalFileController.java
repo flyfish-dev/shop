@@ -5,7 +5,7 @@ import group.flyfish.dev.common.bean.Result;
 import group.flyfish.dev.common.exception.BusinessException;
 import group.flyfish.dev.common.upload.domain.vo.FileAttachmentVo;
 import group.flyfish.dev.common.upload.service.UploadService;
-import group.flyfish.dev.user.domain.vo.PortalUserVo;
+import group.flyfish.dev.auth.api.user.PortalUserVo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.multipart.FilePart;

@@ -4,6 +4,7 @@ import group.flyfish.dev.common.repository.DefaultReactiveRepository;
 import group.flyfish.dev.git.domain.po.GitManagedRepository;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.r2dbc.repository.Query;
 import org.springframework.data.relational.core.query.Criteria;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -31,6 +32,16 @@ public interface GitManagedRepositoryRepository extends DefaultReactiveRepositor
     default Mono<GitManagedRepository> findByProviderAndFullName(String provider, String fullName) {
         return findAllBy(Criteria.where("provider").is(provider).and("full_name").is(fullName), defaultSort()).next();
     }
+
+    @Query("""
+            SELECT *
+              FROM git_repository
+             WHERE provider = :provider
+               AND full_name = :fullName
+             ORDER BY is_delete ASC, id DESC
+             LIMIT 1
+            """)
+    Mono<GitManagedRepository> findByProviderAndFullNameIncludingDeleted(String provider, String fullName);
 
     private Sort defaultSort() {
         return Sort.by(Sort.Order.asc("sort"), Sort.Order.desc("id"));

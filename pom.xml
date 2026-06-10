@@ -19,7 +19,7 @@
     <licenses>
         <license>
             <name>GNU Affero General Public License v3.0 only</name>
-            <url>https://www.gnu.org/licenses/agpl-3.0.txt</url>
+            <url>https://www.gnu.org/licenses/agpl-3.0.html</url>
             <distribution>repo</distribution>
         </license>
     </licenses>
@@ -28,14 +28,11 @@
         <module>flyfish-ddl</module>
         <module>flyfish-portal-api</module>
         <module>flyfish-common</module>
-        <module>flyfish-auth</module>
         <module>flyfish-platform</module>
         <module>flyfish-git</module>
+        <module>flyfish-auth</module>
         <module>flyfish-lowcode</module>
         <module>flyfish-shop</module>
-        <module>flyfish-lowcode-app</module>
-        <module>flyfish-shop-app</module>
-        <module>flyfish-main</module>
     </modules>
 
     <properties>
@@ -48,6 +45,10 @@
         <commons-collections4.version>4.5.0</commons-collections4.version>
         <swagger-annotations.version>1.6.16</swagger-annotations.version>
         <flyfish.version>2.0.2</flyfish.version>
+        <native.march>x86-64-v3</native.march>
+        <native.optimization.level>-O3</native.optimization.level>
+        <native.build.parallelism>2</native.build.parallelism>
+        <native.build.xmx>8g</native.build.xmx>
     </properties>
 
     <dependencies>

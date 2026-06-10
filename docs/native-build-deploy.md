@@ -2,7 +2,86 @@
 
 本文记录 Flyfish Dev 后端 native 二进制的标准构建、验证、上线和回滚流程。目标是避免重复踩坑：生产机不负责编译，必须在本地使用与生产 glibc 兼容的 linux/amd64 容器构建好后再上传。
 
+## 2026-06-09 三服务 native app 生产架构
+
+生产环境不再使用全量 `flyfish-main` 作为默认后端，而是拆成三个独立 native app：
+
+- `flyfish-auth/flyfish-auth-app` -> `flyfish-auth`：端口 `10080`，承载用户、OAuth、邮箱登录和微信快捷登录。
+- `flyfish-lowcode/flyfish-lowcode-app` -> `flyfish-lowcode`：端口 `10081`，承载低代码工作台、数据建模、在线运行、集成测试和代码生成。
+- `flyfish-shop/flyfish-shop-app` -> `flyfish-shop`：端口 `10082`，承载商城、支付、工单、客服、公众号消息网关和 Git 仓库开通。
+
+nginx 负责按路径分发：
+
+- `/portal/users/`、`/oauth/`、`/email/`、`/wx/quick-login`、`/wx/qr-codes` -> auth。
+- `/integrity/`、`/portal/workbench`、`/portal/capabilities` -> lowcode。
+- `/shops/`、`/portal/customer-service/`、`/portal/tickets`、`/portal/files`、`/wx`、`/images/` -> shop。
+- `/__auth/`、`/__lowcode/` 与 `/__shop/` 是前端能力探测和验证专用内部前缀，分别反向代理到对应实例并去掉该前缀。
+
+前端仍是一套 `web/dist`，通过 `/__lowcode/portal/capabilities` 与 `/__shop/portal/capabilities` 聚合能力；认证状态统一走 auth 实例。
+
+### 公共库复用策略
+
+Spring Boot native image 会把 Java 依赖按可达性分析纳入每个可执行文件。生产级 Spring native 应用不建议把 `flyfish-common`、`flyfish-auth` 这类 Java 模块做成单独动态库再由多个应用链接：这会破坏 Spring AOT 生成物与 GraalVM reachability metadata 的闭包假设，也会让发布版本、反射提示和资源提示难以校验。
+
+本项目采用更稳定的复用方式：
+
+- 公共模块和服务子模块以 Maven artifact 进入本地 `.m2` 和 Docker 构建缓存。
+- native 编译只针对被选择的 app 模块执行，例如 `FLYFISH_NATIVE_APPS=shop ./build.sh`。
+- 公共模块未变更时，只做普通 Java 编译/缓存命中，不会触发另一个业务 app 的 native 编译。
+- GraalVM 生成的 JDK 配套 `lib*.so` 按 app 目录随二进制发布，通过各自的 `LD_LIBRARY_PATH` 加载，避免两个 app 的不同构建批次误用彼此的配套库。
+
+### 常用命令
+
+同时构建三个生产 app：
+
+```bash
+./build.sh
+```
+
+只构建小铺：
+
+```bash
+FLYFISH_NATIVE_APPS=shop ./build.sh
+```
+
+只构建低代码：
+
+```bash
+FLYFISH_NATIVE_APPS=lowcode ./build.sh
+```
+
+只构建认证：
+
+```bash
+FLYFISH_NATIVE_APPS=auth ./build.sh
+```
+
+上线最新三实例 native：
+
+```bash
+./scripts/deploy-split-native.sh
+```
+
+上线脚本会上传三个 native app、同步前端、安装 systemd/nginx 配置、切换 symlink、重启服务并执行远程冒烟验证。
+
+### 2026-06-09 三服务本地构建验证记录
+
+- 本地回归：`./mvnw test` 通过。
+- 架构守卫：`./mvnw -q -pl flyfish-common -Dtest=ModuleBoundaryTest test` 通过。
+- 产物边界：`FLYFISH_ARTIFACT_PROFILE=native bash scripts/check-app-artifacts.sh` 通过。
+- 构建命令：`./build.sh`。
+- 构建耗时：auth `20m 13s`，lowcode `12m 58s`，shop `25m 8s`；macOS arm64 通过 linux/amd64 容器跨架构构建，实际耗时会明显长于 amd64 Linux。
+- 认证产物：`flyfish-auth/flyfish-auth-app/target/flyfish-auth`，`ls -lh` 约 `195M`，native-image 报告 `204.38MB`。
+- 低代码产物：`flyfish-lowcode/flyfish-lowcode-app/target/flyfish-lowcode`，`ls -lh` 约 `178M`，native-image 报告 `187.14MB`。
+- 小铺产物：`flyfish-shop/flyfish-shop-app/target/flyfish-shop`，`ls -lh` 约 `184M`，native-image 报告 `193.30MB`。
+- glibc 需求：最高 `GLIBC_2.32`，匹配生产 Alibaba Cloud Linux 3。
+- AOT 校验：三个二进制均能找到各自的 `Flyfish*Application__ApplicationContextInitializer`。
+- 体积观察：三个 app 总和大于旧单体是 native image 的正常结果；收益在于每次只需对变更 app 做 native 编译，且 lowcode/shop 不再携带 auth 的 OAuth/Pac4j/Thymeleaf 实现闭包。
+- 后续瘦身点：auth 的 Jackson 2 databind 来自 `pac4j-core`，Jackson 2 annotations 仍由 `flyfish-ddl` 间接带入；这些不是业务 app 互相污染，但如果后续继续追求极限体积，可以优先替换 Pac4j 登录实现和清理旧 Jackson 注解。
+
 ## 2026-06-08 构建记录
+
+以下为历史单体 native 构建记录，仅用于回滚和问题对照；新生产发布优先使用上面的三服务 native app 流程。
 
 - 本地回归：`./mvnw test` 通过，103 个测试全部成功。
 - 前端回归：`cd web && npm run build` 通过。
@@ -44,8 +123,8 @@ cd -
 脚本会做三件事：
 
 1. 构建 linux/amd64 的 alinux3 + GraalVM 25 native 构建镜像。
-2. 在容器内安装本项目父 POM 和 `flyfish-ddl`。
-3. 使用 `-Pnative,!local native:compile` 构建 `flyfish-main` 的 native 产物。
+2. 在容器内安装本项目父 POM。
+3. 使用 `-Pnative,!local native:compile` 构建 `FLYFISH_NATIVE_APPS` 指定的 app native 产物，默认 `auth,lowcode,shop`。
 
 `!local` 不能省略。本项目 local profile 会引入 H2 驱动，本地开发和测试需要它；生产 native
 使用 MySQL，不应把 H2 驱动和元数据一起打进二进制。
@@ -62,21 +141,17 @@ NATIVE_BUILD_PARALLELISM=2
 NATIVE_BUILD_XMX=8g
 ```
 
-构建成功后必须存在这些文件：
+构建成功后必须至少存在这些文件：
 
 ```bash
-flyfish-main/target/flyfish-main
-flyfish-main/target/libawt.so
-flyfish-main/target/libawt_headless.so
-flyfish-main/target/libawt_xawt.so
-flyfish-main/target/libjava.so
-flyfish-main/target/libjvm.so
-flyfish-main/target/libmanagement_ext.so
+flyfish-auth/flyfish-auth-app/target/flyfish-auth
+flyfish-lowcode/flyfish-lowcode-app/target/flyfish-lowcode
+flyfish-shop/flyfish-shop-app/target/flyfish-shop
 ```
 
-GraalVM 25 会按实际可达代码生成配套 JDK native 库，上线时必须以构建日志
-`Build artifacts` 中列出的 `lib*.so` 为准，和主二进制一起上传。脚本会在构建前清理旧
-`flyfish-main/target/lib*.so`，避免把上一次遗留的库误认为本次产物。
+GraalVM 25 会按实际可达代码生成配套 JDK native 库。若对应 app 的 `target` 下出现
+`lib*.so`，上线时必须和该 app 主二进制放在同一个 release 子目录中。脚本会在构建前清理旧
+`lib*.so`，避免把上一次遗留的库误认为本次产物。
 
 ## 前端静态资源发布
 
@@ -97,10 +172,13 @@ head -20 /tmp/flyfish-shop.html
 
 ## 本地校验
 
-构建完成后先确认架构：
+构建完成后先确认三个服务二进制都是 linux/amd64：
 
 ```bash
-file flyfish-main/target/flyfish-main
+file \
+  flyfish-auth/flyfish-auth-app/target/flyfish-auth \
+  flyfish-lowcode/flyfish-lowcode-app/target/flyfish-lowcode \
+  flyfish-shop/flyfish-shop-app/target/flyfish-shop
 ```
 
 期望输出包含：
@@ -109,163 +187,135 @@ file flyfish-main/target/flyfish-main
 ELF 64-bit LSB executable, x86-64
 ```
 
-确认 glibc 版本需求不能高于生产机：
+确认每个 app 的 glibc 版本需求不能高于生产机：
 
 ```bash
 docker run --platform linux/amd64 --rm \
   -v "$PWD":/workspace \
   flyfish-native-builder:alinux3-graal2503 \
-  bash -lc 'readelf --version-info /workspace/flyfish-main/target/flyfish-main | grep -o "GLIBC_[0-9.]*" | sort -Vu | tail -30'
+  bash -lc '
+    for app in \
+      flyfish-auth/flyfish-auth-app/target/flyfish-auth \
+      flyfish-lowcode/flyfish-lowcode-app/target/flyfish-lowcode \
+      flyfish-shop/flyfish-shop-app/target/flyfish-shop; do
+      echo "== $app =="
+      readelf --version-info "/workspace/$app" | grep -o "GLIBC_[0-9.]*" | sort -Vu | tail -10
+    done
+  '
 ```
 
 生产机是 glibc `2.32`，因此最高版本应为 `GLIBC_2.32` 或更低。
 
-确认 Spring AOT initializer 已进入二进制：
+确认 Spring AOT initializer 已进入各自二进制：
 
 ```bash
 docker run --platform linux/amd64 --rm \
   -v "$PWD":/workspace \
   flyfish-native-builder:alinux3-graal2503 \
-  bash -lc 'strings /workspace/flyfish-main/target/flyfish-main | grep -F "FlyfishDevApplication__ApplicationContextInitializer" | head'
+  bash -lc '
+    strings /workspace/flyfish-auth/flyfish-auth-app/target/flyfish-auth | grep -F "FlyfishAuthApplication__ApplicationContextInitializer" | head
+    strings /workspace/flyfish-lowcode/flyfish-lowcode-app/target/flyfish-lowcode | grep -F "FlyfishLowcodeApplication__ApplicationContextInitializer" | head
+    strings /workspace/flyfish-shop/flyfish-shop-app/target/flyfish-shop | grep -F "FlyfishShopApplication__ApplicationContextInitializer" | head
+  '
 ```
 
 如果没有输出，不要上线。
 
 ## 上传 release
 
-示例以当前提交短 hash 为 release 名的一部分：
+当前三服务架构统一使用脚本上传、切换和验证，避免手工漏传某个 app 的 `lib*.so`：
 
 ```bash
-commit="$(git rev-parse --short HEAD)"
-release="/opt/flyfish-dev/releases/$(date +%Y%m%d%H%M)-native-${commit}-graal25"
-
-ssh root@your-server.example.com "mkdir -p ${release}/native"
-
-rsync -av \
-  flyfish-main/target/flyfish-main \
-  flyfish-main/target/lib*.so \
-  root@your-server.example.com:${release}/native/
-
-ssh root@your-server.example.com "
-  cd ${release}/native &&
-  mv -f flyfish-main flyfish-dev &&
-  chmod 755 flyfish-dev libjava.so libjvm.so &&
-  chmod 644 libawt*.so libfontmanager.so libmanagement_ext.so &&
-  chown -R flyfish:flyfish . &&
-  file flyfish-dev &&
-  sha256sum flyfish-dev &&
-  ldd flyfish-dev
-"
+./scripts/deploy-split-native.sh
 ```
 
-`ldd flyfish-dev` 必须能正常解析，不能出现 `GLIBC_x.xx not found`。
+脚本会创建形如 `/opt/flyfish-dev/releases/<时间>-split-native-<提交>` 的 release，并分别上传：
+
+- `auth/flyfish-auth`
+- `lowcode/flyfish-lowcode`
+- `shop/flyfish-shop`
+- 各 app 目录下本次构建生成的 `lib*.so`
 
 ## 临时端口冒烟
 
-先使用临时 systemd unit 在 `10082` 端口启动，不要直接切主服务：
+三服务切换后必须验证内部端口和公网路由。`deploy-split-native.sh` 已内置以下检查：
 
 ```bash
-release="/opt/flyfish-dev/releases/替换为本次release"
-unit="flyfish-native-smoke-$(date +%H%M)"
-
-ssh root@your-server.example.com "
-  systemctl stop ${unit}.service 2>/dev/null || true
-  systemd-run --unit=${unit} \
-    --property=User=flyfish \
-    --property=Group=flyfish \
-    --property=WorkingDirectory=/opt/flyfish-dev \
-    --property=EnvironmentFile=/opt/flyfish-dev/config/flyfish-dev.env \
-    --property=Environment=LD_LIBRARY_PATH=${release}/native \
-    --property=Environment=TZ=Asia/Shanghai \
-    --collect \
-    ${release}/native/flyfish-dev --server.port=10082
-"
-```
-
-冒烟接口：
-
-```bash
-ssh root@your-server.example.com 'curl -fsS http://127.0.0.1:10082/portal/users/current'
+ssh root@your-server.example.com 'curl -fsS http://127.0.0.1:10080/portal/users/current'
+ssh root@your-server.example.com 'curl -fsS http://127.0.0.1:10081/portal/capabilities'
+ssh root@your-server.example.com 'curl -fsS http://127.0.0.1:10082/portal/capabilities'
 ssh root@your-server.example.com 'curl -fsS "http://127.0.0.1:10082/shops/items?page=1&size=3"'
+curl -k -sS -D - https://api.example.com/__lowcode/portal/capabilities
+curl -k -sS -D - https://api.example.com/__shop/portal/capabilities
+curl -k -sS -D - 'https://api.example.com/shops/items?page=1&size=3'
+curl -k -sS -D - https://shop.example.com/shop/item-list
 ```
 
-通过后停止临时 unit：
+如果失败，先看对应服务日志：
 
 ```bash
-ssh root@your-server.example.com "systemctl stop ${unit}.service"
-```
-
-如果失败，查看日志：
-
-```bash
-ssh root@your-server.example.com "journalctl -u ${unit} --no-pager -l | tail -200"
+ssh root@your-server.example.com "journalctl -u flyfish-auth -u flyfish-lowcode -u flyfish-shop --no-pager -l | tail -300"
 ```
 
 ## 切换生产服务
 
-冒烟通过后再切换主服务：
+三服务的生产入口由独立 symlink 和 systemd 管理：
 
 ```bash
 release="/opt/flyfish-dev/releases/替换为本次release"
 
 ssh root@your-server.example.com "
-  ln -sfn ${release}/native /opt/flyfish-dev/app/native
-  rm -f /etc/systemd/system/flyfish-dev.service.d/override.conf
-  rmdir /etc/systemd/system/flyfish-dev.service.d 2>/dev/null || true
+  ln -sfn ${release}/auth /opt/flyfish-dev/app/auth-native
+  ln -sfn ${release}/lowcode /opt/flyfish-dev/app/lowcode-native
+  ln -sfn ${release}/shop /opt/flyfish-dev/app/shop-native
   systemctl daemon-reload
-  systemctl restart flyfish-dev
+  systemctl restart flyfish-auth flyfish-lowcode flyfish-shop
 "
 ```
 
 生产服务文件应直接执行 native：
 
 ```ini
-ExecStart=/opt/flyfish-dev/app/native/flyfish-dev --server.port=10081
-Environment=LD_LIBRARY_PATH=/opt/flyfish-dev/app/native
+ExecStart=/opt/flyfish-dev/app/auth-native/flyfish-auth --server.port=10080
+ExecStart=/opt/flyfish-dev/app/lowcode-native/flyfish-lowcode --server.port=10081
+ExecStart=/opt/flyfish-dev/app/shop-native/flyfish-shop --server.port=10082
 ```
 
 切换后验证：
 
 ```bash
 ssh root@your-server.example.com '
-  systemctl show flyfish-dev -p ActiveState -p SubState -p MainPID --no-pager
-  ps -o pid,comm,rss,args -p $(systemctl show -p MainPID --value flyfish-dev)
-  curl -fsS http://127.0.0.1:10081/portal/users/current
-  curl -fsS "http://127.0.0.1:10081/shops/items?page=1&size=3" | head -c 1000
+  systemctl show flyfish-auth flyfish-lowcode flyfish-shop -p ActiveState -p SubState -p MainPID --no-pager
+  ps -o pid,comm,rss,args -p $(systemctl show -p MainPID --value flyfish-auth),$(systemctl show -p MainPID --value flyfish-lowcode),$(systemctl show -p MainPID --value flyfish-shop)
+  curl -fsS http://127.0.0.1:10080/portal/users/current
+  curl -fsS http://127.0.0.1:10081/portal/capabilities
+  curl -fsS "http://127.0.0.1:10082/shops/items?page=1&size=3" | head -c 1000
 '
-
-curl -k -sS -D - https://api.example.com/portal/users/current
-curl -k -sS -D - 'https://api.example.com/shops/items?page=1&size=3'
-curl -k -sS -D - https://shop.example.com/shop/item-list
 ```
 
-`ps` 中进程名应为 `flyfish-dev`，不是 `java`。
+`ps` 中进程名应分别为 `flyfish-auth`、`flyfish-lowcode`、`flyfish-shop`，不是 `java`。
 
 ## 回滚
 
-优先回滚到上一个 native release：
+优先回滚到上一个三服务 native release：
 
 ```bash
-previous="/opt/flyfish-dev/releases/替换为上一个可用native/native"
+previous="/opt/flyfish-dev/releases/替换为上一个可用split-native"
 
 ssh root@your-server.example.com "
-  ln -sfn ${previous} /opt/flyfish-dev/app/native
-  systemctl restart flyfish-dev
+  ln -sfn ${previous}/auth /opt/flyfish-dev/app/auth-native
+  ln -sfn ${previous}/lowcode /opt/flyfish-dev/app/lowcode-native
+  ln -sfn ${previous}/shop /opt/flyfish-dev/app/shop-native
+  systemctl restart flyfish-auth flyfish-lowcode flyfish-shop
 "
 ```
 
-如果需要临时回滚到 jar：
+如果需要临时回滚到旧单体 jar，必须同步恢复 nginx 路由和 `flyfish-dev.service`，只作为故障应急路径使用：
 
 ```bash
 ssh root@your-server.example.com "
-  mkdir -p /etc/systemd/system/flyfish-dev.service.d
-  cat >/etc/systemd/system/flyfish-dev.service.d/override.conf <<'EOF'
-[Service]
-ExecStart=
-ExecStart=/usr/bin/java -jar /opt/flyfish-dev/app/flyfish-dev.jar --server.port=10081
-EOF
-  systemctl daemon-reload
-  systemctl restart flyfish-dev
+  systemctl stop flyfish-auth flyfish-lowcode flyfish-shop
+  systemctl start flyfish-dev
 "
 ```
 

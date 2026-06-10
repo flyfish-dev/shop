@@ -8,9 +8,10 @@ STARTED_PID=""
 
 source "$ROOT_DIR/scripts/lib/auth-smoke.sh"
 
-LOWCODE_JAR="$ROOT_DIR/flyfish-lowcode-app/target/flyfish-lowcode.jar"
-SHOP_JAR="$ROOT_DIR/flyfish-shop-app/target/flyfish-shop.jar"
-MAIN_JAR="$ROOT_DIR/flyfish-main/target/flyfish-dev.jar"
+LOWCODE_JAR="$ROOT_DIR/flyfish-lowcode/flyfish-lowcode-app/target/flyfish-lowcode.jar"
+SHOP_JAR="$ROOT_DIR/flyfish-shop/flyfish-shop-app/target/flyfish-shop.jar"
+AUTH_JAR="$ROOT_DIR/flyfish-auth/flyfish-auth-app/target/flyfish-auth.jar"
+AUTH_BASE_URL=""
 
 fail() {
   echo "ERROR: $*" >&2
@@ -41,7 +42,7 @@ build_artifacts() {
   if [[ "${FLYFISH_AUTH_SMOKE_SKIP_PACKAGE:-0}" == "1" ]]; then
     return
   fi
-  "$ROOT_DIR/mvnw" -q -pl flyfish-main,flyfish-lowcode-app,flyfish-shop-app -am -DskipTests clean package
+  "$ROOT_DIR/mvnw" -q -pl flyfish-auth/flyfish-auth-app,flyfish-lowcode/flyfish-lowcode-app,flyfish-shop/flyfish-shop-app -am -DskipTests clean package
 }
 
 assert_file() {
@@ -57,16 +58,52 @@ start_app() {
   mkdir -p "$app_dir/db"
   (
     cd "$app_dir"
-    java -jar "$jar_file" \
-      --server.port="$port" \
-      --spring.profiles.active=local \
-      --spring.r2dbc.username=sa \
-      --spring.r2dbc.password= \
-      "--spring.r2dbc.url=r2dbc:h2:file:///./db/$name;MODE=MySQL;AUTO_SERVER=TRUE" \
-      >"$log_file" 2>&1
+    if [[ -n "$AUTH_BASE_URL" ]]; then
+      FLYFISH_AUTH_BASE_URL="$AUTH_BASE_URL" java -jar "$jar_file" \
+        --server.port="$port" \
+        --spring.profiles.active=local \
+        --spring.r2dbc.username=sa \
+        --spring.r2dbc.password= \
+        "--spring.r2dbc.url=r2dbc:h2:file:///./db/$name;MODE=MySQL;AUTO_SERVER=TRUE" \
+        >"$log_file" 2>&1
+    else
+      java -jar "$jar_file" \
+        --server.port="$port" \
+        --spring.profiles.active=local \
+        --spring.r2dbc.username=sa \
+        --spring.r2dbc.password= \
+        "--spring.r2dbc.url=r2dbc:h2:file:///./db/$name;MODE=MySQL;AUTO_SERVER=TRUE" \
+        >"$log_file" 2>&1
+    fi
   ) &
   STARTED_PID=$!
   PIDS+=("$STARTED_PID")
+}
+
+wait_for_auth() {
+  local name="$1"
+  local pid="$2"
+  local base_url="$3"
+  local log_file="$WORK_DIR/$name.log"
+  local body_file="$WORK_DIR/$name-ready.json"
+  local headers_file="$WORK_DIR/$name-ready.headers"
+  local deadline=$((SECONDS + 90))
+
+  while (( SECONDS < deadline )); do
+    if ! kill -0 "$pid" >/dev/null 2>&1; then
+      tail -n 120 "$log_file" >&2 || true
+      fail "$name exited before readiness check passed"
+    fi
+    local status
+    status="$(curl_get "$base_url/oauth/providers" "$body_file" "$headers_file")"
+    if [[ "$status" == "200" ]]; then
+      return
+    fi
+    sleep 1
+  done
+
+  tail -n 160 "$log_file" >&2 || true
+  fail "$name did not become ready in time"
 }
 
 stop_app() {
@@ -384,9 +421,9 @@ smoke_lowcode_app() {
   local user_token="$2"
   local admin_token="$3"
   assert_capabilities "$base_url" "lowcode" "lowcode app"
-  smoke_shared_auth "$base_url" "$user_token" "$admin_token" "lowcode app"
   assert_success_get "$base_url" "/portal/workbench" "$user_token" "lowcode authenticated workbench"
   assert_workbench_shop_action "$base_url" "$user_token" "false" "lowcode workbench excludes shop action"
+  assert_not_success_get "$base_url" "/portal/users/current" "$user_token" "auth current endpoint in lowcode app"
   assert_not_success_get "$base_url" "/shops/orders/mine" "$user_token" "shop orders endpoint in lowcode app"
   assert_not_success_get "$base_url" "/portal/customer-service/summary" "$user_token" "customer service endpoint in lowcode app"
 }
@@ -396,12 +433,12 @@ smoke_shop_app() {
   local user_token="$2"
   local admin_token="$3"
   assert_capabilities "$base_url" "shop" "shop app"
-  smoke_shared_auth "$base_url" "$user_token" "$admin_token" "shop app"
+  assert_not_success_get "$base_url" "/portal/users/current" "$user_token" "auth current endpoint in shop app"
   assert_not_success_get "$base_url" "/shops/orders/mine" "" "shop orders require login"
   assert_success_get "$base_url" "/shops/orders/mine" "$user_token" "shop authenticated orders"
   assert_success_get "$base_url" "/portal/tickets" "$user_token" "shop authenticated tickets"
   assert_success_get "$base_url" "/portal/customer-service/summary" "$user_token" "shop authenticated customer service summary"
-  assert_status_get "$base_url" "/shops/managements/users" "401" "shop management requires token"
+  assert_not_success_get "$base_url" "/shops/managements/users" "" "shop management requires token"
   assert_not_success_get "$base_url" "/shops/managements/users" "$user_token" "regular user cannot manage shop"
   assert_success_get "$base_url" "/shops/managements/users" "$admin_token" "shop maintainer can list users"
   assert_not_success_get "$base_url" "/portal/workbench" "$user_token" "lowcode workbench endpoint in shop app"
@@ -418,7 +455,7 @@ smoke_main_app() {
   assert_success_get "$base_url" "/shops/orders/mine" "$user_token" "main authenticated shop orders"
   assert_success_get "$base_url" "/portal/tickets" "$user_token" "main authenticated tickets"
   assert_success_get "$base_url" "/portal/customer-service/summary" "$user_token" "main authenticated customer service summary"
-  assert_status_get "$base_url" "/shops/managements/users" "401" "main shop management requires token"
+  assert_not_success_get "$base_url" "/shops/managements/users" "" "main shop management requires token"
   assert_not_success_get "$base_url" "/shops/managements/users" "$user_token" "main regular user cannot manage shop"
   assert_success_get "$base_url" "/shops/managements/users" "$admin_token" "main maintainer can list users"
 }
@@ -427,9 +464,8 @@ run_app_smoke() {
   local name="$1"
   local jar_file="$2"
   local smoke_function="$3"
-  local h2_jar="$4"
-  local user_token="$5"
-  local admin_token="$6"
+  local user_token="$4"
+  local admin_token="$5"
   local port
   port="$(pick_port)"
   local pid
@@ -437,7 +473,6 @@ run_app_smoke() {
   pid="$STARTED_PID"
   local base_url="http://127.0.0.1:$port"
   wait_for_app "$name" "$pid" "$base_url"
-  seed_users "$h2_jar" "$WORK_DIR/$name/db/$name"
   "$smoke_function" "$base_url" "$user_token" "$admin_token"
   stop_app "$pid"
   echo "$name authenticated smoke passed on $base_url"
@@ -450,17 +485,25 @@ require_command node
 require_command find
 
 build_artifacts
+assert_file "$AUTH_JAR"
 assert_file "$LOWCODE_JAR"
 assert_file "$SHOP_JAR"
-assert_file "$MAIN_JAR"
 
 H2_JAR="$(auth_smoke_find_h2_jar)"
 auth_smoke_compile_token_helper
 USER_TOKEN="$(auth_smoke_create_token "$SMOKE_USER_ID")"
 ADMIN_TOKEN="$(auth_smoke_create_token "$SMOKE_ADMIN_ID")"
 
-run_app_smoke "flyfish-lowcode" "$LOWCODE_JAR" smoke_lowcode_app "$H2_JAR" "$USER_TOKEN" "$ADMIN_TOKEN"
-run_app_smoke "flyfish-shop" "$SHOP_JAR" smoke_shop_app "$H2_JAR" "$USER_TOKEN" "$ADMIN_TOKEN"
-run_app_smoke "flyfish-main" "$MAIN_JAR" smoke_main_app "$H2_JAR" "$USER_TOKEN" "$ADMIN_TOKEN"
+auth_port="$(pick_port)"
+start_app "flyfish-auth" "$AUTH_JAR" "$auth_port"
+auth_pid="$STARTED_PID"
+AUTH_BASE_URL="http://127.0.0.1:$auth_port"
+wait_for_auth "flyfish-auth" "$auth_pid" "$AUTH_BASE_URL"
+seed_users "$H2_JAR" "$WORK_DIR/flyfish-auth/db/flyfish-auth"
+smoke_shared_auth "$AUTH_BASE_URL" "$USER_TOKEN" "$ADMIN_TOKEN" "auth app"
+echo "flyfish-auth authenticated smoke passed on $AUTH_BASE_URL"
+
+run_app_smoke "flyfish-lowcode" "$LOWCODE_JAR" smoke_lowcode_app "$USER_TOKEN" "$ADMIN_TOKEN"
+run_app_smoke "flyfish-shop" "$SHOP_JAR" smoke_shop_app "$USER_TOKEN" "$ADMIN_TOKEN"
 
 echo "Authenticated app runtime smoke passed."

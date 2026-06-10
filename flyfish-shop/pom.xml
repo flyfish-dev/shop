@@ -9,38 +9,11 @@
         <version>0.0.2-SNAPSHOT</version>
     </parent>
 
-    <artifactId>flyfish-shop</artifactId>
+    <artifactId>flyfish-shop-parent</artifactId>
+    <packaging>pom</packaging>
 
-    <dependencies>
-        <dependency>
-            <groupId>group.flyfish</groupId>
-            <artifactId>flyfish-portal-api</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>group.flyfish</groupId>
-            <artifactId>flyfish-common</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>group.flyfish</groupId>
-            <artifactId>flyfish-auth</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>group.flyfish</groupId>
-            <artifactId>flyfish-git</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-mail</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.mapstruct</groupId>
-            <artifactId>mapstruct</artifactId>
-            <version>${mapstruct.version}</version>
-        </dependency>
-    </dependencies>
+    <modules>
+        <module>flyfish-shop-api</module>
+        <module>flyfish-shop-app</module>
+    </modules>
 </project>

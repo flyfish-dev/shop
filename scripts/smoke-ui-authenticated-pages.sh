@@ -4,7 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/flyfish-ui-auth-smoke.XXXXXX")"
 OUTPUT_DIR="${FLYFISH_UI_AUTH_SMOKE_OUTPUT_DIR:-$ROOT_DIR/output/playwright/ui-auth-smoke}"
-BACKEND_PORT=10081
+AUTH_PORT="${FLYFISH_UI_AUTH_SMOKE_AUTH_PORT:-10080}"
+LOWCODE_PORT="${FLYFISH_UI_AUTH_SMOKE_LOWCODE_PORT:-10081}"
+SHOP_PORT="${FLYFISH_UI_AUTH_SMOKE_SHOP_PORT:-10082}"
 FRONTEND_PORT="${FLYFISH_UI_AUTH_SMOKE_FRONTEND_PORT:-9999}"
 FRONTEND_URL="http://127.0.0.1:$FRONTEND_PORT"
 PLAYWRIGHT_TIMEOUT="${FLYFISH_UI_AUTH_SMOKE_TIMEOUT:-30000}"
@@ -14,9 +16,10 @@ STARTED_PID=""
 
 source "$ROOT_DIR/scripts/lib/auth-smoke.sh"
 
-LOWCODE_JAR="$ROOT_DIR/flyfish-lowcode-app/target/flyfish-lowcode.jar"
-SHOP_JAR="$ROOT_DIR/flyfish-shop-app/target/flyfish-shop.jar"
-MAIN_JAR="$ROOT_DIR/flyfish-main/target/flyfish-dev.jar"
+LOWCODE_JAR="$ROOT_DIR/flyfish-lowcode/flyfish-lowcode-app/target/flyfish-lowcode.jar"
+SHOP_JAR="$ROOT_DIR/flyfish-shop/flyfish-shop-app/target/flyfish-shop.jar"
+AUTH_JAR="$ROOT_DIR/flyfish-auth/flyfish-auth-app/target/flyfish-auth.jar"
+AUTH_BASE_URL=""
 
 fail() {
   echo "ERROR: $*" >&2
@@ -70,7 +73,7 @@ build_artifacts() {
   if [[ "${FLYFISH_UI_AUTH_SMOKE_SKIP_PACKAGE:-0}" == "1" ]]; then
     return
   fi
-  "$ROOT_DIR/mvnw" -q -pl flyfish-main,flyfish-lowcode-app,flyfish-shop-app -am -DskipTests clean package
+  "$ROOT_DIR/mvnw" -q -pl flyfish-auth/flyfish-auth-app,flyfish-lowcode/flyfish-lowcode-app,flyfish-shop/flyfish-shop-app -am -DskipTests clean package
 }
 
 curl_get() {
@@ -106,7 +109,8 @@ NODE
 wait_for_capabilities() {
   local name="$1"
   local pid="$2"
-  local expected_codes="$3"
+  local port="$3"
+  local expected_codes="$4"
   local log_file="$WORK_DIR/$name.log"
   local body_file="$WORK_DIR/$name-capabilities.json"
   local deadline=$((SECONDS + 90))
@@ -117,9 +121,34 @@ wait_for_capabilities() {
       fail "$name exited before readiness check passed"
     fi
     local http_code
-    http_code="$(curl_get "http://127.0.0.1:$BACKEND_PORT/portal/capabilities" "$body_file")"
+    http_code="$(curl_get "http://127.0.0.1:$port/portal/capabilities" "$body_file")"
     if [[ "$http_code" == "200" ]]; then
       assert_capabilities_body "$(cat "$body_file")" "$expected_codes" "$name"
+      return
+    fi
+    sleep 1
+  done
+
+  tail -n 160 "$log_file" >&2 || true
+  fail "$name did not become ready in time"
+}
+
+wait_for_auth() {
+  local name="$1"
+  local pid="$2"
+  local base_url="$3"
+  local log_file="$WORK_DIR/$name.log"
+  local body_file="$WORK_DIR/$name-ready.json"
+  local deadline=$((SECONDS + 90))
+
+  while (( SECONDS < deadline )); do
+    if ! kill -0 "$pid" >/dev/null 2>&1; then
+      tail -n 120 "$log_file" >&2 || true
+      fail "$name exited before readiness check passed"
+    fi
+    local http_code
+    http_code="$(curl_get "$base_url/oauth/providers" "$body_file")"
+    if [[ "$http_code" == "200" ]]; then
       return
     fi
     sleep 1
@@ -156,17 +185,15 @@ start_frontend() {
   wait_for_frontend
 }
 
-start_app() {
-  local name="$1"
-  local jar_file="$2"
-  local expected_codes="$3"
+start_auth_app() {
+  local name="flyfish-auth"
   local app_dir="$WORK_DIR/$name"
   local log_file="$WORK_DIR/$name.log"
   mkdir -p "$app_dir/db"
   (
     cd "$app_dir"
-    exec java -jar "$jar_file" \
-      --server.port="$BACKEND_PORT" \
+    exec java -jar "$AUTH_JAR" \
+      --server.port="$AUTH_PORT" \
       --spring.profiles.active=local \
       --spring.r2dbc.username=sa \
       --spring.r2dbc.password= \
@@ -175,22 +202,42 @@ start_app() {
   ) &
   STARTED_PID=$!
   PIDS+=("$STARTED_PID")
-  wait_for_capabilities "$name" "$STARTED_PID" "$expected_codes"
+  AUTH_BASE_URL="http://127.0.0.1:$AUTH_PORT"
+  wait_for_auth "$name" "$STARTED_PID" "$AUTH_BASE_URL"
+}
+
+start_app() {
+  local name="$1"
+  local jar_file="$2"
+  local port="$3"
+  local expected_codes="$4"
+  local app_dir="$WORK_DIR/$name"
+  local log_file="$WORK_DIR/$name.log"
+  mkdir -p "$app_dir/db"
+  (
+    cd "$app_dir"
+    FLYFISH_AUTH_BASE_URL="$AUTH_BASE_URL" exec java -jar "$jar_file" \
+      --server.port="$port" \
+      --spring.profiles.active=local \
+      --spring.r2dbc.username=sa \
+      --spring.r2dbc.password= \
+      "--spring.r2dbc.url=r2dbc:h2:file:///./db/$name;MODE=MySQL;AUTO_SERVER=TRUE" \
+      >"$log_file" 2>&1
+  ) &
+  STARTED_PID=$!
+  PIDS+=("$STARTED_PID")
+  wait_for_capabilities "$name" "$STARTED_PID" "$port" "$expected_codes"
 }
 
 stop_pid() {
   local pid="$1"
+  local port="$2"
+  local label="$3"
   if kill -0 "$pid" >/dev/null 2>&1; then
     kill "$pid" >/dev/null 2>&1 || true
     wait "$pid" >/dev/null 2>&1 || true
   fi
-  wait_for_port_free "$BACKEND_PORT" "backend"
-}
-
-seed_app_users() {
-  local h2_jar="$1"
-  local name="$2"
-  auth_smoke_seed_users "$h2_jar" "$WORK_DIR/$name/db/$name"
+  wait_for_port_free "$port" "$label"
 }
 
 screenshot_page() {
@@ -236,16 +283,15 @@ smoke_shop_pages() {
 run_app_ui_smoke() {
   local name="$1"
   local jar_file="$2"
-  local expected_codes="$3"
-  local smoke_function="$4"
-  local h2_jar="$5"
+  local port="$3"
+  local expected_codes="$4"
+  local smoke_function="$5"
   local pid
 
-  start_app "$name" "$jar_file" "$expected_codes"
+  start_app "$name" "$jar_file" "$port" "$expected_codes"
   pid="$STARTED_PID"
-  seed_app_users "$h2_jar" "$name"
   "$smoke_function"
-  stop_pid "$pid"
+  stop_pid "$pid" "$port" "$name"
   echo "$name authenticated UI smoke passed"
 }
 
@@ -258,13 +304,15 @@ require_command npx
 require_command lsof
 require_command find
 
-assert_port_free "$BACKEND_PORT" "backend"
+assert_port_free "$AUTH_PORT" "auth"
+assert_port_free "$LOWCODE_PORT" "lowcode"
+assert_port_free "$SHOP_PORT" "shop"
 assert_port_free "$FRONTEND_PORT" "frontend"
 
 build_artifacts
+assert_file "$AUTH_JAR"
 assert_file "$LOWCODE_JAR"
 assert_file "$SHOP_JAR"
-assert_file "$MAIN_JAR"
 
 H2_JAR="$(auth_smoke_find_h2_jar)"
 auth_smoke_compile_token_helper
@@ -278,9 +326,10 @@ auth_smoke_write_storage_state "$ADMIN_TOKEN" "$FRONTEND_URL" "$ADMIN_STORAGE"
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
 
+start_auth_app
+auth_smoke_seed_users "$H2_JAR" "$WORK_DIR/flyfish-auth/db/flyfish-auth"
 start_frontend
-run_app_ui_smoke "flyfish-main" "$MAIN_JAR" "lowcode,shop" smoke_main_pages "$H2_JAR"
-run_app_ui_smoke "flyfish-lowcode" "$LOWCODE_JAR" "lowcode" smoke_lowcode_pages "$H2_JAR"
-run_app_ui_smoke "flyfish-shop" "$SHOP_JAR" "shop" smoke_shop_pages "$H2_JAR"
+run_app_ui_smoke "flyfish-lowcode" "$LOWCODE_JAR" "$LOWCODE_PORT" "lowcode" smoke_lowcode_pages
+run_app_ui_smoke "flyfish-shop" "$SHOP_JAR" "$SHOP_PORT" "shop" smoke_shop_pages
 
 echo "Authenticated UI page smoke passed. Screenshots: $OUTPUT_DIR"

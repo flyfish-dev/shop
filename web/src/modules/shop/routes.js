@@ -6,8 +6,10 @@ const Shop = lazy(() => import('@/modules/shop/pages/Shop'));
 const ShopAccountLayout = lazy(() => import('@/modules/shop/layouts/ShopAccountLayout.vue'));
 const AccountOrders = lazy(() => import('@/modules/shop/pages/Account/Orders.vue'));
 const AccountTickets = lazy(() => import('@/modules/shop/pages/Account/Tickets.vue'));
+const ShopEntry = lazy(() => import('@/modules/shop/pages/Shop/pages/ShopEntry.vue'));
 const ShopItemList = lazy(() => import('@/modules/shop/pages/Shop/pages/ShopItemList.vue'));
 const ShopItemDetail = lazy(() => import('@/modules/shop/pages/Shop/pages/ShopItemDetail.vue'));
+const ShopManageWorkbench = lazy(() => import('@/modules/shop/pages/Shop/pages/manage/ShopManageWorkbench.vue'));
 const ShopManage = lazy(() => import('@/modules/shop/pages/Shop/pages/manage/ShopManage.vue'));
 const ItemManage = lazy(() => import('@/modules/shop/pages/Shop/pages/manage/ItemManage.vue'));
 const GroupManage = lazy(() => import('@/modules/shop/pages/Shop/pages/manage/GroupManage.vue'));
@@ -42,7 +44,8 @@ export const shopRoutes = {
   },
   '/shop': {
     name: '飞鱼小铺',
-    component: Shop,
+    layout: Shop,
+    component: ShopEntry,
     meta: shopMeta(),
     children: {
       '/item-list': {
@@ -62,6 +65,11 @@ export const shopRoutes = {
           requiresAuth: true
         }),
         children: {
+          '/workbench': {
+            name: '小铺工作台',
+            component: ShopManageWorkbench,
+            meta: shopMeta()
+          },
           '/shops': {
             name: '店铺管理',
             component: ShopManage,

@@ -10,10 +10,11 @@ import {
   ReloadOutlined,
   SendOutlined
 } from '@ant-design/icons-vue'
-import { getQrCode, getResult, sendEmailMagicLink } from '@/modules/auth/pages/Login/api';
+import { getQrCode, getResult } from '@/modules/auth/pages/Login/api';
 import { useRouter } from '@/router/use';
 import useClientStore from '@/modules/auth/store/client.js';
 import { PortalOauth } from '@/modules/auth/api.js';
+import { useEmailMagicLink } from './useEmailMagicLink.js';
 
 const router = useRouter();
 const store = useClientStore();
@@ -30,14 +31,7 @@ const oauthProviders = ref({
   gitee: true,
   github: true
 });
-const emailLoginOpen = ref(false);
-const emailAddress = ref('');
-const emailSending = ref(false);
-const emailNotice = ref('');
-const emailNoticeType = ref('info');
 let pollTimer = null;
-
-const EMAIL_PATTERN = /^[a-zA-Z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/;
 
 const statusText = computed(() => {
   if (message.value) {
@@ -122,44 +116,21 @@ const normalizeRedirect = value => {
   return '/';
 };
 
-const toggleEmailLogin = () => {
-  if (!emailEnabled.value) {
-    return;
-  }
-  emailLoginOpen.value = !emailLoginOpen.value;
-  if (emailLoginOpen.value) {
-    emailNotice.value = '';
-    emailNoticeType.value = 'info';
-  }
-};
-
-const sendEmailLogin = async () => {
-  if (!emailEnabled.value || emailSending.value) {
-    return;
-  }
-  const email = emailAddress.value.trim();
-  if (!EMAIL_PATTERN.test(email)) {
-    emailNotice.value = '请输入正确的邮箱地址';
-    emailNoticeType.value = 'error';
-    return;
-  }
-  emailSending.value = true;
-  emailNotice.value = '';
-  emailNoticeType.value = 'info';
-  try {
-    const result = await sendEmailMagicLink({
-      email,
-      redirect: normalizeRedirect(store.redirection)
-    });
-    emailNotice.value = `验证邮件已发送至 ${result?.maskedEmail || email}`;
-    emailNoticeType.value = 'success';
-  } catch (e) {
-    emailNotice.value = e.message || '验证邮件发送失败，请稍后重试';
-    emailNoticeType.value = 'error';
-  } finally {
-    emailSending.value = false;
-  }
-};
+const emailRedirect = computed(() => normalizeRedirect(store.redirection));
+const {
+  emailLoginOpen,
+  emailAddress,
+  emailSending,
+  emailNotice,
+  emailNoticeType,
+  emailCanSend,
+  emailSendButtonText,
+  toggleEmailLogin,
+  sendEmailLogin
+} = useEmailMagicLink({
+  emailEnabled,
+  redirect: emailRedirect
+});
 
 const completeLogin = async ({ token }) => {
   if (!token) {
@@ -260,14 +231,16 @@ onBeforeUnmount(clearPollTimer);
       </a>
       <button
         type='button'
-        class='other-link email-login'
+        class='other-link text-login email-login'
         :class='{ active: emailLoginOpen, disabled: !emailEnabled }'
         :disabled='!emailEnabled || emailSending'
         title='邮箱快速登录'
         @click='toggleEmailLogin'
       >
-        <mail-outlined />
-        <span>邮箱</span>
+        <span class='login-icon'>
+          <mail-outlined />
+        </span>
+        <span>邮箱登录</span>
       </button>
     </div>
     <div v-if='emailLoginOpen' class='email-login-panel'>
@@ -275,7 +248,7 @@ onBeforeUnmount(clearPollTimer);
         v-model:value='emailAddress'
         :maxlength='128'
         allow-clear
-        placeholder='name@example.com'
+        placeholder='邮箱地址'
         :disabled='emailSending'
         @pressEnter='sendEmailLogin'
       >
@@ -283,11 +256,11 @@ onBeforeUnmount(clearPollTimer);
           <mail-outlined />
         </template>
       </a-input>
-      <a-button type='primary' :loading='emailSending' @click='sendEmailLogin'>
+      <a-button type='primary' :loading='emailSending' :disabled='!emailCanSend' @click='sendEmailLogin'>
         <template #icon>
           <send-outlined />
         </template>
-        发送验证邮件
+        {{ emailSendButtonText }}
       </a-button>
       <p v-if='emailNotice' class='email-login-note' :class='emailNoticeType'>
         <check-circle-outlined v-if='emailNoticeType === "success"' />
@@ -413,6 +386,7 @@ onBeforeUnmount(clearPollTimer);
       line-height: 1;
       cursor: pointer;
       transition: background-color .2s ease, color .2s ease, box-shadow .2s ease;
+
       &:hover {
         background-color: #edf5ff;
       }
@@ -440,11 +414,45 @@ onBeforeUnmount(clearPollTimer);
         object-fit: contain;
       }
 
-      &.email-login {
-        min-width: 96px;
+      &.text-login {
+        min-width: 124px;
+        border: 1px solid #e5ebf3;
+        background: #fff;
+        color: #1f2f46;
+        box-shadow: 0 8px 20px rgba(31, 47, 70, .06);
 
-        .anticon {
-          font-size: 20px;
+        &:hover {
+          border-color: #b9d6ff;
+          background: #f7fbff;
+          color: #0958d9;
+          box-shadow: 0 10px 24px rgba(22, 119, 255, .12);
+        }
+
+        &.active {
+          border-color: #91caff;
+          background: #eef7ff;
+          color: #0958d9;
+          box-shadow: 0 10px 24px rgba(22, 119, 255, .14);
+        }
+
+        &.disabled {
+          background: #f8fafc;
+          box-shadow: none;
+        }
+
+        .login-icon {
+          display: inline-flex;
+          width: 26px;
+          height: 26px;
+          align-items: center;
+          justify-content: center;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #edf6ff 0%, #e8fff4 100%);
+          color: #1677ff;
+
+          .anticon {
+            font-size: 15px;
+          }
         }
       }
     }
@@ -452,23 +460,32 @@ onBeforeUnmount(clearPollTimer);
     .email-login-panel {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
-      gap: 10px;
+      gap: 12px;
       align-items: center;
-      width: min(100%, 336px);
+      width: min(100%, 380px);
       margin: 16px auto 0;
-      padding: 14px;
-      border: 1px solid #d6e4ff;
+      padding: 14px 16px;
+      border: 1px solid #dfeaf8;
       border-radius: 8px;
-      background: #f8fbff;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+      box-shadow: 0 12px 32px rgba(33, 54, 88, .08);
 
       :deep(.ant-input-affix-wrapper) {
         height: 40px;
+        border-color: #d9e5f3;
+        border-radius: 8px;
         font-family: Avenir, Helvetica Neue, Arial, Helvetica, sans-serif;
+
+        .ant-input-prefix {
+          color: #6d7f94;
+        }
       }
 
       :deep(.ant-btn) {
         height: 40px;
+        border-radius: 8px;
         font-family: Avenir, Helvetica Neue, Arial, Helvetica, sans-serif;
+        box-shadow: none;
       }
 
       .email-login-note {

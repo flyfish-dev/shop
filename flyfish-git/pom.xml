@@ -17,10 +17,5 @@
             <artifactId>flyfish-common</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <dependency>
-            <groupId>group.flyfish</groupId>
-            <artifactId>flyfish-auth</artifactId>
-            <version>${project.version}</version>
-        </dependency>
     </dependencies>
 </project>

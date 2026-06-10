@@ -36,17 +36,23 @@ RUN chmod +x ./mvnw \
     && java -version \
     && native-image --version \
     && ./mvnw -q -N -DskipTests install \
-    && ./mvnw -q -DskipTests -pl flyfish-ddl clean install \
-    && rm -f flyfish-main/target/flyfish-main flyfish-main/target/lib*.so \
+    && ./mvnw -q -DskipTests -Pnative,!local \
+        -pl flyfish-auth/flyfish-auth-app,flyfish-lowcode/flyfish-lowcode-app,flyfish-shop/flyfish-shop-app \
+        -am install \
     && ./mvnw -q -DskipTests -Pnative,!local \
         -Dnative.build.parallelism=${NATIVE_BUILD_PARALLELISM} \
         -Dnative.build.xmx=${NATIVE_BUILD_XMX} \
         -Dnative.optimization.level=${NATIVE_OPTIMIZATION_LEVEL} \
         -Dnative.march=${NATIVE_MARCH} \
-        -pl flyfish-main native:compile \
-    && mkdir -p /native \
-    && cp flyfish-main/target/flyfish-main /native/flyfish-dev \
-    && find flyfish-main/target -maxdepth 1 -name 'lib*.so' -exec cp {} /native/ \;
+        -pl flyfish-auth/flyfish-auth-app,flyfish-lowcode/flyfish-lowcode-app,flyfish-shop/flyfish-shop-app \
+        native:compile \
+    && mkdir -p /native/auth /native/lowcode /native/shop \
+    && cp flyfish-auth/flyfish-auth-app/target/flyfish-auth /native/auth/ \
+    && cp flyfish-lowcode/flyfish-lowcode-app/target/flyfish-lowcode /native/lowcode/ \
+    && cp flyfish-shop/flyfish-shop-app/target/flyfish-shop /native/shop/ \
+    && find flyfish-auth/flyfish-auth-app/target -maxdepth 1 -name 'lib*.so' -exec cp {} /native/auth/ \; \
+    && find flyfish-lowcode/flyfish-lowcode-app/target -maxdepth 1 -name 'lib*.so' -exec cp {} /native/lowcode/ \; \
+    && find flyfish-shop/flyfish-shop-app/target -maxdepth 1 -name 'lib*.so' -exec cp {} /native/shop/ \;
 
 FROM ${ALINUX_IMAGE} AS runtime
 
@@ -68,15 +74,29 @@ WORKDIR /app
 COPY --from=native-builder /native/ /app/
 
 RUN mkdir -p /app/data \
-    && chmod 755 /app/flyfish-dev \
+    && printf '%s\n' \
+        '#!/bin/sh' \
+        'set -eu' \
+        'APP="${FLYFISH_APP:-shop}"' \
+        'case "$APP" in' \
+        '  auth) BIN="/app/auth/flyfish-auth" ;;' \
+        '  lowcode) BIN="/app/lowcode/flyfish-lowcode" ;;' \
+        '  shop) BIN="/app/shop/flyfish-shop" ;;' \
+        '  *) echo "Unknown FLYFISH_APP: $APP" >&2; exit 1 ;;' \
+        'esac' \
+        'APP_DIR="$(dirname "$BIN")"' \
+        'export LD_LIBRARY_PATH="$APP_DIR:/app${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"' \
+        'exec "$BIN" "$@"' \
+        > /app/entrypoint.sh \
+    && chmod 755 /app/entrypoint.sh /app/auth/flyfish-auth /app/lowcode/flyfish-lowcode /app/shop/flyfish-shop \
     && chown -R flyfish:flyfish /app
 
-ENV LD_LIBRARY_PATH=/app
 ENV SPRING_PROFILES_ACTIVE=prod
-ENV SERVER_PORT=10081
+ENV FLYFISH_APP=shop
+ENV SERVER_PORT=10082
 ENV TZ=Asia/Shanghai
 
-EXPOSE 10081
+EXPOSE 10080 10081 10082
 USER flyfish
 
-ENTRYPOINT ["/app/flyfish-dev"]
+ENTRYPOINT ["/app/entrypoint.sh"]

@@ -46,8 +46,8 @@ const productLinks = computed(() => [
 ]);
 
 const resourceLinks = [
-  { label: '博客', href: 'https://blog.flyfish.dev', icon: BookOutlined },
-  { label: '文件预览', href: 'https://viewer.flyfish.dev', icon: FileTextOutlined },
+  { label: '博客', href: 'https://blog.example.com', icon: BookOutlined },
+  { label: '文件预览', href: 'https://viewer.example.com', icon: FileTextOutlined },
   { label: 'Office 预览套件', href: 'https://product.example.com', icon: FileTextOutlined },
   { label: '代码仓库', href: 'https://git.example.com', icon: GithubOutlined }
 ];
@@ -114,9 +114,6 @@ watch(hasShop, () => {
           <component :is='item.icon' />
           <span>{{ item.label }}</span>
         </div>
-        <a href='https://beian.miit.gov.cn/' target='_blank' rel='noreferrer'>
-          晋ICP备2024030443号
-        </a>
       </section>
 
       <section class='footer-column footer-contact'>

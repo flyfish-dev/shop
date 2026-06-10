@@ -24,7 +24,7 @@
         </dependency>
         <dependency>
             <groupId>group.flyfish</groupId>
-            <artifactId>flyfish-auth</artifactId>
+            <artifactId>flyfish-auth-api</artifactId>
             <version>${project.version}</version>
         </dependency>
     </dependencies>

@@ -1,9 +1,11 @@
 # Docker Native 一键部署
 
-本文档用于本地快速体验 Flyfish Shop 的 native 镜像部署方式。该模式会通过 Docker Compose 拉起三类服务：
+本文档用于本地快速体验 Flyfish Shop 的 native 镜像部署方式。该模式会通过 Docker Compose 拉起五类服务：
 
 - `mysql`：MySQL 8.4，保存业务数据。
-- `app`：基于 GraalVM native-image 构建的 Flyfish 后端，默认启用完整集成版 `flyfish-main`。
+- `auth`：基于 GraalVM native-image 构建的认证后端，承载 OAuth、邮箱登录、微信快捷登录和共享登录态。
+- `lowcode`：基于 GraalVM native-image 构建的低代码后端。
+- `shop`：基于 GraalVM native-image 构建的小铺后端。
 - `web`：Nginx 托管前端静态资源，并反向代理后端 API。
 
 ## 快速启动
@@ -36,7 +38,7 @@ docker compose -f deploy/docker/docker-compose.native.yml down -v
 
 ```bash
 docker compose -f deploy/docker/docker-compose.native.yml up --build -d
-docker compose -f deploy/docker/docker-compose.native.yml logs -f app
+docker compose -f deploy/docker/docker-compose.native.yml logs -f auth lowcode shop
 docker compose -f deploy/docker/docker-compose.native.yml ps
 ```
 
@@ -45,13 +47,15 @@ docker compose -f deploy/docker/docker-compose.native.yml ps
 | 服务 | 宿主机端口 | 容器端口 |
 | --- | --- | --- |
 | 前端入口 | `9999` | `web:80` |
-| 后端 API | `10081` | `app:10081` |
+| 认证 API | `10080` | `auth:10080` |
+| 低代码 API | `10081` | `lowcode:10081` |
+| 小铺 API | `10082` | `shop:10082` |
 | MySQL | 不暴露 | `mysql:3306` |
 
 可以通过环境变量覆盖端口：
 
 ```bash
-FLYFISH_HTTP_PORT=8080 FLYFISH_API_PORT=18081 ./scripts/docker-native-up.sh
+FLYFISH_HTTP_PORT=8080 FLYFISH_AUTH_PORT=18080 FLYFISH_LOWCODE_PORT=18081 FLYFISH_SHOP_PORT=18082 ./scripts/docker-native-up.sh
 ```
 
 通过脚本启动时，`OAUTH_CALLBACK_URL`、`EMAIL_MAGIC_LINK_BASE_URL`、`WX_MP_QUICK_LOGIN_BASE_URL` 和支付回调默认会跟随 `FLYFISH_PUBLIC_BASE_URL`。未设置 `FLYFISH_PUBLIC_BASE_URL` 时，脚本会按 `FLYFISH_HTTP_PORT` 推导本机访问地址。

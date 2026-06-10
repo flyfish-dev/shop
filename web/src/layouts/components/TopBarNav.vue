@@ -23,11 +23,11 @@ onMounted(() => {
       <ShopFilled />
       <span>{{ shopEntryName }}</span>
     </router-link>
-    <a class='nav-link' href='https://blog.flyfish.dev' target='_blank' rel='noreferrer'>
+    <a class='nav-link' href='https://blog.example.com' target='_blank' rel='noreferrer'>
       <BookFilled />
       <span>博客</span>
     </a>
-    <a class='nav-link' href='https://viewer.flyfish.dev' target='_blank' rel='noreferrer'>
+    <a class='nav-link' href='https://viewer.example.com' target='_blank' rel='noreferrer'>
       <FileTextFilled />
       <span>文件预览</span>
     </a>

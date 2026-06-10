@@ -1,0 +1,22 @@
+[Unit]
+Description=Flyfish Auth Native Backend
+After=network.target mariadb.service
+
+[Service]
+Type=simple
+User=flyfish
+Group=flyfish
+WorkingDirectory=/opt/flyfish-dev
+EnvironmentFile=/opt/flyfish-dev/config/flyfish-dev.env
+Environment=LD_LIBRARY_PATH=/opt/flyfish-dev/app/auth-native
+Environment=MALLOC_ARENA_MAX=2
+Environment=TZ=Asia/Shanghai
+ExecStart=/opt/flyfish-dev/app/auth-native/flyfish-auth --server.port=10080
+Restart=always
+RestartSec=5
+SuccessExitStatus=143
+StandardOutput=append:/opt/flyfish-dev/logs/auth.log
+StandardError=append:/opt/flyfish-dev/logs/auth.err.log
+
+[Install]
+WantedBy=multi-user.target

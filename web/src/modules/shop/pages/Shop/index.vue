@@ -38,7 +38,7 @@ onMounted(async () => {
     <div class='shop-page'>
       <div class='shop-container' :class="{ 'shop-container-manage': isManageRoute }">
         <div class='shop-header'>
-          <router-link href='/shop/item-list' class='shop-brand' aria-label='飞鱼小铺首页'>
+          <router-link href='/shop' class='shop-brand' aria-label='飞鱼小铺首页'>
             <span class='brand-mark'>
               <shop-filled />
             </span>
@@ -59,29 +59,32 @@ onMounted(async () => {
               </a-button>
               <template #overlay>
                 <a-menu>
+                  <a-menu-item key="workbench">
+                    <router-link href="/shop/manage/workbench">小铺工作台</router-link>
+                  </a-menu-item>
                   <a-menu-item key="shop">
-                    <router-link href="shop/manage/shops">店铺管理</router-link>
+                    <router-link href="/shop/manage/shops">店铺管理</router-link>
                   </a-menu-item>
                   <a-menu-item key="groups">
-                    <router-link href="shop/manage/groups">分组管理</router-link>
+                    <router-link href="/shop/manage/groups">分组管理</router-link>
                   </a-menu-item>
                   <a-menu-item key="items">
-                    <router-link href="shop/manage/items">商品管理</router-link>
+                    <router-link href="/shop/manage/items">商品管理</router-link>
                   </a-menu-item>
                   <a-menu-item key="repositories">
-                    <router-link href="shop/manage/repositories">仓库管理</router-link>
+                    <router-link href="/shop/manage/repositories">仓库管理</router-link>
                   </a-menu-item>
                   <a-menu-item key="orders">
-                    <router-link href="shop/manage/orders">订单管理</router-link>
+                    <router-link href="/shop/manage/orders">订单管理</router-link>
                   </a-menu-item>
                   <a-menu-item key="users">
-                    <router-link href="shop/manage/users">用户管理</router-link>
+                    <router-link href="/shop/manage/users">用户管理</router-link>
                   </a-menu-item>
                   <a-menu-item key="coupons">
-                    <router-link href="shop/manage/coupons">优惠券管理</router-link>
+                    <router-link href="/shop/manage/coupons">优惠券管理</router-link>
                   </a-menu-item>
                   <a-menu-item key="tickets">
-                    <router-link href="shop/manage/tickets">工单管理</router-link>
+                    <router-link href="/shop/manage/tickets">工单管理</router-link>
                   </a-menu-item>
                 </a-menu>
               </template>

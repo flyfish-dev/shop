@@ -4,6 +4,7 @@ import io.r2dbc.spi.ConnectionFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.ResourcePatternResolver;
 import org.springframework.r2dbc.connection.init.CompositeDatabasePopulator;
@@ -47,7 +48,7 @@ public class DatabaseInitializationConfig {
         return DIALECT_PATTERN.formatted(name);
     }
 
-    private void addScripts(CompositeDatabasePopulator populator, Resource[] resources) {
+    private void addScripts(CompositeDatabasePopulator populator, Resource[] resources) throws IOException {
         Resource[] sortedResources = Arrays.stream(resources == null ? new Resource[0] : resources)
                 .filter(Resource::exists)
                 .sorted(Comparator.comparing(this::filename).thenComparing(this::resourceName))
@@ -58,9 +59,25 @@ public class DatabaseInitializationConfig {
         ResourceDatabasePopulator resourcePopulator = new ResourceDatabasePopulator();
         for (Resource resource : sortedResources) {
             log.debug("加载数据库初始化脚本：{}", resourceName(resource));
-            resourcePopulator.addScript(resource);
+            resourcePopulator.addScript(snapshot(resource));
         }
         populator.addPopulators(resourcePopulator);
+    }
+
+    /**
+     * 将 classpath SQL 固化成内存资源后再交给 Spring 执行。
+     *
+     * <p>GraalVM native 下，位于文件系统中的资源可能被 {@code DataBufferUtils}
+     * 识别为文件并走 {@code AsynchronousFileChannel}，而该路径在当前 native runtime 中
+     * 不可用。这里仍然复用 Spring 官方的 {@link ResourceDatabasePopulator}，
+     * 只是提前用同步流读取 SQL，既保持初始化生命周期一致，也避免 native 启动失败。</p>
+     */
+    private Resource snapshot(Resource resource) throws IOException {
+        byte[] content;
+        try (var inputStream = resource.getInputStream()) {
+            content = inputStream.readAllBytes();
+        }
+        return new NamedByteArrayResource(content, filename(resource), resourceName(resource));
     }
 
     private String resourceName(Resource resource) {
@@ -74,5 +91,28 @@ public class DatabaseInitializationConfig {
     private String filename(Resource resource) {
         String filename = resource.getFilename();
         return filename == null ? resourceName(resource) : filename;
+    }
+
+    private static final class NamedByteArrayResource extends ByteArrayResource {
+
+        private final String filename;
+
+        private final String description;
+
+        private NamedByteArrayResource(byte[] byteArray, String filename, String description) {
+            super(byteArray, description);
+            this.filename = filename;
+            this.description = description;
+        }
+
+        @Override
+        public String getFilename() {
+            return filename;
+        }
+
+        @Override
+        public String getDescription() {
+            return description;
+        }
     }
 }

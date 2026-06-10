@@ -1,27 +1,6 @@
 <script setup>
-import { computed, reactive, ref, onMounted } from 'vue';
-import dayjs from 'dayjs';
-import { message } from 'ant-design-vue';
 import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons-vue';
-import { createCoupon, deleteCoupon, getCoupons, updateCoupon } from '../../apis/manage.js';
-
-const loading = ref(false);
-const saving = ref(false);
-const modalVisible = ref(false);
-const editingId = ref(null);
-const formRef = ref();
-const coupons = ref([]);
-
-const formState = reactive({
-  code: '',
-  name: '',
-  type: 'REDUCTION',
-  discountValue: 1,
-  thresholdAmount: 0,
-  totalCount: 0,
-  enabled: true,
-  validRange: []
-});
+import { useCouponManage } from '../../hooks/useCouponManage.js';
 
 const columns = [
   { title: '优惠券', dataIndex: 'name', key: 'name', width: 240 },
@@ -33,108 +12,24 @@ const columns = [
   { title: '操作', key: 'action', width: 140, fixed: 'right' }
 ];
 
-const rules = {
-  name: [{ required: true, message: '请输入优惠券名称', trigger: 'blur' }],
-  type: [{ required: true, message: '请选择优惠类型', trigger: 'change' }],
-  discountValue: [{ required: true, message: '请输入优惠值', trigger: 'change' }]
-};
-
-const modalTitle = computed(() => editingId.value ? '编辑优惠券' : '生成优惠券');
-const discountLabel = computed(() => formState.type === 'DISCOUNT' ? '折扣值' : '满减金额');
-
-const loadCoupons = async () => {
-  loading.value = true;
-  try {
-    coupons.value = await getCoupons();
-  } finally {
-    loading.value = false;
-  }
-};
-
-const resetForm = () => {
-  editingId.value = null;
-  Object.assign(formState, {
-    code: '',
-    name: '',
-    type: 'REDUCTION',
-    discountValue: 1,
-    thresholdAmount: 0,
-    totalCount: 0,
-    enabled: true,
-    validRange: []
-  });
-  formRef.value?.clearValidate?.();
-};
-
-const openCreate = () => {
-  resetForm();
-  modalVisible.value = true;
-};
-
-const openEdit = record => {
-  editingId.value = record.id;
-  Object.assign(formState, {
-    code: record.code,
-    name: record.name,
-    type: record.type,
-    discountValue: Number(record.discountValue || 0),
-    thresholdAmount: Number(record.thresholdAmount || 0),
-    totalCount: record.totalCount || 0,
-    enabled: record.enabled !== false,
-    validRange: record.startTime || record.endTime
-      ? [record.startTime ? dayjs(record.startTime) : null, record.endTime ? dayjs(record.endTime) : null]
-      : []
-  });
-  modalVisible.value = true;
-};
-
-const generateCode = () => {
-  formState.code = `FF${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
-};
-
-const buildPayload = () => {
-  const [startTime, endTime] = formState.validRange || [];
-  return {
-    code: formState.code?.trim() || undefined,
-    name: formState.name?.trim(),
-    type: formState.type,
-    discountValue: formState.discountValue,
-    thresholdAmount: formState.thresholdAmount || 0,
-    totalCount: formState.totalCount || 0,
-    enabled: formState.enabled,
-    startTime: startTime ? dayjs(startTime).format('YYYY-MM-DD HH:mm:ss') : null,
-    endTime: endTime ? dayjs(endTime).format('YYYY-MM-DD HH:mm:ss') : null
-  };
-};
-
-const submit = async () => {
-  await formRef.value?.validate?.();
-  saving.value = true;
-  try {
-    const payload = buildPayload();
-    if (editingId.value) {
-      await updateCoupon(editingId.value, payload);
-      message.success('优惠券已更新');
-    } else {
-      await createCoupon(payload);
-      message.success('优惠券已生成');
-    }
-    modalVisible.value = false;
-    await loadCoupons();
-  } catch (e) {
-    message.error(e.message || '保存失败');
-  } finally {
-    saving.value = false;
-  }
-};
-
-const removeCoupon = async record => {
-  await deleteCoupon(record.id);
-  message.success('优惠券已删除');
-  await loadCoupons();
-};
-
-onMounted(loadCoupons);
+const {
+  loading,
+  saving,
+  modalVisible,
+  formRef,
+  coupons,
+  formState,
+  modalTitle,
+  discountLabel,
+  showMaxDiscount,
+  rules,
+  loadCoupons,
+  openCreate,
+  openEdit,
+  generateCode,
+  submit,
+  removeCoupon
+} = useCouponManage();
 </script>
 
 <template>
@@ -246,6 +141,18 @@ onMounted(loadCoupons);
               <a-input-number v-model:value="formState.thresholdAmount" :min="0" :precision="2" class="full-input" />
             </a-form-item>
           </a-col>
+          <a-col :span="12" v-if="showMaxDiscount">
+            <a-form-item label="最高减免" name="maxDiscountAmount">
+              <a-input-number v-model:value="formState.maxDiscountAmount" :min="0" :precision="2" class="full-input" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12" v-else>
+            <a-form-item label="发放总量" name="totalCount">
+              <a-input-number v-model:value="formState.totalCount" :min="0" :precision="0" class="full-input" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-row v-if="showMaxDiscount" :gutter="12">
           <a-col :span="12">
             <a-form-item label="发放总量" name="totalCount">
               <a-input-number v-model:value="formState.totalCount" :min="0" :precision="0" class="full-input" />

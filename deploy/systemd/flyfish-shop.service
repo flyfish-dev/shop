@@ -1,0 +1,22 @@
+[Unit]
+Description=Flyfish Shop Native Backend
+After=network.target mariadb.service
+
+[Service]
+Type=simple
+User=flyfish
+Group=flyfish
+WorkingDirectory=/opt/flyfish-dev
+EnvironmentFile=/opt/flyfish-dev/config/flyfish-dev.env
+Environment=LD_LIBRARY_PATH=/opt/flyfish-dev/app/shop-native
+Environment=MALLOC_ARENA_MAX=2
+Environment=TZ=Asia/Shanghai
+ExecStart=/opt/flyfish-dev/app/shop-native/flyfish-shop --server.port=10082
+Restart=always
+RestartSec=5
+SuccessExitStatus=143
+StandardOutput=append:/opt/flyfish-dev/logs/shop.log
+StandardError=append:/opt/flyfish-dev/logs/shop.err.log
+
+[Install]
+WantedBy=multi-user.target

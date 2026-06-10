@@ -9,37 +9,11 @@
         <version>0.0.2-SNAPSHOT</version>
     </parent>
 
-    <artifactId>flyfish-auth</artifactId>
+    <artifactId>flyfish-auth-parent</artifactId>
+    <packaging>pom</packaging>
 
-    <dependencies>
-        <dependency>
-            <groupId>group.flyfish</groupId>
-            <artifactId>flyfish-common</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-thymeleaf</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-mail</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.pac4j</groupId>
-            <artifactId>spring-webflux-pac4j</artifactId>
-            <version>${pac4j.webflux.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.pac4j</groupId>
-            <artifactId>pac4j-core</artifactId>
-            <version>${pac4j.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.pac4j</groupId>
-            <artifactId>pac4j-oauth</artifactId>
-            <version>${pac4j.version}</version>
-        </dependency>
-    </dependencies>
+    <modules>
+        <module>flyfish-auth-api</module>
+        <module>flyfish-auth-app</module>
+    </modules>
 </project>

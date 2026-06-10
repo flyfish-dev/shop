@@ -1,6 +1,6 @@
 # 飞鱼小铺 / Flyfish Shop
 
-飞鱼小铺是一套面向独立开发者、小团队和数字产品交付场景的开源小铺系统，覆盖商品展示、下单支付、订单管理、优惠券、Git 仓库交付、客服工单、公众号快捷登录、邮箱 magic link 登录等核心流程。当前仓库同时保留飞鱼低代码平台的最小运行实例，方便在同一套共享认证体系下独立运行低代码平台、小铺或完整集成版。
+飞鱼小铺是一套面向独立开发者、小团队和数字产品交付场景的开源小铺系统，覆盖商品展示、下单支付、订单管理、优惠券、Git 仓库交付、客服工单、公众号快捷登录、邮箱 magic link 登录等核心流程。当前仓库同时保留飞鱼低代码平台的最小运行实例，并通过独立认证服务共享登录态，方便按需运行认证、低代码平台和小铺。
 
 本仓库是飞鱼小铺源码交付版：已移除本地数据库、构建产物、测试截图和真实第三方密钥，提供 Docker native 一键体验、标准 Maven/Node 构建、模块化后端实例和单前端登录态。所有敏感配置均通过环境变量注入，请勿把 `.env`、数据库文件、证书或生产日志提交到仓库。
 
@@ -17,19 +17,19 @@ https://dev.flyfish.group/shop/item-list
 ## 架构概览
 
 ```text
-flyfish-common       通用基础设施、异常、JSON、R2DBC、缓存控制
-flyfish-auth         共享认证、JWT、OAuth、微信快捷登录、邮箱 magic link
-flyfish-platform     门户能力发现、公共工作台、上传等平台能力
-flyfish-git          Git 平台集成、访问 Token 与仓库元数据
-flyfish-lowcode      飞鱼低代码平台业务模块
-flyfish-shop         飞鱼小铺业务模块
-flyfish-lowcode-app  仅低代码平台最小运行实例
-flyfish-shop-app     仅飞鱼小铺最小运行实例
-flyfish-main         低代码平台 + 小铺完整集成实例
-web                  Vue 3 单前端，按 capability 动态展示低代码/小铺页面
+flyfish-common                         通用基础设施、异常、JSON、R2DBC、缓存控制
+flyfish-auth/flyfish-auth-api          共享认证 API、用户 VO、授权工具、远程客户端接口
+flyfish-auth/flyfish-auth-app          认证服务实例，JWT、OAuth、微信快捷登录、邮箱 magic link
+flyfish-platform                       门户能力发现、公共工作台、上传、远程认证客户端
+flyfish-git                            Git 平台集成、访问 Token 与仓库元数据
+flyfish-lowcode/flyfish-lowcode-api    低代码平台对外 API 边界
+flyfish-lowcode/flyfish-lowcode-app    低代码平台最小运行实例
+flyfish-shop/flyfish-shop-api          小铺对外 API 边界
+flyfish-shop/flyfish-shop-app          飞鱼小铺最小运行实例
+web                                    Vue 3 单前端，按 capability 动态展示低代码/小铺页面
 ```
 
-前端只有一套登录态，认证能力集中在 `flyfish-auth`。低代码平台和小铺业务模块不直接互相依赖，应用实例通过 Maven 模块组合决定启用哪些能力。
+前端只有一套登录态，认证实现集中在 `flyfish-auth/flyfish-auth-app`。低代码平台和小铺不直接互相依赖，通过 `flyfish-auth-api` 和远程认证客户端共享用户态。
 
 ## Docker Native 一键体验
 
@@ -64,25 +64,25 @@ http://127.0.0.1:9999
 
 ### 后端
 
-完整集成版：
+认证服务：
 
 ```bash
-./mvnw -pl flyfish-main -am -DskipTests package
-java -jar flyfish-main/target/flyfish-dev.jar --spring.profiles.active=local
+./mvnw -pl flyfish-auth/flyfish-auth-app -am -DskipTests package
+java -jar flyfish-auth/flyfish-auth-app/target/flyfish-auth.jar --spring.profiles.active=local
 ```
 
 仅小铺实例：
 
 ```bash
-./mvnw -pl flyfish-shop-app -am -DskipTests package
-java -jar flyfish-shop-app/target/flyfish-shop.jar --spring.profiles.active=local
+./mvnw -pl flyfish-shop/flyfish-shop-app -am -DskipTests package
+java -jar flyfish-shop/flyfish-shop-app/target/flyfish-shop.jar --spring.profiles.active=local
 ```
 
 仅低代码实例：
 
 ```bash
-./mvnw -pl flyfish-lowcode-app -am -DskipTests package
-java -jar flyfish-lowcode-app/target/flyfish-lowcode.jar --spring.profiles.active=local
+./mvnw -pl flyfish-lowcode/flyfish-lowcode-app -am -DskipTests package
+java -jar flyfish-lowcode/flyfish-lowcode-app/target/flyfish-lowcode.jar --spring.profiles.active=local
 ```
 
 ### 前端
@@ -93,7 +93,7 @@ npm ci
 npm run dev
 ```
 
-默认前端地址为 `http://127.0.0.1:9999`，开发代理默认指向后端 `http://localhost:10081`。如果只启动小铺实例，请将 `web/vite.config.js` 中代理目标改到小铺后端端口，或启动时统一指定后端端口。
+默认前端地址为 `http://127.0.0.1:9999`。开发代理会按路径分别转发到认证 `10080`、低代码 `10081`、小铺 `10082`。
 
 ## 生产上线指引
 
@@ -104,13 +104,7 @@ npm run dev
 5. 构建后端 jar：
 
    ```bash
-   ./mvnw -pl flyfish-shop-app -am -DskipTests clean package
-   ```
-
-   或构建完整集成版：
-
-   ```bash
-   ./mvnw -pl flyfish-main -am -DskipTests clean package
+   ./mvnw -pl flyfish-auth/flyfish-auth-app,flyfish-lowcode/flyfish-lowcode-app,flyfish-shop/flyfish-shop-app -am -DskipTests clean package
    ```
 
 6. 构建前端静态资源：
@@ -168,7 +162,7 @@ Native 构建与生产部署细节可参考 [docs/native-build-deploy.md](docs/n
 
 | 类别 | 变量 |
 | --- | --- |
-| Docker native | `FLYFISH_HTTP_PORT`, `FLYFISH_API_PORT`, `FLYFISH_DOCKER_PLATFORM`, `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `NATIVE_BUILD_XMX` |
+| Docker native | `FLYFISH_HTTP_PORT`, `FLYFISH_AUTH_PORT`, `FLYFISH_LOWCODE_PORT`, `FLYFISH_SHOP_PORT`, `FLYFISH_DOCKER_PLATFORM`, `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`, `NATIVE_BUILD_XMX` |
 | 数据库 | `SPRING_R2DBC_URL`, `SPRING_R2DBC_USERNAME`, `SPRING_R2DBC_PASSWORD` |
 | 认证 | `USER_JWT_SECRET`, `OAUTH_CALLBACK_URL` |
 | OAuth | `OAUTH_GITEA_CLIENT_ID`, `OAUTH_GITEA_CLIENT_SECRET`, `OAUTH_GITEE_CLIENT_ID`, `OAUTH_GITEE_CLIENT_SECRET`, `OAUTH_GITHUB_CLIENT_ID`, `OAUTH_GITHUB_CLIENT_SECRET` |

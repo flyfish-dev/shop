@@ -25,6 +25,7 @@ final class FlexibleLocalDateTimeDeserializer extends StdDeserializer<LocalDateT
 
     private static final List<DateTimeFormatter> SUPPORTED_FORMATTERS = List.of(
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"),
             DateTimeFormatter.ISO_LOCAL_DATE_TIME
     );
 

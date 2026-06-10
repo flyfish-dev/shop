@@ -1,0 +1,39 @@
+dev:
+  cache-path: ${FLYFISH_GENERATOR_CACHE_PATH:./.cache/generator}
+
+generator:
+  auto: false
+  # 作者名称，负责人记得修改
+  author: ${GENERATOR_AUTHOR:flyfish}
+  # 过滤表前缀，生成代码后自动去除
+  table-prefix:
+    - t_dl_
+    - sys_
+    - t_
+  # 包含的表，生成自己的表修改
+  includes: []
+  # 通用，和includes互斥
+#  like-table: t_app_, RIGHT
+  file-override: true
+  output-dir: ./dt-generator/src/generated
+  r2dbc:
+    url: ${GENERATOR_R2DBC_URL:r2dbc:mysql://127.0.0.1:3306/flyfish_dev}
+    username: ${GENERATOR_R2DBC_USERNAME:flyfish}
+    password: ${GENERATOR_R2DBC_PASSWORD:}
+  package-config:
+    # 请及时修改，生成到自己的包下
+    parent: ${GENERATOR_PACKAGE_PARENT:group.flyfish.generated}
+    entity: domain.po
+    service: service
+    service-impl: service.impl
+    mapper: mapper
+    xml: mapper.mapping
+    controller: controller
+
+oauth:
+  gitea:
+    app-name: ${OAUTH_GITEA_APP_NAME:飞鱼低代码平台}
+  gitee:
+    app-name: ${OAUTH_GITEE_APP_NAME:飞鱼低代码平台}
+  github:
+    app-name: ${OAUTH_GITHUB_APP_NAME:飞鱼低代码平台}

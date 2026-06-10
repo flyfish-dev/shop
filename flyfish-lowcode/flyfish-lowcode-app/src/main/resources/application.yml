@@ -1,0 +1,12 @@
+server:
+  port: ${FLYFISH_LOWCODE_PORT:10081}
+
+spring:
+  config:
+    import:
+      - classpath:/config/flyfish-common.yml
+      - classpath:/config/flyfish-platform.yml
+      - classpath:/config/flyfish-auth-client.yml
+      - classpath:/config/flyfish-lowcode.yml
+  profiles:
+    active: @profiles.active@

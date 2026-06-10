@@ -20,6 +20,13 @@ import org.springframework.web.reactive.function.client.WebClient;
 @Configuration
 public class GitWebConfig {
 
+    /**
+     * 代码托管平台的仓库列表响应会包含描述、权限、Owner 等完整元数据，GitHub 组织仓库较多时
+     * 单页响应很容易超过 WebFlux 默认 256KB。这里仅放宽 Git 外部 API 客户端的解码上限，
+     * 不影响站内接口和文件上传链路，避免大响应直接触发 DataBufferLimitException。
+     */
+    private static final int GIT_API_MAX_IN_MEMORY_SIZE = 4 * 1024 * 1024;
+
     @Bean
     public GiteaProperties giteaProperties(Environment environment) {
         Binder binder = Binder.get(environment);
@@ -59,14 +66,14 @@ public class GitWebConfig {
 
     @Bean
     public WebClient giteaWebClient(GiteaProperties properties) {
-        return WebClient.builder()
+        return gitWebClientBuilder()
                 .baseUrl(properties.getServer())
                 .build();
     }
 
     @Bean
     public WebClient githubWebClient(GithubProperties properties) {
-        return WebClient.builder()
+        return gitWebClientBuilder()
                 .baseUrl(properties.getApiBaseUrl())
                 .defaultHeader(HttpHeaders.ACCEPT, "application/vnd.github+json")
                 .defaultHeader("X-GitHub-Api-Version", "2022-11-28")
@@ -76,7 +83,7 @@ public class GitWebConfig {
 
     @Bean
     public WebClient giteeRepositoryWebClient(GiteeProperties properties) {
-        return WebClient.builder()
+        return gitWebClientBuilder()
                 .baseUrl(properties.getApiBaseUrl())
                 .defaultHeader(HttpHeaders.USER_AGENT, "Flyfish-Dev")
                 .build();
@@ -102,5 +109,11 @@ public class GitWebConfig {
     public GitRepositoryLookupService gitRepositoryLookupService(
             GitRepositoryManageService repositoryManageService) {
         return new GitRepositoryLookupServiceImpl(repositoryManageService);
+    }
+
+    private WebClient.Builder gitWebClientBuilder() {
+        return WebClient.builder()
+                .codecs(configurer -> configurer.defaultCodecs()
+                        .maxInMemorySize(GIT_API_MAX_IN_MEMORY_SIZE));
     }
 }

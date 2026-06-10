@@ -1,0 +1,10 @@
+server:
+  port: ${FLYFISH_AUTH_PORT:10080}
+
+spring:
+  config:
+    import:
+      - classpath:/config/flyfish-common.yml
+      - classpath:/config/flyfish-auth.yml
+  profiles:
+    active: @profiles.active@

@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/flyfish-ui-smoke.XXXXXX")"
 OUTPUT_DIR="${FLYFISH_UI_SMOKE_OUTPUT_DIR:-$ROOT_DIR/output/playwright/ui-smoke}"
-BACKEND_PORT=10081
+LOWCODE_PORT="${FLYFISH_UI_SMOKE_LOWCODE_PORT:-10081}"
+SHOP_PORT="${FLYFISH_UI_SMOKE_SHOP_PORT:-10082}"
 FRONTEND_PORT="${FLYFISH_UI_SMOKE_FRONTEND_PORT:-9999}"
 FRONTEND_URL="http://127.0.0.1:$FRONTEND_PORT"
 PLAYWRIGHT_TIMEOUT="${FLYFISH_UI_SMOKE_TIMEOUT:-30000}"
@@ -12,9 +13,8 @@ PLAYWRIGHT_WAIT="${FLYFISH_UI_SMOKE_WAIT:-1000}"
 PIDS=()
 STARTED_PID=""
 
-LOWCODE_JAR="$ROOT_DIR/flyfish-lowcode-app/target/flyfish-lowcode.jar"
-SHOP_JAR="$ROOT_DIR/flyfish-shop-app/target/flyfish-shop.jar"
-MAIN_JAR="$ROOT_DIR/flyfish-main/target/flyfish-dev.jar"
+LOWCODE_JAR="$ROOT_DIR/flyfish-lowcode/flyfish-lowcode-app/target/flyfish-lowcode.jar"
+SHOP_JAR="$ROOT_DIR/flyfish-shop/flyfish-shop-app/target/flyfish-shop.jar"
 
 fail() {
   echo "ERROR: $*" >&2
@@ -68,7 +68,7 @@ build_artifacts() {
   if [[ "${FLYFISH_UI_SMOKE_SKIP_PACKAGE:-0}" == "1" ]]; then
     return
   fi
-  "$ROOT_DIR/mvnw" -q -pl flyfish-main,flyfish-lowcode-app,flyfish-shop-app -am -DskipTests clean package
+  "$ROOT_DIR/mvnw" -q -pl flyfish-auth/flyfish-auth-app,flyfish-lowcode/flyfish-lowcode-app,flyfish-shop/flyfish-shop-app -am -DskipTests clean package
 }
 
 curl_get() {
@@ -104,7 +104,8 @@ NODE
 wait_for_capabilities() {
   local name="$1"
   local pid="$2"
-  local expected_codes="$3"
+  local port="$3"
+  local expected_codes="$4"
   local log_file="$WORK_DIR/$name.log"
   local body_file="$WORK_DIR/$name-capabilities.json"
   local deadline=$((SECONDS + 90))
@@ -115,7 +116,7 @@ wait_for_capabilities() {
       fail "$name exited before readiness check passed"
     fi
     local http_code
-    http_code="$(curl_get "http://127.0.0.1:$BACKEND_PORT/portal/capabilities" "$body_file")"
+    http_code="$(curl_get "http://127.0.0.1:$port/portal/capabilities" "$body_file")"
     if [[ "$http_code" == "200" ]]; then
       assert_capabilities_body "$(cat "$body_file")" "$expected_codes" "$name"
       return
@@ -157,30 +158,33 @@ start_frontend() {
 start_app() {
   local name="$1"
   local jar_file="$2"
-  local expected_codes="$3"
+  local port="$3"
+  local expected_codes="$4"
   local app_dir="$WORK_DIR/$name"
   local log_file="$WORK_DIR/$name.log"
   mkdir -p "$app_dir/db"
   (
     cd "$app_dir"
     exec java -jar "$jar_file" \
-      --server.port="$BACKEND_PORT" \
+      --server.port="$port" \
       --spring.profiles.active=local \
       "--spring.r2dbc.url=r2dbc:h2:file:///./db/$name;MODE=MySQL" \
       >"$log_file" 2>&1
   ) &
   STARTED_PID=$!
   PIDS+=("$STARTED_PID")
-  wait_for_capabilities "$name" "$STARTED_PID" "$expected_codes"
+  wait_for_capabilities "$name" "$STARTED_PID" "$port" "$expected_codes"
 }
 
 stop_pid() {
   local pid="$1"
+  local port="$2"
+  local label="$3"
   if kill -0 "$pid" >/dev/null 2>&1; then
     kill "$pid" >/dev/null 2>&1 || true
     wait "$pid" >/dev/null 2>&1 || true
   fi
-  wait_for_port_free "$BACKEND_PORT" "backend"
+  wait_for_port_free "$port" "$label"
 }
 
 screenshot_page() {
@@ -243,14 +247,15 @@ smoke_shop_pages() {
 run_app_ui_smoke() {
   local name="$1"
   local jar_file="$2"
-  local expected_codes="$3"
-  local smoke_function="$4"
+  local port="$3"
+  local expected_codes="$4"
+  local smoke_function="$5"
   local pid
 
-  start_app "$name" "$jar_file" "$expected_codes"
+  start_app "$name" "$jar_file" "$port" "$expected_codes"
   pid="$STARTED_PID"
   "$smoke_function"
-  stop_pid "$pid"
+  stop_pid "$pid" "$port" "$name"
   echo "$name UI smoke passed"
 }
 
@@ -261,20 +266,19 @@ require_command npm
 require_command npx
 require_command lsof
 
-assert_port_free "$BACKEND_PORT" "backend"
+assert_port_free "$LOWCODE_PORT" "lowcode"
+assert_port_free "$SHOP_PORT" "shop"
 assert_port_free "$FRONTEND_PORT" "frontend"
 
 build_artifacts
 assert_file "$LOWCODE_JAR"
 assert_file "$SHOP_JAR"
-assert_file "$MAIN_JAR"
 
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
 
 start_frontend
-run_app_ui_smoke "flyfish-main" "$MAIN_JAR" "lowcode,shop" smoke_main_pages
-run_app_ui_smoke "flyfish-lowcode" "$LOWCODE_JAR" "lowcode" smoke_lowcode_pages
-run_app_ui_smoke "flyfish-shop" "$SHOP_JAR" "shop" smoke_shop_pages
+run_app_ui_smoke "flyfish-lowcode" "$LOWCODE_JAR" "$LOWCODE_PORT" "lowcode" smoke_lowcode_pages
+run_app_ui_smoke "flyfish-shop" "$SHOP_JAR" "$SHOP_PORT" "shop" smoke_shop_pages
 
 echo "UI page smoke passed. Screenshots: $OUTPUT_DIR"

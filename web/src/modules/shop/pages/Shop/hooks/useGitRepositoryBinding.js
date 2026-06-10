@@ -77,6 +77,7 @@ export function useGitRepositoryBinding({ item, user, store, router }) {
   const missingProviders = computed(() => gitProviders.value.filter(provider => !authorizationOf(provider)));
   const gitProvider = computed(() => missingProviders.value[0] || gitProviders.value[0] || 'gitea');
   const gitProviderName = computed(() => providerName(gitProvider.value));
+  const missingProviderNames = computed(() => missingProviders.value.map(providerName));
   const gitBindTitle = computed(() => {
     const count = itemParams.value.repositories?.length || 0;
     const names = gitProviders.value.map(providerName).join(' / ') || gitProviderName.value;
@@ -85,6 +86,16 @@ export function useGitRepositoryBinding({ item, user, store, router }) {
   const gitAuthorization = computed(() => gitProviders.value.length > 0
     && gitProviders.value.every(provider => authorizationOf(provider)));
   const gitAccount = computed(() => displayOf(gitProvider.value));
+  const gitBindingReminderVisible = computed(() => (
+    isGitRepositoryAccessType(item.value?.type) && !gitAuthorization.value
+  ));
+  const gitBindingReminderTitle = computed(() => {
+    const names = missingProviderNames.value.join('、') || gitProviderName.value;
+    return `请先绑定 ${names} 账号`;
+  });
+  const gitBindingReminderDescription = computed(() => (
+    '源码开通类商品，必须先绑定对应 Git 平台账号才能购买，请根据下方卡片绑定后完成购买。'
+  ));
 
   const authorize = async () => {
     store.rememberRedirect(location.pathname + location.search);
@@ -122,6 +133,9 @@ export function useGitRepositoryBinding({ item, user, store, router }) {
     gitBindTitle,
     gitAuthorization,
     gitAccount,
+    gitBindingReminderVisible,
+    gitBindingReminderTitle,
+    gitBindingReminderDescription,
     authorize,
     validateGitCheckout
   };

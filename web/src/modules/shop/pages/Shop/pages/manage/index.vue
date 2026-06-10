@@ -1,4 +1,17 @@
 <script setup>
+import { onMounted, watch } from 'vue';
+import { useRouter } from '@/router/use.js';
+
+const router = useRouter();
+
+const redirectManageRoot = () => {
+  if (router.currentRoute.value.replace(/\/$/, '') === '/shop/manage') {
+    router.replace('/shop/manage/workbench');
+  }
+};
+
+onMounted(redirectManageRoot);
+watch(() => router.currentRoute.value, redirectManageRoot);
 </script>
 
 <template>
