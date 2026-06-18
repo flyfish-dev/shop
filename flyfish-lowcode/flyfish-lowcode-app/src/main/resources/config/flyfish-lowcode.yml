@@ -1,0 +1,41 @@
+dev:
+  cache-path: ${LOWCODE_CACHE_PATH:.cache/flyfish-lowcode}
+
+generator:
+  auto: false
+  # 作者名称，负责人记得修改
+  author: ${LOWCODE_GENERATOR_AUTHOR:flyfish}
+  # 过滤表前缀，生成代码后自动去除
+  table-prefix:
+    - t_dl_
+    - sys_
+    - t_
+  # 包含的表，生成自己的表修改
+  includes:
+    - t_app_foster_instance
+    - t_app_foster_history
+  # 通用，和includes互斥
+#  like-table: t_app_, RIGHT
+  file-override: true
+  output-dir: ./dt-generator/src/generated
+  r2dbc:
+    url: ${LOWCODE_GENERATOR_R2DBC_URL:r2dbc:mysql://127.0.0.1:3306/flyfish_demo}
+    username: ${LOWCODE_GENERATOR_R2DBC_USERNAME:flyfish}
+    password: ${LOWCODE_GENERATOR_R2DBC_PASSWORD:}
+  package-config:
+    # 请及时修改，生成到自己的包下
+    parent: ${LOWCODE_GENERATOR_PACKAGE_PARENT:com.example.demo}
+    entity: domain.po
+    service: service
+    service-impl: service.impl
+    mapper: mapper
+    xml: mapper.mapping
+    controller: controller
+
+oauth:
+  gitea:
+    app-name: ${OAUTH_GITEA_APP_NAME:飞鱼低代码平台}
+  gitee:
+    app-name: ${OAUTH_GITEE_APP_NAME:飞鱼低代码平台}
+  github:
+    app-name: ${OAUTH_GITHUB_APP_NAME:飞鱼低代码平台}

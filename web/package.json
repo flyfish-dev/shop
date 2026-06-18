@@ -1,0 +1,36 @@
+{
+  "name": "flyfish-dev",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "sync:file-viewer": "node scripts/sync-file-viewer.mjs",
+    "prebuild": "node scripts/sync-file-viewer.mjs",
+    "test:architecture": "node scripts/check-architecture.mjs",
+    "test:build-artifacts": "node scripts/check-build-artifacts.mjs",
+    "test:route-smoke": "node scripts/smoke-route-capabilities.mjs",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "type": "module",
+  "dependencies": {
+    "@ant-design/icons-vue": "^7.0.1",
+    "@surely-vue/table": "^4.2.9",
+    "@vueuse/core": "^10.9.0",
+    "ant-design-vue": "^4.1.2",
+    "emoji-picker-element": "^1.29.1",
+    "md-editor-v3": "^6.5.0",
+    "pinia": "^2.1.7",
+    "pinia-plugin-persistedstate": "^3.2.1",
+    "qs": "^6.11.2",
+    "sortablejs": "^1.15.2",
+    "vue": "^3.4.15"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.3",
+    "@vitejs/plugin-vue-jsx": "^3.1.0",
+    "less": "^4.2.0",
+    "less-loader": "^12.2.0",
+    "vite": "^5.0.12"
+  }
+}

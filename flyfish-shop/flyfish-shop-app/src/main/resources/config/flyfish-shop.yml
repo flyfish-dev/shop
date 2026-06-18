@@ -1,0 +1,53 @@
+wx:
+  quick-login:
+    default-redirect: ${WX_QUICK_LOGIN_DEFAULT_REDIRECT:/shop/item-list}
+  # 公众号配置(必填)
+  mp:
+    app-id: ${WX_MP_APP_ID:}
+    secret: ${WX_MP_SECRET:}
+    token: ${WX_MP_TOKEN:}
+    aes-key: ${WX_MP_AES_KEY:}
+    api-base-url: ${WX_MP_API_BASE_URL:https://api.weixin.qq.com}
+    mp-base-url: ${WX_MP_MP_BASE_URL:https://mp.weixin.qq.com}
+    customer-service-media-id: ${WX_MP_CUSTOMER_SERVICE_MEDIA_ID:}
+    quick-login:
+      base-url: ${WX_MP_QUICK_LOGIN_BASE_URL:https://shop.example.com}
+      purchase-redirect: ${WX_MP_PURCHASE_REDIRECT:/shop/item-list}
+      expire-seconds: ${WX_MP_QUICK_LOGIN_EXPIRE_SECONDS:900}
+
+oauth:
+  gitea:
+    app-name: ${OAUTH_GITEA_APP_NAME:飞鱼小铺}
+  gitee:
+    app-name: ${OAUTH_GITEE_APP_NAME:飞鱼小铺}
+  github:
+    app-name: ${OAUTH_GITHUB_APP_NAME:飞鱼小铺}
+
+user:
+  jwt:
+    authorized-uris:
+      - /shops/managements
+      - /shops/managements/**
+
+shop:
+  payment:
+    h5zhifu:
+      api-base-url: ${H5ZHIFU_API_BASE_URL:https://open.h5zhifu.com/api}
+      app-id: ${H5ZHIFU_APP_ID:}
+      key: ${H5ZHIFU_KEY:}
+      notify-url: ${H5ZHIFU_NOTIFY_URL:https://api.example.com/shops/payments/h5zhifu/notify}
+      default-pay-type: ${H5ZHIFU_DEFAULT_PAY_TYPE:wechat}
+      default-trade-type: ${H5ZHIFU_DEFAULT_TRADE_TYPE:native}
+
+support:
+  notification:
+    enabled: ${SUPPORT_NOTIFICATION_ENABLED:false}
+    portal-base-url: ${SUPPORT_NOTIFICATION_PORTAL_BASE_URL:https://shop.example.com}
+    mail:
+      enabled: ${SUPPORT_NOTIFICATION_MAIL_ENABLED:false}
+      from: ${SUPPORT_NOTIFICATION_MAIL_FROM:${FROM:}}
+      admin-recipients: ${SUPPORT_NOTIFICATION_MAIL_ADMIN_RECIPIENTS:${SUPPORT_ADMIN_EMAIL:${FROM:}}}
+    wechat:
+      enabled: ${SUPPORT_NOTIFICATION_WECHAT_ENABLED:false}
+      admin-openids: ${SUPPORT_NOTIFICATION_WECHAT_ADMIN_OPENIDS:}
+      maintainer-gitea-openid: ${SUPPORT_NOTIFICATION_MAINTAINER_GITEA_OPENID:1}

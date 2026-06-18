@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang='en' xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset='UTF-8'>
+  <title>正在跳转中...</title>
+</head>
+<body>
+<script th:inline="javascript">
+  const oauthLoginRedirectKey = "flyfish_oauth_login_redirect";
+
+  function readRememberedLoginRedirect() {
+    const raw = localStorage.getItem(oauthLoginRedirectKey);
+    localStorage.removeItem(oauthLoginRedirectKey);
+    if (!raw) {
+      return "";
+    }
+    try {
+      const payload = JSON.parse(raw);
+      const ttl = Number(payload.ttl || 10 * 60 * 1000);
+      const createdAt = Number(payload.createdAt || 0);
+      if (payload.path && Date.now() - createdAt >= 0 && Date.now() - createdAt <= ttl) {
+        return payload.path;
+      }
+      return "";
+    } catch (e) {
+      return raw;
+    }
+  }
+
+  const rememberedLoginRedirect = readRememberedLoginRedirect();
+
+  localStorage.setItem("access_token", [[ ${token} ]]);
+  localStorage.setItem("auth_changed_at", String(Date.now()));
+
+  function buildRedirect(target) {
+    try {
+      const url = new URL(target || "/", window.location.origin);
+      if (url.origin !== window.location.origin) {
+        return "/";
+      }
+      // OAuth 刚写入 token 后必须强制刷新 SPA 入口，避免浏览器沿用旧版 JS 或旧的游客态接口缓存。
+      url.searchParams.set("_oauth", String(Date.now()));
+      return url.pathname + url.search + url.hash;
+    } catch (e) {
+      return "/";
+    }
+  }
+
+  setTimeout(function() {
+    location.replace(buildRedirect(rememberedLoginRedirect || [[ ${redirect} ]]));
+  }, 0);
+</script>
+</body>
+</html>

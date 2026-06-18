@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>group.flyfish</groupId>
+        <artifactId>flyfish-dev</artifactId>
+        <version>0.0.2-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>flyfish-lowcode-parent</artifactId>
+    <packaging>pom</packaging>
+
+    <modules>
+        <module>flyfish-lowcode-api</module>
+        <module>flyfish-lowcode-app</module>
+    </modules>
+</project>

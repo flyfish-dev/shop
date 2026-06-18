@@ -1,0 +1,22 @@
+[Unit]
+Description=Flyfish Lowcode Native Backend
+After=network.target mariadb.service
+
+[Service]
+Type=simple
+User=flyfish
+Group=flyfish
+WorkingDirectory=/opt/flyfish-dev
+EnvironmentFile=/opt/flyfish-dev/config/flyfish-dev.env
+Environment=LD_LIBRARY_PATH=/opt/flyfish-dev/app/lowcode-native
+Environment=MALLOC_ARENA_MAX=2
+Environment=TZ=Asia/Shanghai
+ExecStart=/opt/flyfish-dev/app/lowcode-native/flyfish-lowcode --server.port=10081
+Restart=always
+RestartSec=5
+SuccessExitStatus=143
+StandardOutput=append:/opt/flyfish-dev/logs/lowcode.log
+StandardError=append:/opt/flyfish-dev/logs/lowcode.err.log
+
+[Install]
+WantedBy=multi-user.target

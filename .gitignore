@@ -1,0 +1,55 @@
+HELP.md
+target/
+db/
+data/
+logs/
+*.log
+*.mv.db
+*.trace.db
+.env
+.env.*
+!.env.example
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+node_modules
+
+.DS_Store
+.local/
+.playwright-mcp
+output/
+test-results/
+flyfish-*/**/db/*.mv.db
+flyfish-*/**/db/*.trace.db
+web/public/file-viewer/
+web/dist/
+home-mobile-fixed.png
+prod-home-mobile-fixed.png

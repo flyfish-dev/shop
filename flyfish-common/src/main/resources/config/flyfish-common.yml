@@ -1,0 +1,10 @@
+spring:
+  threads:
+    virtual:
+      enabled: ${SPRING_THREADS_VIRTUAL_ENABLED:true}
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    locale: zh_CN
+  http:
+    codecs:
+      preferred-json-mapper: jackson

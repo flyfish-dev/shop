@@ -1,0 +1,9 @@
+git:
+  gitea:
+    server: ${oauth.gitea.server:https://gitea.example.com}
+    admin-token: ${oauth.gitea.admin-token:}
+  github:
+    api-base-url: ${GIT_GITHUB_API_BASE_URL:https://api.github.com}
+    admin-token: ${GIT_GITHUB_ADMIN_TOKEN:}
+  gitee:
+    api-base-url: ${GIT_GITEE_API_BASE_URL:${oauth.gitee.api-base-url:https://gitee.com/api/v5}}

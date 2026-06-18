@@ -1,0 +1,102 @@
+# syntax=docker/dockerfile:1.7
+
+ARG GRAAL_IMAGE=container-registry.oracle.com/graalvm/native-image:25
+ARG ALINUX_IMAGE=registry.cn-hangzhou.aliyuncs.com/alinux/alinux3:latest
+
+FROM ${GRAAL_IMAGE} AS graal
+
+FROM ${ALINUX_IMAGE} AS native-builder
+
+RUN dnf install -y \
+        bash \
+        findutils \
+        gcc \
+        gcc-c++ \
+        glibc-devel \
+        gzip \
+        make \
+        tar \
+        which \
+        zlib-devel \
+    && dnf clean all
+
+COPY --from=graal /usr/lib64/graalvm/graalvm-java25 /opt/graalvm
+ENV JAVA_HOME=/opt/graalvm
+ENV PATH=/opt/graalvm/bin:/opt/graalvm/lib/svm/bin:${PATH}
+
+WORKDIR /workspace
+COPY . .
+
+ARG NATIVE_MARCH=x86-64-v3
+ARG NATIVE_OPTIMIZATION_LEVEL=-O3
+ARG NATIVE_BUILD_PARALLELISM=2
+ARG NATIVE_BUILD_XMX=8g
+
+RUN chmod +x ./mvnw \
+    && java -version \
+    && native-image --version \
+    && ./mvnw -q -N -DskipTests install \
+    && ./mvnw -q -DskipTests -Pnative,!local \
+        -pl flyfish-auth/flyfish-auth-app,flyfish-lowcode/flyfish-lowcode-app,flyfish-shop/flyfish-shop-app \
+        -am install \
+    && ./mvnw -q -DskipTests -Pnative,!local \
+        -Dnative.build.parallelism=${NATIVE_BUILD_PARALLELISM} \
+        -Dnative.build.xmx=${NATIVE_BUILD_XMX} \
+        -Dnative.optimization.level=${NATIVE_OPTIMIZATION_LEVEL} \
+        -Dnative.march=${NATIVE_MARCH} \
+        -pl flyfish-auth/flyfish-auth-app,flyfish-lowcode/flyfish-lowcode-app,flyfish-shop/flyfish-shop-app \
+        native:compile \
+    && mkdir -p /native/auth /native/lowcode /native/shop \
+    && cp flyfish-auth/flyfish-auth-app/target/flyfish-auth /native/auth/ \
+    && cp flyfish-lowcode/flyfish-lowcode-app/target/flyfish-lowcode /native/lowcode/ \
+    && cp flyfish-shop/flyfish-shop-app/target/flyfish-shop /native/shop/ \
+    && find flyfish-auth/flyfish-auth-app/target -maxdepth 1 -name 'lib*.so' -exec cp {} /native/auth/ \; \
+    && find flyfish-lowcode/flyfish-lowcode-app/target -maxdepth 1 -name 'lib*.so' -exec cp {} /native/lowcode/ \; \
+    && find flyfish-shop/flyfish-shop-app/target -maxdepth 1 -name 'lib*.so' -exec cp {} /native/shop/ \;
+
+FROM ${ALINUX_IMAGE} AS runtime
+
+RUN dnf install -y \
+        ca-certificates \
+        curl \
+        fontconfig \
+        freetype \
+        glibc \
+        libstdc++ \
+        shadow-utils \
+        tzdata \
+        zlib \
+    && dnf clean all \
+    && groupadd -r flyfish \
+    && useradd -r -g flyfish -d /app -s /sbin/nologin flyfish
+
+WORKDIR /app
+COPY --from=native-builder /native/ /app/
+
+RUN mkdir -p /app/data \
+    && printf '%s\n' \
+        '#!/bin/sh' \
+        'set -eu' \
+        'APP="${FLYFISH_APP:-shop}"' \
+        'case "$APP" in' \
+        '  auth) BIN="/app/auth/flyfish-auth" ;;' \
+        '  lowcode) BIN="/app/lowcode/flyfish-lowcode" ;;' \
+        '  shop) BIN="/app/shop/flyfish-shop" ;;' \
+        '  *) echo "Unknown FLYFISH_APP: $APP" >&2; exit 1 ;;' \
+        'esac' \
+        'APP_DIR="$(dirname "$BIN")"' \
+        'export LD_LIBRARY_PATH="$APP_DIR:/app${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"' \
+        'exec "$BIN" "$@"' \
+        > /app/entrypoint.sh \
+    && chmod 755 /app/entrypoint.sh /app/auth/flyfish-auth /app/lowcode/flyfish-lowcode /app/shop/flyfish-shop \
+    && chown -R flyfish:flyfish /app
+
+ENV SPRING_PROFILES_ACTIVE=prod
+ENV FLYFISH_APP=shop
+ENV SERVER_PORT=10082
+ENV TZ=Asia/Shanghai
+
+EXPOSE 10080 10081 10082
+USER flyfish
+
+ENTRYPOINT ["/app/entrypoint.sh"]

@@ -1,0 +1,9 @@
+ALTER TABLE `shop` COMMENT '店铺表';
+ALTER TABLE `shop_item_group` COMMENT '店铺商品组表';
+ALTER TABLE `shop_item` COMMENT '店铺商品表';
+ALTER TABLE `shop_contract` COMMENT '小铺合同表';
+ALTER TABLE `shop_contract_file` COMMENT '小铺合同文件表';
+ALTER TABLE `shop_item_contract` COMMENT '商品合同绑定表';
+ALTER TABLE `shop_contract_signature` COMMENT '合同签署留痕表';
+ALTER TABLE `shop_order` COMMENT '店铺订单表';
+ALTER TABLE `shop_transaction` COMMENT '店铺交易流水表';

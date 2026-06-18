@@ -1,0 +1,139 @@
+name: flyfish-shop-native
+
+x-app-build: &app-build
+  context: ../..
+  dockerfile: deploy/docker/Dockerfile.native
+  args:
+    GRAAL_IMAGE: ${GRAAL_IMAGE:-container-registry.oracle.com/graalvm/native-image:25}
+    ALINUX_IMAGE: ${ALINUX_IMAGE:-registry.cn-hangzhou.aliyuncs.com/alinux/alinux3:latest}
+    NATIVE_MARCH: ${NATIVE_MARCH:-x86-64-v3}
+    NATIVE_OPTIMIZATION_LEVEL: ${NATIVE_OPTIMIZATION_LEVEL:--O3}
+    NATIVE_BUILD_PARALLELISM: ${NATIVE_BUILD_PARALLELISM:-2}
+    NATIVE_BUILD_XMX: ${NATIVE_BUILD_XMX:-8g}
+
+x-app-environment: &app-environment
+  SPRING_PROFILES_ACTIVE: prod
+  SPRING_R2DBC_URL: "${SPRING_R2DBC_URL:-r2dbc:mysql://mysql:3306/flyfish_dev?sslMode=DISABLED&serverZoneId=Asia/Shanghai}"
+  SPRING_R2DBC_USERNAME: ${SPRING_R2DBC_USERNAME:-flyfish}
+  SPRING_R2DBC_PASSWORD: ${SPRING_R2DBC_PASSWORD:-flyfish_dev_password}
+  USER_JWT_SECRET: ${USER_JWT_SECRET:-change-me-flyfish-dev-jwt-secret}
+  FLYFISH_PUBLIC_BASE_URL: ${FLYFISH_PUBLIC_BASE_URL:-http://127.0.0.1:9999}
+  FLYFISH_AUTH_BASE_URL: ${FLYFISH_AUTH_BASE_URL:-http://auth:10080}
+  OAUTH_CALLBACK_URL: ${OAUTH_CALLBACK_URL:-http://127.0.0.1:9999/oauth/callback}
+  EMAIL_MAGIC_LINK_BASE_URL: ${EMAIL_MAGIC_LINK_BASE_URL:-http://127.0.0.1:9999}
+  WX_MP_QUICK_LOGIN_BASE_URL: ${WX_MP_QUICK_LOGIN_BASE_URL:-http://127.0.0.1:9999}
+  H5ZHIFU_NOTIFY_URL: ${H5ZHIFU_NOTIFY_URL:-http://127.0.0.1:9999/shops/payments/h5zhifu/notify}
+  SUPPORT_NOTIFICATION_ENABLED: ${SUPPORT_NOTIFICATION_ENABLED:-false}
+  SUPPORT_NOTIFICATION_PORTAL_BASE_URL: ${SUPPORT_NOTIFICATION_PORTAL_BASE_URL:-http://127.0.0.1:9999}
+  SUPPORT_NOTIFICATION_MAIL_ENABLED: ${SUPPORT_NOTIFICATION_MAIL_ENABLED:-false}
+  SUPPORT_NOTIFICATION_WECHAT_ENABLED: ${SUPPORT_NOTIFICATION_WECHAT_ENABLED:-false}
+  TZ: ${TZ:-Asia/Shanghai}
+
+x-app-service: &app-service
+  image: ${FLYFISH_NATIVE_IMAGE:-flyfish-shop-native-app:latest}
+  platform: ${FLYFISH_DOCKER_PLATFORM:-linux/amd64}
+  build: *app-build
+  depends_on:
+    mysql:
+      condition: service_healthy
+  volumes:
+    - flyfish_uploads:/app/data
+  restart: unless-stopped
+
+services:
+  mysql:
+    image: mysql:8.4
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+08:00
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-flyfish_dev}
+      MYSQL_USER: ${MYSQL_USER:-flyfish}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-flyfish_dev_password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-flyfish_root_password}
+      TZ: ${TZ:-Asia/Shanghai}
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    volumes:
+      - flyfish_mysql:/var/lib/mysql
+    restart: unless-stopped
+
+  auth:
+    <<: *app-service
+    environment:
+      <<: *app-environment
+      FLYFISH_APP: auth
+      SERVER_PORT: 10080
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:10080/portal/users/current >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    ports:
+      - "${FLYFISH_AUTH_PORT:-10080}:10080"
+
+  lowcode:
+    <<: *app-service
+    depends_on:
+      mysql:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+    environment:
+      <<: *app-environment
+      FLYFISH_APP: lowcode
+      SERVER_PORT: 10081
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:10081/portal/capabilities >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    ports:
+      - "${FLYFISH_LOWCODE_PORT:-10081}:10081"
+
+  shop:
+    <<: *app-service
+    depends_on:
+      mysql:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+    environment:
+      <<: *app-environment
+      FLYFISH_APP: shop
+      SERVER_PORT: 10082
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:10082/portal/capabilities >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    ports:
+      - "${FLYFISH_SHOP_PORT:-10082}:10082"
+
+  web:
+    image: ${FLYFISH_WEB_IMAGE:-flyfish-shop-native-web:latest}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.web
+    depends_on:
+      auth:
+        condition: service_healthy
+      lowcode:
+        condition: service_healthy
+      shop:
+        condition: service_healthy
+    ports:
+      - "${FLYFISH_HTTP_PORT:-9999}:80"
+    restart: unless-stopped
+
+volumes:
+  flyfish_mysql:
+  flyfish_uploads:

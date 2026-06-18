@@ -1,0 +1,8 @@
+spring:
+  sql:
+    init:
+      mode: always
+  r2dbc:
+    url: r2dbc:h2:file:///./db/lowcode-db;MODE=MySQL
+    username: sa
+    password:
