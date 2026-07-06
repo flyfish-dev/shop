@@ -1,4 +1,14 @@
-# 飞鱼小铺 / Flyfish Shop
+<p align="center">
+  <a href="https://dev.flyfish.group/shop/item-list">
+    <img src="docs/assets/flyfish-shop-logo.png" width="96" alt="飞鱼小铺 logo" />
+  </a>
+</p>
+
+<h1 align="center">飞鱼小铺 / Flyfish Shop</h1>
+
+<p align="center">
+  <strong>面向数字产品售卖、授权交付和开发者服务的小铺系统。</strong>
+</p>
 
 飞鱼小铺是一套面向独立开发者、小团队和数字产品交付场景的开源小铺系统，覆盖商品展示、下单支付、订单管理、优惠券、合同确认、Git 仓库交付、源码 License 交付、客服工单、公众号快捷登录、邮箱 magic link 登录等核心流程。当前仓库同时保留飞鱼低代码平台的最小运行实例，并通过独立认证服务共享登录态，方便按需运行认证、低代码平台和小铺。
 
