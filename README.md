@@ -148,7 +148,7 @@ docker compose -f deploy/docker/docker-compose.native.yml ps
 
 ## 本地开发
 
-环境要求：JDK 21+、Node.js 20+、npm，以及项目自带的 Maven Wrapper。local profile 默认使用 H2 文件库。
+环境要求：JDK 21+、Node.js 24+、npm，以及项目自带的 Maven Wrapper。local profile 默认使用 H2 文件库。
 
 分别启动三个后端实例：
 
