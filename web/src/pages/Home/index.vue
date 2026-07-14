@@ -21,7 +21,7 @@
                   <img alt="module" class="module-icon" :src="button.icon"/>
                 </template>
               </a-card-meta>
-              <a-tag v-if="button.status === 'later'" class="module-status">二期开放</a-tag>
+              <a-tag v-if="button.status === 'later'" class="module-status">{{ t('common.phaseTwo') }}</a-tag>
             </a-card>
           </a-col>
         </a-row>
@@ -34,6 +34,7 @@
 
 <script>
 import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRouter } from '@/router/use';
 import { message } from 'ant-design-vue';
 import useClientStore from '@/modules/auth/store/client.js';
@@ -42,6 +43,12 @@ import { usePortalCapabilities } from '@/modules/portal/usePortalCapabilities.js
 const shopIcon = new URL('@/assets/logo.png', import.meta.url);
 const MarketEntry = defineAsyncComponent(() => import('@/modules/shop/components/MarketEntry.vue'));
 const LowcodeWorkbench = defineAsyncComponent(() => import('@/modules/lowcode/components/LowcodeWorkbench.vue'));
+const lowcodeModuleI18nKeys = {
+  'model-design': 'modelDesign',
+  'code-generate': 'codeGenerate',
+  'online-launch': 'onlineLaunch',
+  'integrate-test': 'integrateTest'
+};
 
 export default {
   name: 'IndexHome',
@@ -52,6 +59,7 @@ export default {
   setup() {
     const router = useRouter();
     const store = useClientStore();
+    const { t } = useI18n();
     const loading = ref(false);
     const lowcodeModules = ref([]);
     const { hasLowcode, hasShop, shopEntryName, shopEntryPath, loadPortalCapabilities } = usePortalCapabilities();
@@ -63,15 +71,21 @@ export default {
       const { lowcodeNavItems } = await import('@/modules/lowcode/nav.js');
       lowcodeModules.value = lowcodeNavItems;
     };
+    const lowcodeModuleText = (item, field) => {
+      const key = lowcodeModuleI18nKeys[item.code];
+      return key ? t(`lowcode.modules.${key}.${field}`) : item[field];
+    };
     const moduleCards = computed(() => [
       ...(hasLowcode.value ? lowcodeModules.value.map(item => ({
         ...item,
+        name: lowcodeModuleText(item, 'name'),
+        desc: lowcodeModuleText(item, 'desc'),
         path: `/${item.code}`
       })) : []),
       ...(hasShop.value ? [{
-        name: shopEntryName.value,
+        name: t('nav.market'),
         code: 'shop',
-        desc: '商品与服务',
+        desc: t('home.shopDesc'),
         icon: shopIcon,
         path: shopEntryPath.value
       }] : [])
@@ -85,7 +99,7 @@ export default {
           await loadLowcodeModules();
         }
       } catch (e) {
-        message.error(e.message || '加载首页失败');
+        message.error(e.message || t('common.homeLoadFailed'));
       } finally {
         loading.value = false;
       }
@@ -107,6 +121,7 @@ export default {
 
     return {
       router,
+      t,
       loading,
       moduleCards,
       hasLowcode,
@@ -116,7 +131,7 @@ export default {
       moduleDesc: button => button.desc,
       goModule: button => {
         if (button.status === 'later') {
-          message.info('二期开放');
+          message.info(t('common.phaseTwo'));
           return;
         }
         router.push(button.path || button.code);

@@ -4,8 +4,8 @@ import piniaPluginPersistedState from 'pinia-plugin-persistedstate';
 import Entry from './App.vue';
 import 'ant-design-vue/dist/reset.css';
 import '@surely-vue/table/dist/index.less';
-import dayjs from 'dayjs';
 import 'dayjs/locale/zh-cn';
+import 'dayjs/locale/en';
 import {
   Affix,
   Alert,
@@ -36,6 +36,7 @@ import {
   Pagination,
   Popconfirm,
   Popover,
+  Progress,
   Radio,
   Result,
   Row,
@@ -59,8 +60,8 @@ import { get, post } from '@/network/request';
 import NavigatorBar from '@/components/NavigatorBar';
 import router from '@/router';
 import license from '@/license';
+import { installI18n } from '@/i18n/index.js';
 
-dayjs.locale('zh-cn');
 setLicenseKey(license);
 
 const app = createApp(Entry)
@@ -82,6 +83,7 @@ const app = createApp(Entry)
   .use(Divider)
   .use(DatePicker)
   .use(Popover)
+  .use(Progress)
   .use(Select)
   .use(Checkbox)
   .use(Modal)
@@ -110,6 +112,8 @@ const app = createApp(Entry)
   .use(PageHeader);
 
 // 使用pinia
+installI18n(app);
+
 const pinia = createPinia();
 pinia.use(piniaPluginPersistedState);
 app.use(pinia);

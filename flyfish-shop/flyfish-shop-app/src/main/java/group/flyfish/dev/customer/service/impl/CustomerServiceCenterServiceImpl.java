@@ -18,6 +18,7 @@ import group.flyfish.dev.customer.domain.vo.CustomerMessageVo;
 import group.flyfish.dev.customer.domain.vo.CustomerServiceSummaryVo;
 import group.flyfish.dev.customer.repository.CustomerConversationRepository;
 import group.flyfish.dev.customer.repository.CustomerMessageRepository;
+import group.flyfish.dev.customer.service.CustomerPresenceRegistry;
 import group.flyfish.dev.customer.service.CustomerRealtimeNotifier;
 import group.flyfish.dev.customer.service.CustomerServiceCenterService;
 import group.flyfish.dev.shop.support.ShopAuthorizationUtils;
@@ -59,6 +60,7 @@ public class CustomerServiceCenterServiceImpl implements CustomerServiceCenterSe
     private final AuthUserGateway authUserGateway;
     private final SupportTicketService supportTicketService;
     private final CustomerRealtimeNotifier realtimeNotifier;
+    private final CustomerPresenceRegistry presenceRegistry;
 
     @Override
     public Mono<CustomerServiceSummaryVo> summary(PortalUserVo user) {
@@ -409,12 +411,24 @@ public class CustomerServiceCenterServiceImpl implements CustomerServiceCenterSe
                         .collectList()
                         .flatMap(list -> toMessageVos(view, managerView, list))
                         .map(messages -> new CustomerConversationDetailVo(
-                                new CustomerConversationVo(view, managerView), messages)));
+                                buildConversationVo(view, managerView), messages)));
     }
 
     private Mono<CustomerConversationVo> toConversationVo(CustomerConversation conversation, boolean managerView) {
         return toViewConversation(conversation)
-                .map(view -> new CustomerConversationVo(view, managerView));
+                .map(view -> buildConversationVo(view, managerView));
+    }
+
+    private CustomerConversationVo buildConversationVo(CustomerConversation conversation, boolean managerView) {
+        CustomerConversationVo vo = new CustomerConversationVo(conversation, managerView);
+        if (managerView && conversation.getUserId() != null && conversation.getUserId() > 0) {
+            boolean online = presenceRegistry.isCustomerOnline(conversation.getUserId());
+            vo.setOnline(online);
+            vo.setOnlineStatus(online ? "ONLINE" : "OFFLINE");
+            vo.setLastActiveTime(presenceRegistry.lastActiveTime(conversation.getUserId())
+                    .orElse(conversation.getLastInboundTime()));
+        }
+        return vo;
     }
 
     private Mono<CustomerConversation> toViewConversation(CustomerConversation conversation) {

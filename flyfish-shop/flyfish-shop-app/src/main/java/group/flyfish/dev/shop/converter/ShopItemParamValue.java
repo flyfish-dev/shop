@@ -27,6 +27,7 @@ public interface ShopItemParamValue {
             case GIT_REPOSITORY_ACCESS, GIT_REPOSITORY_DONATION_ACCESS -> gitRepositoryAccess(item.getParams());
             case DIGITAL_DOWNLOAD -> digitalDelivery(item.getParams());
             case LICENSE -> licenseDelivery(item.getParams(), item.getName());
+            case DONATION, SERVICE_PACKAGE -> throw new ServiceException("该商品类型无需交付参数！");
             default -> throw new ServiceException("商品信息异常！");
         };
     }

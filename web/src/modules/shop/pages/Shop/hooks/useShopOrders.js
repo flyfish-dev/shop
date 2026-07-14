@@ -1,8 +1,10 @@
 import { ref } from 'vue';
 import { getOrders } from '../apis/api.js';
 import { sortOrdersByNewest } from '@/modules/shop/utils/orderSort.js';
+import { useI18n } from 'vue-i18n';
 
 export function useShopOrders({ item, user }) {
+  const { t } = useI18n();
   const orders = ref([]);
   const ordersLoading = ref(false);
   const ordersError = ref('');
@@ -27,7 +29,7 @@ export function useShopOrders({ item, user }) {
     } catch (e) {
       if (requestSeq === ordersRequestSeq && item.value?.id === itemId) {
         orders.value = [];
-        ordersError.value = e.message || '购买记录加载失败';
+        ordersError.value = e.message || t('orders.loadFailed');
       }
     } finally {
       if (requestSeq === ordersRequestSeq) {

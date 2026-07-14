@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import useClientStore from '@/modules/auth/store/client.js';
+import { useI18n } from 'vue-i18n';
 import {
   getCustomerServiceSummary,
   getManagedCustomerConversation,
@@ -22,6 +23,7 @@ const CONNECT_TIMEOUT = 8000;
 
 export function useCustomerServiceChat() {
   const store = useClientStore();
+  const { t } = useI18n();
   const noticeOpen = ref(false);
   const chatOpen = ref(false);
   const loading = ref(false);
@@ -191,7 +193,7 @@ export function useCustomerServiceChat() {
       }
     } catch (e) {
       if (!silent) {
-        message.warning(e.message || '客服消息加载失败');
+        message.warning(e.message || t('customerService.chatLoadFailed'));
       }
     }
   };
@@ -216,7 +218,7 @@ export function useCustomerServiceChat() {
         detail.value = nextDetail;
       }
     } catch (e) {
-      message.warning(e.message || '客服会话加载失败');
+      message.warning(e.message || t('customerService.conversationLoadFailed'));
     }
   };
 
@@ -272,10 +274,10 @@ export function useCustomerServiceChat() {
           return;
         }
         if (payload.type === 'ERROR') {
-          message.warning(payload.message || '消息处理失败');
+          message.warning(payload.message || t('customerService.messageHandlingFailed'));
         }
       } catch (e) {
-        message.warning('消息解析失败');
+        message.warning(t('customerService.messageParseFailed'));
       } finally {
         loading.value = false;
         sending.value = false;
@@ -398,7 +400,7 @@ export function useCustomerServiceChat() {
     if (manager.value) {
       const conversationId = command.conversationId || selectedConversation.value?.id;
       if (!conversationId) {
-        message.warning('请先选择客户会话');
+        message.warning(t('customerService.chooseConversationFirst'));
         return;
       }
       const nextDetail = await sendManagedCustomerMessage(conversationId, body);
@@ -439,7 +441,7 @@ export function useCustomerServiceChat() {
     attachments.value = [];
     if (!socket || socket.readyState !== SOCKET_OPEN) {
       sendByHttp(command)
-        .catch(e => message.warning(e.message || '消息发送失败'))
+        .catch(e => message.warning(e.message || t('customerService.messageSendFailed')))
         .finally(() => {
           sending.value = false;
         });

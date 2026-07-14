@@ -3,6 +3,7 @@ package group.flyfish.dev.shop.controller;
 import group.flyfish.dev.shop.service.ShopContractService;
 import group.flyfish.dev.shop.service.ShopOrderService;
 import group.flyfish.dev.shop.service.ShopService;
+import group.flyfish.dev.shop.pricing.ShopPricingService;
 import group.flyfish.dev.shop.service.support.h5zhifu.bean.H5ZhiFuNotifyDto;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -27,7 +28,7 @@ class ShopControllerTest {
         ShopOrderService orderService = mock(ShopOrderService.class);
         when(orderService.handlePaymentNotify(any(H5ZhiFuNotifyDto.class))).thenReturn(Mono.empty());
         ShopController controller = new ShopController(mock(ShopService.class), orderService,
-                mock(ShopContractService.class));
+                mock(ShopContractService.class), mock(ShopPricingService.class));
 
         StepVerifier.create(controller.h5ZhiFuNotify(Map.of(
                         "app_id", 10001,
@@ -57,7 +58,7 @@ class ShopControllerTest {
         ShopOrderService orderService = mock(ShopOrderService.class);
         when(orderService.handlePaymentNotify(any(H5ZhiFuNotifyDto.class))).thenReturn(Mono.empty());
         ShopController controller = new ShopController(mock(ShopService.class), orderService,
-                mock(ShopContractService.class));
+                mock(ShopContractService.class), mock(ShopPricingService.class));
         MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest
                 .post("/shops/payments/h5zhifu/notify")
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)

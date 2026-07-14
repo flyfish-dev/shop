@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { downloadOrderDeliveryFile } from '@/modules/shop/pages/Shop/apis/api.js';
+import { useI18n } from 'vue-i18n';
 
 const fileKey = (delivery, file) => `${delivery?.orderNo || ''}:${file?.code || ''}`;
 
@@ -16,11 +17,12 @@ const saveBlob = (blob, filename) => {
 };
 
 export const useDeliveryFiles = () => {
+  const { t } = useI18n();
   const downloadingFileCode = ref('');
 
   const downloadDeliveryFile = async (delivery, file) => {
     if (!delivery?.orderNo || !file?.code) {
-      message.warning('缺少下载文件信息');
+      message.warning(t('orders.missingDownload'));
       return;
     }
     const key = fileKey(delivery, file);
@@ -28,9 +30,9 @@ export const useDeliveryFiles = () => {
     try {
       const blob = await downloadOrderDeliveryFile(delivery.orderNo, file.code);
       saveBlob(blob, file.name);
-      message.success('文件已开始下载');
+      message.success(t('orders.downloadStarted'));
     } catch (e) {
-      message.error(e.message || '文件下载失败');
+      message.error(e.message || t('orders.downloadFailed'));
     } finally {
       downloadingFileCode.value = '';
     }

@@ -3,6 +3,7 @@ import { nextTick, ref } from 'vue';
 import { FileMarkdownOutlined, SendOutlined, SmileOutlined } from '@ant-design/icons-vue';
 import AttachmentUpload from '@/components/Attachments/AttachmentUpload.vue';
 import CustomerImageUploadButton from './CustomerImageUploadButton.vue';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
   input: String,
@@ -25,6 +26,7 @@ const emit = defineEmits([
   'uploading-change',
   'send'
 ]);
+const { t } = useI18n();
 
 const emojiOpen = ref(false);
 
@@ -71,7 +73,7 @@ const handleKeydown = event => {
           <template #content>
             <emoji-picker class='emoji-picker' @emoji-click='appendEmoji' />
           </template>
-          <a-tooltip title='表情'>
+          <a-tooltip :title="t('customerService.emoji')">
             <a-button size='small' @click='openEmoji'>
               <template #icon><smile-outlined /></template>
             </a-button>

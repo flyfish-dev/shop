@@ -1,16 +1,20 @@
 <template>
   <a-card>
     <template #title>
-      <navigator-bar>功能未完成</navigator-bar>
+      <navigator-bar>{{ t('home.blankTitle') }}</navigator-bar>
     </template>
-    <div class="content">🚧施工中，敬请期待！</div>
+    <div class="content">{{ t('home.blankContent') }}</div>
   </a-card>
 </template>
 
-<script>
-export default {
+<script setup>
+import { useI18n } from 'vue-i18n';
+
+defineOptions({
   name: 'BlankContent'
-}
+});
+
+const { t } = useI18n();
 </script>
 
 <style scoped>

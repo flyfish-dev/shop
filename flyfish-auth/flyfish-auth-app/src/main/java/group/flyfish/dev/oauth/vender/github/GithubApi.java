@@ -31,7 +31,11 @@ public class GithubApi extends DefaultApi20 {
 
     @Override
     public String getAccessTokenEndpoint() {
-        return getServer() + "/login/oauth/access_token";
+        return Optional.ofNullable(OAuthProperties.instance())
+                .map(OAuthProperties::getGithub)
+                .map(OAuthProperties.Github::getTokenUrl)
+                .filter(StringUtils::isNotBlank)
+                .orElseGet(() -> getServer() + "/login/oauth/access_token");
     }
 
     @Override

@@ -4,6 +4,7 @@ import {
   FileTextOutlined,
 } from '@ant-design/icons-vue';
 import { ticketStatusColor, ticketStatusText } from '@/modules/shop/utils/supportTickets.js';
+import { useI18n } from 'vue-i18n';
 
 defineProps({
   open: Boolean,
@@ -15,6 +16,7 @@ defineProps({
 });
 
 const emit = defineEmits(['update:open', 'open-tickets']);
+const { t } = useI18n();
 
 const close = () => emit('update:open', false);
 </script>
@@ -31,7 +33,7 @@ const close = () => emit('update:open', false);
     <template #title>
       <div class='notice-title'>
         <bell-outlined />
-        <span>工单提醒</span>
+        <span>{{ t('customerService.ticketNotifications') }}</span>
         <a-badge v-if='ticketUnreadCount' :count='ticketUnreadCount' :overflow-count='99' />
       </div>
     </template>
@@ -39,7 +41,7 @@ const close = () => emit('update:open', false);
     <div class='notice-panel'>
       <section class='notice-section'>
         <div class='notice-section-head'>
-          <span><file-text-outlined /> 未读工单</span>
+          <span><file-text-outlined /> {{ t('customerService.unreadTickets') }}</span>
           <a-badge :count='ticketUnreadCount' :overflow-count='99' />
         </div>
         <div v-if='tickets.length' class='notice-list'>
@@ -52,15 +54,15 @@ const close = () => emit('update:open', false);
           >
             <span class='notice-main'>
               <strong>{{ ticket.title }}</strong>
-              <small>{{ ticket.ticketNo }} · {{ ticket.lastMessage || '有新的工单消息' }}</small>
+              <small>{{ ticket.ticketNo }} · {{ ticket.lastMessage || t('customerService.newTicketMessage') }}</small>
             </span>
             <span class='notice-side'>
-              <a-tag :color='ticketStatusColor(ticket.status)'>{{ ticketStatusText(ticket.status) }}</a-tag>
+              <a-tag :color='ticketStatusColor(ticket.status)'>{{ ticketStatusText(ticket.status, t) }}</a-tag>
               <a-badge :count='ticket.unreadCount' :overflow-count='99' />
             </span>
           </button>
         </div>
-        <a-empty v-else class='notice-empty' description='暂无未读工单' />
+        <a-empty v-else class='notice-empty' :description="t('customerService.noUnreadTickets')" />
       </section>
     </div>
   </a-drawer>

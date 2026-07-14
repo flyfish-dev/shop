@@ -1,4 +1,5 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { sendEmailMagicLink } from '@/modules/auth/pages/Login/api';
 
 const EMAIL_PATTERN = /^[a-zA-Z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/;
@@ -49,12 +50,13 @@ const pickCooldownSeconds = result => {
 
 const parseCooldownFromError = error => {
   const message = error?.message || '';
-  const matched = message.match(/(\d+)\s*秒/);
+  const matched = message.match(/(\d+)\s*(?:秒|seconds?)/i);
   return matched ? Number(matched[1]) : 0;
 };
 
 export function useEmailMagicLink({ emailEnabled, redirect }) {
-  const emailLoginOpen = ref(false);
+  const { locale, t } = useI18n();
+  const emailLoginOpen = ref(true);
   const emailAddress = ref('');
   const emailSending = ref(false);
   const emailNotice = ref('');
@@ -67,7 +69,9 @@ export function useEmailMagicLink({ emailEnabled, redirect }) {
 
   const emailCanSend = computed(() => emailEnabled.value && !emailSending.value && emailCooldown.value <= 0);
   const emailSendButtonText = computed(() => (
-    emailCooldown.value > 0 ? `${emailCooldown.value}s 后重发` : '发送验证邮件'
+    emailCooldown.value > 0
+      ? t('auth.email.resendIn', { seconds: emailCooldown.value })
+      : t('auth.email.send')
   ));
 
   const clearCooldownTimer = () => {
@@ -124,13 +128,13 @@ export function useEmailMagicLink({ emailEnabled, redirect }) {
     }
     const email = normalizeEmail(emailAddress.value);
     if (!EMAIL_PATTERN.test(email)) {
-      emailNotice.value = '请输入正确的邮箱地址';
+      emailNotice.value = t('auth.email.invalid');
       emailNoticeType.value = 'error';
       return;
     }
     syncCooldownFromStorage(email);
     if (emailCooldown.value > 0) {
-      emailNotice.value = `验证邮件已发送，请 ${emailCooldown.value} 秒后再试`;
+      emailNotice.value = t('auth.email.cooldown', { seconds: emailCooldown.value });
       emailNoticeType.value = 'info';
       return;
     }
@@ -143,14 +147,14 @@ export function useEmailMagicLink({ emailEnabled, redirect }) {
         redirect: redirect.value
       });
       startCooldown(email, pickCooldownSeconds(result));
-      emailNotice.value = `验证邮件已发送至 ${result?.maskedEmail || email}`;
+      emailNotice.value = t('auth.email.sent', { email: result?.maskedEmail || email });
       emailNoticeType.value = 'success';
     } catch (e) {
       const cooldown = parseCooldownFromError(e);
       if (cooldown > 0) {
         startCooldown(email, cooldown);
       }
-      emailNotice.value = e.message || '验证邮件发送失败，请稍后重试';
+      emailNotice.value = locale.value === 'zh-CN' && e.message ? e.message : t('auth.email.failed');
       emailNoticeType.value = 'error';
     } finally {
       emailSending.value = false;

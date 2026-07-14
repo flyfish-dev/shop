@@ -67,8 +67,8 @@ class EmailMagicLinkServiceTest {
         EmailMagicLinkRequest request = new EmailMagicLinkRequest();
         request.setEmail("user@example.com");
         MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest
-                .post("https://api.example.com/email/magic-links")
-                .header("Origin", "https://shop.example.com")
+                .post("https://api.flyfish.group/email/magic-links")
+                .header("Origin", "https://dev.flyfish.group")
                 .build());
 
         StepVerifier.create(service.send(request, null, exchange))
@@ -76,7 +76,7 @@ class EmailMagicLinkServiceTest {
                 .verifyComplete();
 
         assertThat(mailSender.lastMessage.getText())
-                .contains("https://shop.example.com/email/magic-links/consume?token=signed-token")
+                .contains("https://dev.flyfish.group/email/magic-links/consume?token=signed-token")
                 .doesNotContain("127.0.0.1:9999");
     }
 
@@ -146,7 +146,7 @@ class EmailMagicLinkServiceTest {
 
     private EmailMagicLinkProperties properties() {
         EmailMagicLinkProperties properties = new EmailMagicLinkProperties();
-        properties.setBaseUrl("https://shop.example.com");
+        properties.setBaseUrl("https://dev.flyfish.group");
         properties.setFrom("noreply@flyfish.group");
         properties.setExpiresIn(Duration.ofMinutes(15));
         return properties;

@@ -1,8 +1,9 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { message } from 'ant-design-vue';
+import { message, Upload } from 'ant-design-vue';
 import { PaperClipOutlined } from '@ant-design/icons-vue';
 import { PortalFiles } from '@/modules/auth/api.js';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
   value: {
@@ -17,6 +18,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['update:value', 'uploading-change']);
+const { t } = useI18n();
 
 const MAX_SIZE = 20 * 1024 * 1024;
 const fileList = ref([]);
@@ -26,14 +28,7 @@ const uploading = computed(() => uploadingCount.value > 0);
 
 watch(uploading, value => emit('uploading-change', value));
 
-watch(() => props.value, value => {
-  if (!value?.length) {
-    fileList.value = [];
-  }
-});
-
-const emitValue = () => {
-  emit('update:value', fileList.value
+const uploadedAttachments = files => files
     .filter(file => file.status === 'done' && (file.response?.url || file.url))
     .map(file => file.response || {
       id: file.uid,
@@ -42,13 +37,40 @@ const emitValue = () => {
       size: file.size,
       contentType: file.type,
       image: file.type?.startsWith('image/')
-    }));
+    });
+
+const attachmentKey = attachment => String(attachment?.id || attachment?.url || '');
+
+const sameAttachments = (left, right) => left.length === right.length
+  && left.every((attachment, index) => attachmentKey(attachment) === attachmentKey(right[index]));
+
+const toUploadFile = (attachment, index) => ({
+  uid: attachmentKey(attachment) || `attachment-${index}`,
+  name: attachment.name || 'attachment',
+  status: 'done',
+  url: attachment.url,
+  size: attachment.size,
+  type: attachment.contentType,
+  response: attachment
+});
+
+watch(() => props.value, value => {
+  const attachments = Array.isArray(value) ? value : [];
+  // Upload emits an intermediate "uploading" list before a response exists. Keep that
+  // local state unless the parent actually changed its completed attachment collection.
+  if (!sameAttachments(uploadedAttachments(fileList.value), attachments)) {
+    fileList.value = attachments.map(toUploadFile);
+  }
+}, { immediate: true, deep: true });
+
+const emitValue = () => {
+  emit('update:value', uploadedAttachments(fileList.value));
 };
 
 const beforeUpload = file => {
   if (file.size > MAX_SIZE) {
-    message.error('附件不能超过 20MB');
-    return false;
+    message.error(t('attachments.tooLarge'));
+    return Upload.LIST_IGNORE;
   }
   return true;
 };
@@ -61,20 +83,18 @@ const uploadFile = async options => {
     const attachment = await PortalFiles.upload(form);
     options.onSuccess?.(attachment);
   } catch (e) {
-    message.error(e.message || '附件上传失败');
+    message.error(e.message || t('attachments.uploadFailed'));
     options.onError?.(e);
   } finally {
     uploadingCount.value = Math.max(0, uploadingCount.value - 1);
   }
 };
 
-const handleChange = ({ fileList: next }) => {
+const handleChange = ({ file, fileList: next }) => {
   fileList.value = next.slice(-props.maxCount);
-  emitValue();
-};
-
-const handleRemove = () => {
-  queueMicrotask(emitValue);
+  if (file.status && file.status !== 'uploading') {
+    emitValue();
+  }
 };
 </script>
 
@@ -87,11 +107,10 @@ const handleRemove = () => {
     :before-upload='beforeUpload'
     :custom-request='uploadFile'
     @change='handleChange'
-    @remove='handleRemove'
   >
     <a-button size='small' :disabled='disabled'>
       <template #icon><paper-clip-outlined /></template>
-      附件
+      {{ t('attachments.label') }}
     </a-button>
   </a-upload>
 </template>

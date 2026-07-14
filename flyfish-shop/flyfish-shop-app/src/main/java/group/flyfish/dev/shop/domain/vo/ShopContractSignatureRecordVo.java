@@ -18,6 +18,8 @@ public class ShopContractSignatureRecordVo {
 
     private Long itemId;
 
+    private Long skuId;
+
     private Long buyerId;
 
     private Long contractId;

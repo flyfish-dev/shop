@@ -30,14 +30,27 @@ user:
       - /shops/managements/**
 
 shop:
+  pricing:
+    cny-per-usd: ${SHOP_PRICING_CNY_PER_USD:6.78}
   payment:
     h5zhifu:
+      enabled: ${H5ZHIFU_ENABLED:false}
       api-base-url: ${H5ZHIFU_API_BASE_URL:https://open.h5zhifu.com/api}
       app-id: ${H5ZHIFU_APP_ID:}
       key: ${H5ZHIFU_KEY:}
       notify-url: ${H5ZHIFU_NOTIFY_URL:https://api.example.com/shops/payments/h5zhifu/notify}
       default-pay-type: ${H5ZHIFU_DEFAULT_PAY_TYPE:wechat}
+      enabled-pay-types: ${H5ZHIFU_ENABLED_PAY_TYPES:wechat}
       default-trade-type: ${H5ZHIFU_DEFAULT_TRADE_TYPE:native}
+    stripe:
+      enabled: ${STRIPE_ENABLED:false}
+      api-base-url: ${STRIPE_API_BASE_URL:https://api.stripe.com}
+      secret-key: ${STRIPE_SECRET_KEY:}
+      webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+      default-currency: ${STRIPE_DEFAULT_CURRENCY:cny}
+      portal-base-url: ${STRIPE_PORTAL_BASE_URL:https://shop.example.com}
+      automatic-tax-enabled: ${STRIPE_AUTOMATIC_TAX_ENABLED:false}
+      checkout-expires-minutes: ${STRIPE_CHECKOUT_EXPIRES_MINUTES:30}
 
 support:
   notification:
@@ -50,4 +63,4 @@ support:
     wechat:
       enabled: ${SUPPORT_NOTIFICATION_WECHAT_ENABLED:false}
       admin-openids: ${SUPPORT_NOTIFICATION_WECHAT_ADMIN_OPENIDS:}
-      maintainer-gitea-openid: ${SUPPORT_NOTIFICATION_MAINTAINER_GITEA_OPENID:1}
+      maintainer-gitea-openid: ${SUPPORT_NOTIFICATION_MAINTAINER_GITEA_OPENID:}

@@ -8,6 +8,8 @@
     "prebuild": "node scripts/sync-file-viewer.mjs",
     "test:architecture": "node scripts/check-architecture.mjs",
     "test:build-artifacts": "node scripts/check-build-artifacts.mjs",
+    "test:oauth-intent": "node --test scripts/test-oauth-login-intent.mjs",
+    "test:shop-i18n": "node --test scripts/test-shop-order-form-i18n.mjs",
     "test:route-smoke": "node scripts/smoke-route-capabilities.mjs",
     "build": "vite build",
     "preview": "vite preview"
@@ -24,7 +26,8 @@
     "pinia-plugin-persistedstate": "^3.2.1",
     "qs": "^6.11.2",
     "sortablejs": "^1.15.2",
-    "vue": "^3.4.15"
+    "vue": "^3.4.15",
+    "vue-i18n": "^11.4.6"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.3",

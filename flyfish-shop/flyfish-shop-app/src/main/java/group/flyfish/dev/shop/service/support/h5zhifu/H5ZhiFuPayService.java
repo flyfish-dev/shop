@@ -47,8 +47,19 @@ public class H5ZhiFuPayService implements PayService {
     private final H5ZhiFuProperties properties;
 
     @Override
+    public String providerCode() {
+        return PROVIDER;
+    }
+
+    @Override
     public Mono<ShopOrderPaymentVo> pay(ShopOrder order, ShopItem item, ShopOrderDto request) {
+        if (!"CNY".equalsIgnoreCase(StringUtils.defaultIfBlank(order.getCurrency(), "CNY"))) {
+            throw new ServiceException("国内支付仅支持人民币订单");
+        }
         PayRequestContext context = resolveRequest(request);
+        if (!properties.isPayTypeEnabled(context.payType().name())) {
+            throw new ServiceException("该支付渠道尚未开通");
+        }
         validateConfig();
         H5ZhiFuPayDto dto = buildPayDto(order, item, context);
         dto.setSign(H5ZhiFuSigner.sign(dto, properties.getKey()));
@@ -139,8 +150,7 @@ public class H5ZhiFuPayService implements PayService {
     }
 
     private void validateConfig() {
-        if (properties.getAppId() == null || StringUtils.isBlank(properties.getKey())
-                || StringUtils.isBlank(properties.getNotifyUrl())) {
+        if (!properties.isConfigured()) {
             throw new ServiceException("H5支付配置不完整，请配置 shop.payment.h5zhifu.app-id/key/notify-url");
         }
     }

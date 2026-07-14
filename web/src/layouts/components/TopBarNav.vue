@@ -1,6 +1,7 @@
 <script setup>
 import { BookFilled, FileTextFilled, ShopFilled } from '@ant-design/icons-vue';
 import { onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { usePortalCapabilities } from '@/modules/portal/usePortalCapabilities.js';
 
 defineProps({
@@ -10,7 +11,8 @@ defineProps({
   }
 });
 
-const { hasShop, shopEntryName, shopEntryPath, loadPortalCapabilities } = usePortalCapabilities();
+const { hasShop, shopEntryPath, loadPortalCapabilities } = usePortalCapabilities();
+const { t } = useI18n();
 
 onMounted(() => {
   loadPortalCapabilities().catch(() => {});
@@ -18,18 +20,18 @@ onMounted(() => {
 </script>
 
 <template>
-  <nav class='nav-items' :class='{ interactive }' aria-label='常用入口'>
+  <nav class='nav-items' :class='{ interactive }' :aria-label="t('nav.commonEntries')">
     <router-link v-if='hasShop' :href="shopEntryPath" class='nav-link shop-nav-link'>
       <ShopFilled />
-      <span>{{ shopEntryName }}</span>
+      <span>{{ t('nav.market') }}</span>
     </router-link>
     <a class='nav-link' href='https://blog.flyfish.dev' target='_blank' rel='noreferrer'>
       <BookFilled />
-      <span>博客</span>
+      <span>{{ t('nav.blog') }}</span>
     </a>
     <a class='nav-link' href='https://viewer.flyfish.dev' target='_blank' rel='noreferrer'>
       <FileTextFilled />
-      <span>文件预览</span>
+      <span>{{ t('nav.filePreview') }}</span>
     </a>
   </nav>
 </template>

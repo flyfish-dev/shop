@@ -39,6 +39,10 @@ public class ShopItem extends AuditDomain {
     @Property("商品价格")
     private BigDecimal price;
 
+    @Property("手工美元价格")
+    @Column("usd_price")
+    private BigDecimal usdPrice;
+
     @Property("商品分组id")
     @Column("group_id")
     private Long groupId;
@@ -66,6 +70,9 @@ public class ShopItem extends AuditDomain {
 
     @Property("商品描述")
     private String description;
+
+    @Property("商品多语言内容")
+    private String i18n;
 
     @Property("排序")
     private Integer sort;
@@ -95,11 +102,29 @@ public class ShopItem extends AuditDomain {
     @Column("default_coupon_code")
     private String defaultCouponCode;
 
+    @Property("SKU模式")
+    @Column("sku_mode")
+    private SkuMode skuMode;
+
+    @Getter
+    public enum SkuMode {
+
+        SINGLE("单SKU"),
+        MULTI("多SKU");
+
+        private final String title;
+
+        SkuMode(String title) {
+            this.title = title;
+        }
+    }
+
     @Getter
     public enum Type {
 
         GIT_REPOSITORY_ACCESS("Git 仓库开通", DeliveryMode.AUTOMATIC, Set.of(DeliveryMode.AUTOMATIC)),
         GIT_REPOSITORY_DONATION_ACCESS("Git 仓库打赏开通", DeliveryMode.AUTOMATIC, Set.of(DeliveryMode.AUTOMATIC)),
+        DONATION("自由打赏", DeliveryMode.NONE, Set.of(DeliveryMode.NONE)),
 
         DIGITAL_DOWNLOAD("数字下载", DeliveryMode.AUTOMATIC,
                 Set.of(DeliveryMode.AUTOMATIC, DeliveryMode.MANUAL, DeliveryMode.NONE)),

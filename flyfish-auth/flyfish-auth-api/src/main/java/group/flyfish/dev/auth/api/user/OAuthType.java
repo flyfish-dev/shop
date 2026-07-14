@@ -14,7 +14,9 @@ public enum OAuthType {
     WECHAT("wechat", "微信"),
     GITEA("gitea", "飞鱼开源"),
     GITEE("gitee", "码云"),
-    GITHUB("github", "GitHub");
+    GITHUB("github", "GitHub"),
+    GOOGLE("google", "Google"),
+    MICROSOFT("microsoft", "Microsoft");
 
     private final String code;
 

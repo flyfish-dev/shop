@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
 import { message } from 'ant-design-vue';
+import dayjs from 'dayjs';
 import { storeToRefs } from 'pinia';
 import {
   CopyOutlined,
@@ -15,12 +16,14 @@ import {
 } from '@ant-design/icons-vue';
 import RouterLink from '@/components/RouterLink/index.vue';
 import AttachmentList from '@/components/Attachments/AttachmentList.vue';
+import AttachmentUpload from '@/components/Attachments/AttachmentUpload.vue';
 import { openCustomerService } from '@/modules/shop/components/CustomerService/customerServiceBus.js';
-import { getOrders } from '../../apis/api.js';
+import { getOrders, getShopItems } from '../../apis/api.js';
 import { getOrderDelivery, retryOrderDelivery, updateOrderDelivery } from '../../apis/manage.js';
 import { useDeliveryFiles } from '../../hooks/useDeliveryFiles.js';
 import useClientStore from '@/modules/auth/store/client.js';
 import { sortOrdersByNewest } from '@/modules/shop/utils/orderSort.js';
+import { formatRevenueBreakdown, formatShopMoney, normalizeShopCurrency } from '@/modules/shop/utils/shopMoney.js';
 import {
   deliveryModeColor,
   deliveryModeText,
@@ -33,8 +36,10 @@ import {
 const loading = ref(false);
 const saving = ref(false);
 const deliveryLoading = ref(false);
+const deliveryUploading = ref(false);
 const retryingOrderNo = ref('');
 const dataSource = ref([]);
+const orderItemOptions = ref([]);
 const detailOpen = ref(false);
 const deliveryOpen = ref(false);
 const deliveryVisible = ref(false);
@@ -47,7 +52,10 @@ const { downloadingFileCode, downloadDeliveryFile, fileKey } = useDeliveryFiles(
 
 const formState = reactive({
   deliveryStatus: 'SUCCESS',
-  deliveryMessage: ''
+  deliveryMessage: '',
+  deliveryTitle: '',
+  deliveryContent: '',
+  deliveryAttachments: []
 });
 
 const pagination = reactive({
@@ -56,40 +64,93 @@ const pagination = reactive({
   total: 0
 });
 
+const filterState = reactive({
+  itemId: undefined,
+  deliveryStatus: undefined,
+  timeRange: []
+});
+
+const deliveryStatusOptions = [
+  { label: '待交付', value: 'WAITING' },
+  { label: '交付中', value: 'PROCESSING' },
+  { label: '交付成功', value: 'SUCCESS' },
+  { label: '交付失败', value: 'FAILED' },
+  { label: '已跳过', value: 'SKIPPED' }
+];
+
+const itemSelectOptions = computed(() => orderItemOptions.value.map(item => ({
+  label: item.name || `商品 ${item.id}`,
+  value: item.id
+})));
+
 const pagedOrders = computed(() => {
   const start = (pagination.current - 1) * pagination.pageSize;
   return dataSource.value.slice(start, start + pagination.pageSize);
 });
-const detailDrawerWidth = computed(() => width.value < 720 ? '100%' : 760);
+const detailDrawerWidth = computed(() => {
+  if (width.value < 720) {
+    return '100%';
+  }
+  return width.value < 1180 ? Math.min(width.value - 48, 860) : 920;
+});
 const deliveryDrawerWidth = computed(() => width.value < 720 ? '100%' : 820);
 
 const summary = computed(() => {
   const orders = dataSource.value;
   const paidOrders = orders.filter(order => ['PAID', 'DELIVERED', 'FAILED'].includes(order.status));
   const failedDeliveries = orders.filter(order => order.deliveryStatus === 'FAILED');
-  const revenue = paidOrders.reduce((sum, order) => sum + Number(order.amount || 0), 0);
+  const revenue = paidOrders.reduce((sum, order) => {
+    sum[normalizeShopCurrency(order.currency)] += Number(order.amount || 0);
+    return sum;
+  }, { CNY: 0, USD: 0 });
   return {
     total: orders.length,
     paid: paidOrders.length,
     delivered: orders.filter(order => order.status === 'DELIVERED').length,
     failedDeliveries: failedDeliveries.length,
-    revenue: revenue.toFixed(2)
+    revenue: formatRevenueBreakdown(revenue.CNY, revenue.USD)
   };
 });
 
-const money = value => Number(value || 0).toFixed(2);
+const normalizedText = value => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  return String(value).trim();
+};
+
+const orderProductName = record => record?.displayName || record?.itemName || `商品 ${record?.itemId || '-'}`;
+
+const orderSkuText = record => {
+  if (!record?.skuName) {
+    return '-';
+  }
+  return record.skuCode ? `${record.skuName}（${record.skuCode}）` : record.skuName;
+};
+
+const orderContactText = record => record?.buyerPhone || record?.buyerEmail || '-';
+
+const orderWechatNo = record => normalizedText(record?.outerNo)
+  || normalizedText(record?.wechatTransactionId)
+  || normalizedText(record?.properties?.wechatTransactionId)
+  || normalizedText(record?.properties?.wechat_transaction_id);
+
+const orderMerchantNo = record => normalizedText(record?.transactionCode)
+  || normalizedText(record?.properties?.h5zhifuTradeNo)
+  || normalizedText(record?.properties?.tradeNo);
 
 const deliveryTypeText = type => {
   if (type === 'LICENSE') return '授权许可';
   if (type === 'DIGITAL') return '数字内容';
+  if (type === 'MIXED') return '组合交付';
   return type || '交付内容';
 };
 const hasDeliveryFiles = delivery => Boolean((delivery?.files || []).length);
 const isSensitiveDelivery = delivery => delivery?.sensitive === true;
+const hasDeliveryContent = delivery => Boolean(delivery?.content && delivery.content !== delivery.securityMessage);
 
 const canUpdateDelivery = record => {
-  return !['PENDING', 'PAYING', 'CLOSED'].includes(record.status)
-    && record.deliveryStatus !== 'SUCCESS';
+  return !['PENDING', 'PAYING', 'CLOSED'].includes(record.status);
 };
 
 const canRetryDelivery = record => record?.deliveryRetryable === true;
@@ -104,10 +165,34 @@ const retryButtonText = record => {
   return record?.deliveryFailureTaskName ? `重试${record.deliveryFailureTaskName}` : '重试自动交付';
 };
 
+const formatRangeTime = value => value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : undefined;
+
+const buildOrderQuery = () => {
+  const [startTime, endTime] = filterState.timeRange || [];
+  return {
+    itemId: filterState.itemId,
+    deliveryStatus: filterState.deliveryStatus,
+    startTime: formatRangeTime(startTime),
+    endTime: formatRangeTime(endTime)
+  };
+};
+
+const loadOrderItems = async () => {
+  try {
+    orderItemOptions.value = await getShopItems({
+      page: 0,
+      size: 200,
+      includeDisabled: true
+    });
+  } catch (e) {
+    orderItemOptions.value = [];
+  }
+};
+
 const loadData = async () => {
   loading.value = true;
   try {
-    const records = await getOrders();
+    const records = await getOrders(buildOrderQuery());
     dataSource.value = sortOrdersByNewest(records);
     pagination.total = records.page?.total ?? dataSource.value.length;
     if ((pagination.current - 1) * pagination.pageSize >= pagination.total) {
@@ -120,6 +205,19 @@ const loadData = async () => {
   } finally {
     loading.value = false;
   }
+};
+
+const applyFilters = () => {
+  pagination.current = 1;
+  loadData();
+};
+
+const resetFilters = () => {
+  filterState.itemId = undefined;
+  filterState.deliveryStatus = undefined;
+  filterState.timeRange = [];
+  pagination.current = 1;
+  loadData();
 };
 
 const handlePageChange = (page, pageSize) => {
@@ -136,6 +234,9 @@ const openDelivery = record => {
   currentOrder.value = record;
   formState.deliveryStatus = 'SUCCESS';
   formState.deliveryMessage = '';
+  formState.deliveryTitle = '';
+  formState.deliveryContent = '';
+  formState.deliveryAttachments = [];
   deliveryVisible.value = true;
 };
 
@@ -184,6 +285,10 @@ const submitDelivery = async () => {
   if (!currentOrder.value?.orderNo) {
     return;
   }
+  if (deliveryUploading.value) {
+    message.warning('附件上传完成后再提交');
+    return;
+  }
   saving.value = true;
   try {
     await updateOrderDelivery(currentOrder.value.orderNo, { ...formState });
@@ -214,7 +319,12 @@ const retryDelivery = async record => {
   }
 };
 
-onMounted(loadData);
+onMounted(async () => {
+  await Promise.all([
+    loadOrderItems(),
+    loadData()
+  ]);
+});
 </script>
 
 <template>
@@ -241,7 +351,7 @@ onMounted(loadData);
         <a-statistic title="已交付" :value="summary.delivered" />
       </a-card>
       <a-card :bordered="false">
-        <a-statistic title="实收金额" :value="summary.revenue" prefix="¥" />
+        <a-statistic title="实收金额" :value="summary.revenue" />
       </a-card>
     </section>
 
@@ -254,6 +364,34 @@ onMounted(loadData);
     />
 
     <a-card class="orders-panel" :bordered="false">
+      <section class="order-filters">
+        <a-select
+          v-model:value="filterState.itemId"
+          class="filter-item"
+          show-search
+          allow-clear
+          option-filter-prop="label"
+          placeholder="按商品筛选"
+          :options="itemSelectOptions"
+        />
+        <a-select
+          v-model:value="filterState.deliveryStatus"
+          class="filter-status"
+          allow-clear
+          placeholder="按交付状态筛选"
+          :options="deliveryStatusOptions"
+        />
+        <a-range-picker
+          v-model:value="filterState.timeRange"
+          class="filter-range"
+          show-time
+          format="YYYY-MM-DD HH:mm:ss"
+        />
+        <a-space class="filter-actions">
+          <a-button type="primary" @click="applyFilters">筛选</a-button>
+          <a-button @click="resetFilters">重置</a-button>
+        </a-space>
+      </section>
       <a-spin :spinning="loading">
         <a-empty v-if="!pagedOrders.length && !loading" description="暂无订单记录" />
         <a-list v-else class="orders-list" :data-source="pagedOrders" item-layout="vertical">
@@ -272,8 +410,8 @@ onMounted(loadData);
                     </div>
                   </div>
                   <div class="amount-cell">
-                    <strong>¥{{ money(item.amount) }}</strong>
-                    <span v-if="Number(item.discountAmount || 0) > 0">已优惠 ¥{{ money(item.discountAmount) }}</span>
+                    <strong>{{ formatShopMoney(item.amount, item.currency) }}</strong>
+                    <span v-if="Number(item.discountAmount || 0) > 0">已优惠 {{ formatShopMoney(item.discountAmount, item.currency) }}</span>
                     <span v-else>实付金额</span>
                   </div>
                 </div>
@@ -282,8 +420,9 @@ onMounted(loadData);
                   <div class="goods-line">
                     <span class="goods-icon"><shopping-cart-outlined /></span>
                     <router-link :href="`/shop/detail/${item.itemId}`">
-                      {{ item.itemName || `商品 ${item.itemId}` }}
+                      {{ orderProductName(item) }}
                     </router-link>
+                    <a-tag v-if="item.skuName" color="cyan">{{ item.skuName }}</a-tag>
                     <a-tag>数量 x{{ item.count || 1 }}</a-tag>
                   </div>
 
@@ -299,16 +438,37 @@ onMounted(loadData);
                   </a-space>
 
                   <div class="order-meta">
-                    <span>订单号 {{ item.orderNo }}</span>
-                    <a-button type="link" size="small" @click="copyText(item.orderNo)">
-                      <template #icon><copy-outlined /></template>
-                      复制
-                    </a-button>
-                    <span v-if="item.transactionCode">流水号 {{ item.transactionCode }}</span>
                     <span v-if="item.paymentProvider">支付 {{ item.paymentProvider }}</span>
                     <span>创建 {{ item.createTime }}</span>
                     <span v-if="item.paidTime">支付 {{ item.paidTime }}</span>
                     <span v-if="item.expireTime && ['PENDING', 'PAYING'].includes(item.status)">过期 {{ item.expireTime }}</span>
+                  </div>
+
+                  <div class="order-number-strip">
+                    <div class="order-number-item">
+                      <span>飞鱼订单号</span>
+                      <strong class="mono-value">{{ item.orderNo }}</strong>
+                      <a-button type="link" size="small" @click="copyText(item.orderNo)">
+                        <template #icon><copy-outlined /></template>
+                        复制
+                      </a-button>
+                    </div>
+                    <div v-if="orderWechatNo(item)" class="order-number-item order-number-item--wechat">
+                      <span>渠道交易单号</span>
+                      <strong class="mono-value">{{ orderWechatNo(item) }}</strong>
+                      <a-button type="link" size="small" @click="copyText(orderWechatNo(item))">
+                        <template #icon><copy-outlined /></template>
+                        复制
+                      </a-button>
+                    </div>
+                    <div v-if="orderMerchantNo(item)" class="order-number-item">
+                      <span>支付会话 / 商户单号</span>
+                      <strong class="mono-value">{{ orderMerchantNo(item) }}</strong>
+                      <a-button type="link" size="small" @click="copyText(orderMerchantNo(item))">
+                        <template #icon><copy-outlined /></template>
+                        复制
+                      </a-button>
+                    </div>
                   </div>
 
                   <p v-if="item.deliveryMessage" class="delivery-message">{{ item.deliveryMessage }}</p>
@@ -367,56 +527,170 @@ onMounted(loadData);
 
     <a-drawer v-model:open="detailOpen" class="order-manage-drawer" title="订单详情" :width="detailDrawerWidth">
       <div v-if="selectedOrder" class="detail-drawer">
-        <a-descriptions bordered size="small" :column="{ xs: 1, sm: 1, md: 2 }">
-          <a-descriptions-item label="订单号">
-            <a-space>
-              <span>{{ selectedOrder.orderNo }}</span>
-              <a-button type="link" size="small" @click="copyText(selectedOrder.orderNo)">复制</a-button>
+        <section class="detail-summary-panel">
+          <div class="detail-summary-main">
+            <span class="detail-kicker">飞鱼订单号</span>
+            <div class="copy-value copy-value--large">
+              <span class="mono-value">{{ selectedOrder.orderNo }}</span>
+              <a-button type="link" size="small" @click="copyText(selectedOrder.orderNo)">
+                <template #icon><copy-outlined /></template>
+                复制
+              </a-button>
+            </div>
+            <h3>{{ orderProductName(selectedOrder) }}</h3>
+            <a-space wrap>
+              <a-tag :color="orderStatusColor(selectedOrder.status)">
+                {{ orderStatusText(selectedOrder.status) }}
+              </a-tag>
+              <a-tag :color="deliveryModeColor(selectedOrder.deliveryMode)">
+                {{ selectedOrder.deliveryModeName || deliveryModeText(selectedOrder.deliveryMode) }}
+              </a-tag>
+              <a-tag :color="deliveryStatusColor(selectedOrder.deliveryStatus)">
+                {{ deliveryStatusText(selectedOrder.deliveryStatus, selectedOrder.deliveryMode) }}
+              </a-tag>
             </a-space>
-          </a-descriptions-item>
-          <a-descriptions-item label="订单状态">
-            <a-tag :color="orderStatusColor(selectedOrder.status)">
-              {{ orderStatusText(selectedOrder.status) }}
-            </a-tag>
-          </a-descriptions-item>
-          <a-descriptions-item label="商品">
-            {{ selectedOrder.itemName || `商品 ${selectedOrder.itemId}` }}
-          </a-descriptions-item>
-          <a-descriptions-item label="商品类型">
-            {{ selectedOrder.itemTypeName || selectedOrder.itemType }}
-          </a-descriptions-item>
-          <a-descriptions-item label="客户">
-            {{ selectedOrder.buyerName || `用户 ${selectedOrder.buyerId}` }}
-          </a-descriptions-item>
-          <a-descriptions-item label="联系">
-            {{ selectedOrder.buyerPhone || selectedOrder.buyerEmail || '-' }}
-          </a-descriptions-item>
-          <a-descriptions-item label="数量">{{ selectedOrder.count || 1 }}</a-descriptions-item>
-          <a-descriptions-item label="实付">¥{{ money(selectedOrder.amount) }}</a-descriptions-item>
-          <a-descriptions-item label="原价">¥{{ money(selectedOrder.originalAmount) }}</a-descriptions-item>
-          <a-descriptions-item label="优惠">¥{{ money(selectedOrder.discountAmount) }}</a-descriptions-item>
-          <a-descriptions-item label="优惠券">{{ selectedOrder.couponCode || '-' }}</a-descriptions-item>
-          <a-descriptions-item label="支付渠道">{{ selectedOrder.paymentProvider || '-' }}</a-descriptions-item>
-          <a-descriptions-item label="支付流水" :span="{ xs: 1, sm: 1, md: 2 }">
-            {{ selectedOrder.transactionCode || '-' }}
-          </a-descriptions-item>
-          <a-descriptions-item label="交付方式">
-            <a-tag :color="deliveryModeColor(selectedOrder.deliveryMode)">
-              {{ selectedOrder.deliveryModeName || deliveryModeText(selectedOrder.deliveryMode) }}
-            </a-tag>
-          </a-descriptions-item>
-          <a-descriptions-item label="交付状态">
-            <a-tag :color="deliveryStatusColor(selectedOrder.deliveryStatus)">
-              {{ deliveryStatusText(selectedOrder.deliveryStatus, selectedOrder.deliveryMode) }}
-            </a-tag>
-          </a-descriptions-item>
-          <a-descriptions-item label="交付信息" :span="{ xs: 1, sm: 1, md: 2 }">
-            {{ selectedOrder.deliveryMessage || '-' }}
-          </a-descriptions-item>
-          <a-descriptions-item label="创建时间">{{ selectedOrder.createTime || '-' }}</a-descriptions-item>
-          <a-descriptions-item label="支付时间">{{ selectedOrder.paidTime || '-' }}</a-descriptions-item>
-          <a-descriptions-item label="过期时间">{{ selectedOrder.expireTime || '-' }}</a-descriptions-item>
-        </a-descriptions>
+          </div>
+          <div class="detail-summary-amount">
+            <span>实付金额</span>
+            <strong>{{ formatShopMoney(selectedOrder.amount, selectedOrder.currency) }}</strong>
+          </div>
+        </section>
+
+        <section class="detail-section">
+          <div class="detail-section__head">
+            <h3>支付信息</h3>
+          </div>
+          <div class="detail-grid">
+            <div class="detail-field detail-field--full">
+              <span class="detail-label">渠道交易单号</span>
+              <div class="copy-value">
+                <span class="mono-value">{{ orderWechatNo(selectedOrder) || '-' }}</span>
+                <a-button
+                  v-if="orderWechatNo(selectedOrder)"
+                  type="link"
+                  size="small"
+                  @click="copyText(orderWechatNo(selectedOrder))"
+                >
+                  <template #icon><copy-outlined /></template>
+                  复制
+                </a-button>
+              </div>
+            </div>
+            <div class="detail-field detail-field--full">
+              <span class="detail-label">支付会话 / 商户单号</span>
+              <div class="copy-value">
+                <span class="mono-value">{{ orderMerchantNo(selectedOrder) || '-' }}</span>
+                <a-button
+                  v-if="orderMerchantNo(selectedOrder)"
+                  type="link"
+                  size="small"
+                  @click="copyText(orderMerchantNo(selectedOrder))"
+                >
+                  <template #icon><copy-outlined /></template>
+                  复制
+                </a-button>
+              </div>
+            </div>
+            <div class="detail-field">
+              <span class="detail-label">支付渠道</span>
+              <strong>{{ selectedOrder.paymentProvider || '-' }}</strong>
+            </div>
+            <div class="detail-field">
+              <span class="detail-label">订单状态</span>
+              <a-tag :color="orderStatusColor(selectedOrder.status)">
+                {{ orderStatusText(selectedOrder.status) }}
+              </a-tag>
+            </div>
+            <div class="detail-field">
+              <span class="detail-label">原价</span>
+              <strong>{{ formatShopMoney(selectedOrder.originalAmount, selectedOrder.currency) }}</strong>
+            </div>
+            <div class="detail-field">
+              <span class="detail-label">优惠</span>
+              <strong>{{ formatShopMoney(selectedOrder.discountAmount, selectedOrder.currency) }}</strong>
+            </div>
+            <div class="detail-field">
+              <span class="detail-label">优惠券</span>
+              <strong>{{ selectedOrder.couponCode || '-' }}</strong>
+            </div>
+            <div class="detail-field">
+              <span class="detail-label">数量</span>
+              <strong>{{ selectedOrder.count || 1 }}</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="detail-section">
+          <div class="detail-section__head">
+            <h3>商品与客户</h3>
+          </div>
+          <div class="detail-grid">
+            <div class="detail-field detail-field--full">
+              <span class="detail-label">商品</span>
+              <strong>{{ orderProductName(selectedOrder) }}</strong>
+            </div>
+            <div class="detail-field">
+              <span class="detail-label">SKU</span>
+              <strong>{{ orderSkuText(selectedOrder) }}</strong>
+            </div>
+            <div class="detail-field">
+              <span class="detail-label">商品类型</span>
+              <strong>{{ selectedOrder.itemTypeName || selectedOrder.itemType || '-' }}</strong>
+            </div>
+            <div class="detail-field">
+              <span class="detail-label">客户</span>
+              <strong>{{ selectedOrder.buyerName || `用户 ${selectedOrder.buyerId}` }}</strong>
+            </div>
+            <div class="detail-field">
+              <span class="detail-label">联系</span>
+              <strong>{{ orderContactText(selectedOrder) }}</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="detail-section">
+          <div class="detail-section__head">
+            <h3>交付信息</h3>
+          </div>
+          <div class="detail-grid">
+            <div class="detail-field">
+              <span class="detail-label">交付方式</span>
+              <a-tag :color="deliveryModeColor(selectedOrder.deliveryMode)">
+                {{ selectedOrder.deliveryModeName || deliveryModeText(selectedOrder.deliveryMode) }}
+              </a-tag>
+            </div>
+            <div class="detail-field">
+              <span class="detail-label">交付状态</span>
+              <a-tag :color="deliveryStatusColor(selectedOrder.deliveryStatus)">
+                {{ deliveryStatusText(selectedOrder.deliveryStatus, selectedOrder.deliveryMode) }}
+              </a-tag>
+            </div>
+            <div class="detail-field detail-field--full">
+              <span class="detail-label">交付信息</span>
+              <strong>{{ selectedOrder.deliveryMessage || '-' }}</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="detail-section">
+          <div class="detail-section__head">
+            <h3>时间信息</h3>
+          </div>
+          <div class="detail-grid">
+            <div class="detail-field">
+              <span class="detail-label">创建时间</span>
+              <strong>{{ selectedOrder.createTime || '-' }}</strong>
+            </div>
+            <div class="detail-field">
+              <span class="detail-label">支付时间</span>
+              <strong>{{ selectedOrder.paidTime || '-' }}</strong>
+            </div>
+            <div class="detail-field">
+              <span class="detail-label">过期时间</span>
+              <strong>{{ selectedOrder.expireTime || '-' }}</strong>
+            </div>
+          </div>
+        </section>
 
         <a-space class="drawer-actions" wrap>
           <a-button @click="contactBuyer(selectedOrder)">
@@ -502,7 +776,7 @@ onMounted(loadData);
             </article>
           </section>
 
-          <section v-if="deliveryDetail.content && !isSensitiveDelivery(deliveryDetail)" class="delivery-content">
+          <section v-if="hasDeliveryContent(deliveryDetail)" class="delivery-content">
             <div class="section-title">
               <span>交付正文</span>
               <a-button size="small" @click="copyText(deliveryDetail.content)">
@@ -530,7 +804,7 @@ onMounted(loadData);
     <a-modal
       v-model:open="deliveryVisible"
       title="处理交付"
-      :confirm-loading="saving"
+      :confirm-loading="saving || deliveryUploading"
       @ok="submitDelivery"
     >
       <a-form layout="vertical" :model="formState">
@@ -542,6 +816,20 @@ onMounted(loadData);
         </a-form-item>
         <a-form-item label="交付信息" name="deliveryMessage">
           <a-textarea v-model:value="formState.deliveryMessage" :auto-size="{ minRows: 3, maxRows: 5 }" />
+        </a-form-item>
+        <a-form-item label="补充资源标题" name="deliveryTitle">
+          <a-input v-model:value="formState.deliveryTitle" placeholder="例如：专属商业 demo 下载包" />
+        </a-form-item>
+        <a-form-item label="补充资源说明" name="deliveryContent">
+          <a-textarea v-model:value="formState.deliveryContent" :auto-size="{ minRows: 3, maxRows: 5 }" />
+        </a-form-item>
+        <a-form-item label="补充附件" name="deliveryAttachments">
+          <attachment-upload
+            v-model:value="formState.deliveryAttachments"
+            :max-count="12"
+            :disabled="saving"
+            @uploading-change="value => deliveryUploading = value"
+          />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -597,6 +885,29 @@ onMounted(loadData);
 
 .orders-panel {
   border-radius: 8px;
+}
+
+.order-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.3fr) minmax(160px, 0.8fr) minmax(300px, 1.4fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid #edf2f7;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.filter-item,
+.filter-status,
+.filter-range {
+  width: 100%;
+  min-width: 0;
+}
+
+.filter-actions {
+  justify-content: flex-end;
 }
 
 .orders-list {
@@ -724,6 +1035,51 @@ onMounted(loadData);
   }
 }
 
+.order-number-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.order-number-item {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #edf1f5;
+  border-radius: 8px;
+  background: #fafcff;
+
+  span {
+    grid-column: 1 / -1;
+    color: #7b8794;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  :deep(.ant-btn-link) {
+    height: 24px;
+    padding: 0;
+  }
+}
+
+.order-number-item--wechat {
+  border-color: #bbf7d0;
+  background: #f7fef9;
+}
+
+.mono-value {
+  min-width: 0;
+  color: #1f2937;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .delivery-message {
   margin: 0;
   color: #7b8794;
@@ -746,6 +1102,134 @@ onMounted(loadData);
 .delivery-detail {
   display: grid;
   gap: 16px;
+}
+
+.detail-summary-panel,
+.detail-section {
+  min-width: 0;
+  border: 1px solid #e8eef5;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.detail-summary-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+  padding: 16px;
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+}
+
+.detail-summary-main {
+  min-width: 0;
+
+  h3 {
+    margin: 6px 0 10px;
+    color: #22364f;
+    font-size: 18px;
+    line-height: 1.35;
+  }
+}
+
+.detail-kicker,
+.detail-label {
+  color: #7b8794;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.detail-summary-amount {
+  display: grid;
+  min-width: 128px;
+  justify-items: end;
+  gap: 3px;
+
+  span {
+    color: #7b8794;
+    font-size: 12px;
+  }
+
+  strong {
+    color: #ef4444;
+    font-size: 24px;
+    line-height: 1.15;
+  }
+}
+
+.detail-section {
+  padding: 14px;
+}
+
+.detail-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+
+  h3 {
+    margin: 0;
+    color: #22364f;
+    font-size: 15px;
+    line-height: 1.35;
+  }
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.detail-field {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  align-content: start;
+  min-height: 66px;
+  padding: 10px 12px;
+  border: 1px solid #edf1f5;
+  border-radius: 8px;
+  background: #fbfcfe;
+
+  strong {
+    min-width: 0;
+    color: #1f2937;
+    font-size: 14px;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+
+.detail-field--full {
+  grid-column: 1 / -1;
+}
+
+.copy-value {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+
+  :deep(.ant-btn-link) {
+    height: 24px;
+    padding: 0;
+  }
+}
+
+.copy-value--large {
+  max-width: 100%;
+  margin-top: 2px;
+
+  .mono-value {
+    color: #0f172a;
+    font-size: 16px;
+    font-weight: 700;
+  }
 }
 
 .drawer-actions {
@@ -894,6 +1378,15 @@ onMounted(loadData);
   .order-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .order-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filter-range,
+  .filter-actions {
+    grid-column: 1 / -1;
+  }
 }
 
 @media only screen and (max-width: 640px) {
@@ -911,12 +1404,36 @@ onMounted(loadData);
     grid-template-columns: 1fr;
   }
 
+  .order-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-range,
+  .filter-actions {
+    grid-column: auto;
+  }
+
+  .filter-actions {
+    justify-content: stretch;
+
+    :deep(.ant-space-item),
+    :deep(.ant-btn) {
+      width: 100%;
+    }
+  }
+
   .order-card__head,
+  .detail-summary-panel,
   .delivery-title {
+    grid-template-columns: 1fr;
     flex-direction: column;
   }
 
   .amount-cell {
+    justify-items: start;
+  }
+
+  .detail-summary-amount {
     justify-items: start;
   }
 
@@ -930,6 +1447,11 @@ onMounted(loadData);
 
   .orders-pagination {
     text-align: left;
+  }
+
+  .order-number-strip,
+  .detail-grid {
+    grid-template-columns: 1fr;
   }
 
   .delivery-file-card {

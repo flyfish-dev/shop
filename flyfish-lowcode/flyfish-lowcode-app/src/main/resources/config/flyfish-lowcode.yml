@@ -24,7 +24,7 @@ generator:
     password: ${LOWCODE_GENERATOR_R2DBC_PASSWORD:}
   package-config:
     # 请及时修改，生成到自己的包下
-    parent: ${LOWCODE_GENERATOR_PACKAGE_PARENT:com.example.demo}
+    parent: ${LOWCODE_GENERATOR_PACKAGE_PARENT:com.example.system}
     entity: domain.po
     service: service
     service-impl: service.impl

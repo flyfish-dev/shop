@@ -7,6 +7,7 @@ import { shopRoutes } from '@/modules/shop/routes.js';
 const lazy = loader => defineAsyncComponent(loader);
 
 const Home = lazy(() => import('@/pages/Home'));
+const Legal = lazy(() => import('@/pages/Legal'));
 
 const buildRoutes = list => {
   return list.reduce((res, item, index) => {
@@ -36,6 +37,22 @@ const staticRoutes = {
     layout: MainLayout,
     // 构建下级路由
     children: buildRoutes(modules)
+  },
+  '/privacy': {
+    name: '隐私政策',
+    component: Legal,
+    meta: {
+      skipAuthSync: true,
+      titleKey: 'legal.privacyTitle'
+    }
+  },
+  '/terms': {
+    name: '服务条款',
+    component: Legal,
+    meta: {
+      skipAuthSync: true,
+      titleKey: 'legal.termsTitle'
+    }
   },
   ...authRoutes,
   ...shopRoutes

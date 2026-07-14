@@ -160,7 +160,7 @@ GraalVM 25 会按实际可达代码生成配套 JDK native 库。若对应 app �
 前端由 nginx 直接托管，构建成功后同步 `web/dist`：
 
 ```bash
-rsync -av --delete web/dist/ root@example.com:/opt/flyfish-dev/web/
+rsync -av --delete web/dist/ root@server.example.com:/opt/flyfish-dev/web/
 ```
 
 发布后验证：
@@ -243,10 +243,10 @@ docker run --platform linux/amd64 --rm \
 三服务切换后必须验证内部端口和公网路由。`deploy-split-native.sh` 已内置以下检查：
 
 ```bash
-ssh root@example.com 'curl -fsS http://127.0.0.1:10080/portal/users/current'
-ssh root@example.com 'curl -fsS http://127.0.0.1:10081/portal/capabilities'
-ssh root@example.com 'curl -fsS http://127.0.0.1:10082/portal/capabilities'
-ssh root@example.com 'curl -fsS "http://127.0.0.1:10082/shops/items?page=1&size=3"'
+ssh root@server.example.com 'curl -fsS http://127.0.0.1:10080/portal/users/current'
+ssh root@server.example.com 'curl -fsS http://127.0.0.1:10081/portal/capabilities'
+ssh root@server.example.com 'curl -fsS http://127.0.0.1:10082/portal/capabilities'
+ssh root@server.example.com 'curl -fsS "http://127.0.0.1:10082/shops/items?page=1&size=3"'
 curl -k -sS -D - https://api.example.com/__lowcode/portal/capabilities
 curl -k -sS -D - https://api.example.com/__shop/portal/capabilities
 curl -k -sS -D - 'https://api.example.com/shops/items?page=1&size=3'
@@ -256,7 +256,7 @@ curl -k -sS -D - https://shop.example.com/shop/item-list
 如果失败，先看对应服务日志：
 
 ```bash
-ssh root@example.com "journalctl -u flyfish-auth -u flyfish-lowcode -u flyfish-shop --no-pager -l | tail -300"
+ssh root@server.example.com "journalctl -u flyfish-auth -u flyfish-lowcode -u flyfish-shop --no-pager -l | tail -300"
 ```
 
 ## 切换生产服务
@@ -266,7 +266,7 @@ ssh root@example.com "journalctl -u flyfish-auth -u flyfish-lowcode -u flyfish-s
 ```bash
 release="/opt/flyfish-dev/releases/替换为本次release"
 
-ssh root@example.com "
+ssh root@server.example.com "
   ln -sfn ${release}/auth /opt/flyfish-dev/app/auth-native
   ln -sfn ${release}/lowcode /opt/flyfish-dev/app/lowcode-native
   ln -sfn ${release}/shop /opt/flyfish-dev/app/shop-native
@@ -286,7 +286,7 @@ ExecStart=/opt/flyfish-dev/app/shop-native/flyfish-shop --server.port=10082
 切换后验证：
 
 ```bash
-ssh root@example.com '
+ssh root@server.example.com '
   systemctl show flyfish-auth flyfish-lowcode flyfish-shop -p ActiveState -p SubState -p MainPID --no-pager
   ps -o pid,comm,rss,args -p $(systemctl show -p MainPID --value flyfish-auth),$(systemctl show -p MainPID --value flyfish-lowcode),$(systemctl show -p MainPID --value flyfish-shop)
   curl -fsS http://127.0.0.1:10080/portal/users/current
@@ -304,7 +304,7 @@ ssh root@example.com '
 ```bash
 previous="/opt/flyfish-dev/releases/替换为上一个可用split-native"
 
-ssh root@example.com "
+ssh root@server.example.com "
   ln -sfn ${previous}/auth /opt/flyfish-dev/app/auth-native
   ln -sfn ${previous}/lowcode /opt/flyfish-dev/app/lowcode-native
   ln -sfn ${previous}/shop /opt/flyfish-dev/app/shop-native
@@ -315,7 +315,7 @@ ssh root@example.com "
 如果需要临时回滚到旧单体 jar，必须同步恢复 nginx 路由和 `flyfish-dev.service`，只作为故障应急路径使用：
 
 ```bash
-ssh root@example.com "
+ssh root@server.example.com "
   systemctl stop flyfish-auth flyfish-lowcode flyfish-shop
   systemctl start flyfish-dev
 "

@@ -38,7 +38,10 @@ const hash = value => {
   return next >>> 0;
 };
 
-const generatedWechatName = source => {
+const generatedWechatName = (source, locale) => {
+  if (String(locale || '').toLowerCase().startsWith('en')) {
+    return `WeChat User ${shortIdentity(source) || hash(text(source?.wechatOpenid || source?.openid)).toString(36).slice(-6)}`;
+  }
   const key = text(source?.wechatOpenid || source?.openid || source?.userId || 'anonymous');
   const value = hash(key);
   return `${traits[value % traits.length]}的${colors[Math.floor(value / 31) % colors.length]}${animals[Math.floor(value / 131) % animals.length]}`;
@@ -53,23 +56,25 @@ const shortIdentity = source => {
   return userId ? `U${userId}` : '';
 };
 
-export const customerDisplayName = source => {
+export const customerDisplayName = (source, locale) => {
   const name = text(source?.displayName || source?.senderName);
   if (name && !isGenericWechatName(name)) {
     return name;
   }
   if (source?.wechatOpenid || source?.openid || source?.userId) {
-    return generatedWechatName(source);
+    return generatedWechatName(source, locale);
   }
   const suffix = shortIdentity(source);
   if (suffix) {
-    return `${GENERIC_WECHAT_NAME} #${suffix}`;
+    return String(locale || '').toLowerCase().startsWith('en')
+      ? `WeChat User ${suffix}`
+      : `${GENERIC_WECHAT_NAME} #${suffix}`;
   }
-  return name || '客户';
+  return name || (String(locale || '').toLowerCase().startsWith('en') ? 'Customer' : '客户');
 };
 
-export const customerSenderName = (message, conversation) => customerDisplayName({
+export const customerSenderName = (message, conversation, locale) => customerDisplayName({
   ...conversation,
   userId: message?.userId || conversation?.userId,
   displayName: message?.senderName || conversation?.displayName
-});
+}, locale);

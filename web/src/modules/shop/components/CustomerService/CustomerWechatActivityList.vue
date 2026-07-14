@@ -12,6 +12,7 @@ import {
   WechatOutlined
 } from '@ant-design/icons-vue';
 import { customerDisplayName } from './customerDisplay.js';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
   activities: {
@@ -30,60 +31,37 @@ const emit = defineEmits([
   'update:keyword',
   'update:activityType'
 ]);
+const { locale, t, te } = useI18n();
 
 const updateActivityType = value => {
   emit('update:activityType', value);
   emit('refresh');
 };
 
-const typeOptions = [
-  { label: '全部动态', value: 'ALL' },
-  { label: '关注', value: 'SUBSCRIBE' },
-  { label: '取关', value: 'UNSUBSCRIBE' },
-  { label: '扫码', value: 'SCAN' },
-  { label: '文字', value: 'TEXT' },
-  { label: '图片', value: 'IMAGE' },
-  { label: '位置', value: 'LOCATION' },
-  { label: '事件', value: 'EVENT' }
-];
+const activityTypes = ['ALL', 'SUBSCRIBE', 'UNSUBSCRIBE', 'SCAN', 'TEXT', 'IMAGE', 'LOCATION', 'EVENT'];
+const typeOptions = computed(() => activityTypes.map(value => ({
+  value,
+  label: t(`customerService.activity.types.${value}`)
+})));
 
 const typeMeta = {
-  SUBSCRIBE: { text: '关注', title: '关注公众号', color: 'green', icon: UserAddOutlined, tone: 'green' },
-  UNSUBSCRIBE: { text: '取关', title: '取消关注', color: 'red', icon: UserDeleteOutlined, tone: 'red' },
-  SCAN: { text: '扫码', title: '扫码进入', color: 'blue', icon: QrcodeOutlined, tone: 'blue' },
-  TEXT: { text: '文字', title: '发送文字', color: 'geekblue', icon: MessageOutlined, tone: 'blue' },
-  IMAGE: { text: '图片', title: '发送图片', color: 'purple', icon: PictureOutlined, tone: 'purple' },
-  LOCATION: { text: '位置', title: '发送位置', color: 'cyan', icon: EnvironmentOutlined, tone: 'cyan' },
-  EVENT: { text: '事件', title: '触发事件', color: 'orange', icon: ThunderboltOutlined, tone: 'orange' },
-  MESSAGE: { text: '消息', title: '公众号消息', color: 'default', icon: MessageOutlined, tone: 'gray' }
+  SUBSCRIBE: { color: 'green', icon: UserAddOutlined, tone: 'green' },
+  UNSUBSCRIBE: { color: 'red', icon: UserDeleteOutlined, tone: 'red' },
+  SCAN: { color: 'blue', icon: QrcodeOutlined, tone: 'blue' },
+  TEXT: { color: 'geekblue', icon: MessageOutlined, tone: 'blue' },
+  IMAGE: { color: 'purple', icon: PictureOutlined, tone: 'purple' },
+  LOCATION: { color: 'cyan', icon: EnvironmentOutlined, tone: 'cyan' },
+  EVENT: { color: 'orange', icon: ThunderboltOutlined, tone: 'orange' },
+  MESSAGE: { color: 'default', icon: MessageOutlined, tone: 'gray' }
 };
 
-const metaOf = item => typeMeta[item?.activityType] || typeMeta.MESSAGE;
-
-const wechatMessageTypeText = {
-  text: '文字消息',
-  image: '图片消息',
-  voice: '语音消息',
-  video: '视频消息',
-  shortvideo: '小视频消息',
-  location: '位置消息',
-  link: '链接消息',
-  event: '事件通知'
-};
-
-const wechatEventText = {
-  subscribe: '关注公众号',
-  unsubscribe: '取消关注公众号',
-  SCAN: '已关注扫码',
-  scan: '已关注扫码',
-  LOCATION: '上报地理位置',
-  location: '上报地理位置',
-  CLICK: '点击菜单',
-  click: '点击菜单',
-  VIEW: '打开菜单链接',
-  view: '打开菜单链接',
-  TEMPLATESENDJOBFINISH: '模板消息回执',
-  templatesendjobfinish: '模板消息回执'
+const metaOf = item => {
+  const type = typeMeta[item?.activityType] ? item.activityType : 'MESSAGE';
+  return {
+    ...typeMeta[type],
+    text: t(`customerService.activity.types.${type}`),
+    title: t(`customerService.activity.titles.${type}`)
+  };
 };
 
 const openidSuffix = value => {
@@ -96,16 +74,20 @@ const displayName = item => customerDisplayName({
   avatar: item?.avatar,
   wechatOpenid: item?.wechatOpenid,
   userId: item?.userId
-});
+}, locale.value);
 
 const readableMessageType = value => {
   const text = String(value || '').trim();
-  return wechatMessageTypeText[text] || wechatMessageTypeText[text.toLowerCase()] || text;
+  const normalized = text.toLowerCase();
+  const key = `customerService.activity.messageTypes.${normalized}`;
+  return te(key) ? t(key) : text;
 };
 
 const readableEventType = value => {
   const text = String(value || '').trim();
-  return wechatEventText[text] || wechatEventText[text.toLowerCase()] || text;
+  const normalized = text.toLowerCase();
+  const key = `customerService.activity.events.${normalized}`;
+  return te(key) ? t(key) : text;
 };
 
 const sceneText = value => {
@@ -115,23 +97,25 @@ const sceneText = value => {
   }
   const normalized = text.startsWith('qrscene_') ? text.slice('qrscene_'.length) : text;
   if (normalized.startsWith('login_')) {
-    return `登录验证 ${normalized.slice('login_'.length)}`;
+    return t('customerService.activity.loginScene', { id: normalized.slice('login_'.length) });
   }
   if (normalized.startsWith('buy_') || normalized.startsWith('purchase_')) {
-    return `购买入口 ${normalized.replace(/^(buy|purchase)_/, '')}`;
+    return t('customerService.activity.purchaseScene', { id: normalized.replace(/^(buy|purchase)_/, '') });
   }
   if (normalized.startsWith('bind_')) {
-    return `账号绑定 ${normalized.slice('bind_'.length)}`;
+    return t('customerService.activity.bindScene', { id: normalized.slice('bind_'.length) });
   }
   return normalized;
 };
 
 const userTraceText = item => {
   if (item?.userId) {
-    return '已绑定平台用户';
+    return t('customerService.activity.linkedUser');
   }
   const suffix = openidSuffix(item?.wechatOpenid);
-  return suffix ? `微信访客 ${suffix}` : '微信访客';
+  return suffix
+    ? t('customerService.activity.visitorWithId', { id: suffix })
+    : t('customerService.activity.visitor');
 };
 
 const activityTitle = item => {
@@ -139,30 +123,38 @@ const activityTitle = item => {
   if (item?.activityType === 'SCAN' && item?.eventKey) {
     return `${meta.title} · ${sceneText(item.eventKey)}`;
   }
-  return meta.title || item?.title || '公众号动态';
+  return meta.title || item?.title || t('customerService.activity.defaultTitle');
 };
 
 const activitySummary = item => {
   const content = String(item?.content || '').trim();
   if (item?.activityType === 'SUBSCRIBE') {
-    return sceneText(item.eventKey) ? `通过 ${sceneText(item.eventKey)} 关注。` : '用户关注了公众号。';
+    return sceneText(item.eventKey)
+      ? t('customerService.activity.subscribedVia', { scene: sceneText(item.eventKey) })
+      : t('customerService.activity.subscribed');
   }
   if (item?.activityType === 'UNSUBSCRIBE') {
-    return '用户取消关注公众号，后续将无法通过公众号触达。';
+    return t('customerService.activity.unsubscribed');
   }
   if (item?.activityType === 'SCAN') {
-    return sceneText(item.eventKey) ? `用户扫描了 ${sceneText(item.eventKey)}。` : '用户扫描了公众号二维码。';
+    return sceneText(item.eventKey)
+      ? t('customerService.activity.scannedScene', { scene: sceneText(item.eventKey) })
+      : t('customerService.activity.scanned');
   }
   if (item?.activityType === 'IMAGE') {
-    return content && /^https?:\/\//i.test(content) ? '用户发送了一张图片。' : (content || '用户发送了一张图片。');
+    return content && /^https?:\/\//i.test(content)
+      ? t('customerService.activity.sentImage')
+      : (content || t('customerService.activity.sentImage'));
   }
   if (item?.activityType === 'LOCATION') {
-    return content || '用户发送了地理位置。';
+    return content || t('customerService.activity.sentLocation');
   }
   if (item?.activityType === 'EVENT') {
-    return item?.eventType ? `用户触发了${readableEventType(item.eventType)}。` : '用户触发了公众号事件。';
+    return item?.eventType
+      ? t('customerService.activity.triggeredNamedEvent', { event: readableEventType(item.eventType) })
+      : t('customerService.activity.triggeredEvent');
   }
-  return content || item?.title || '用户发送了一条公众号消息。';
+  return content || item?.title || t('customerService.activity.sentMessage');
 };
 
 const detailTags = item => [
@@ -211,7 +203,7 @@ const hasActivities = computed(() => sortedActivities.value.length > 0);
     <header class='activity-header'>
       <div class='activity-title'>
         <wechat-outlined />
-        <span>公众号动态</span>
+        <span>{{ t('customerService.activity.title') }}</span>
       </div>
       <a-space :size='8' wrap>
         <a-select
@@ -264,7 +256,7 @@ const hasActivities = computed(() => sortedActivities.value.length > 0);
               <template #description>
                 <span class='activity-user-line'>
                   <strong>{{ displayName(item) }}</strong>
-                  <a-tag v-if='item.userId' color='blue'>已绑定</a-tag>
+                  <a-tag v-if='item.userId' color='blue'>{{ t('customerService.activity.linked') }}</a-tag>
                   <span>{{ userTraceText(item) }}</span>
                 </span>
               </template>
@@ -277,7 +269,7 @@ const hasActivities = computed(() => sortedActivities.value.length > 0);
                 target='_blank'
                 rel='noreferrer'
               >
-                查看用户发送的图片
+                {{ t('customerService.activity.viewImage') }}
               </a>
               <template v-else>
                 {{ activitySummary(item) }}
@@ -298,8 +290,8 @@ const hasActivities = computed(() => sortedActivities.value.length > 0);
       </a-list>
 
       <div v-else class='activity-empty'>
-        <a-empty :description='hasFilter ? "暂无匹配动态" : "暂无公众号动态"'>
-          <a-button v-if='hasFilter' size='small' @click='emit("reset")'>清空筛选</a-button>
+        <a-empty :description="hasFilter ? t('customerService.activity.noMatch') : t('customerService.activity.empty')">
+          <a-button v-if='hasFilter' size='small' @click='emit("reset")'>{{ t('customerService.activity.clearFilters') }}</a-button>
         </a-empty>
       </div>
     </a-spin>

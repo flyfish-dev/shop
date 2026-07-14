@@ -2,10 +2,10 @@
   <a-spin :spinning="loading">
     <div id="workbench" class="workbench-panel">
       <div class="overview">
-        <h2>开发工作台</h2>
+        <h2>{{ t('lowcode.workbench') }}</h2>
         <a-space wrap>
           <a-tag color="blue">{{ userName }}</a-tag>
-          <a-tag color="green">数据源 {{ workbench?.dataSources?.total ?? 0 }}</a-tag>
+          <a-tag color="green">{{ t('lowcode.dataSources', { count: workbench?.dataSources?.total ?? 0 }) }}</a-tag>
           <a-tag
             v-for="tag in extensionTags"
             :key="tag.key"
@@ -18,14 +18,14 @@
 
       <div class="workbench-grid">
         <section class="recent-sources">
-          <h3>最近数据源</h3>
-          <a-empty v-if="!recentSources.length" description="暂无数据源" />
+          <h3>{{ t('lowcode.recentSources') }}</h3>
+          <a-empty v-if="!recentSources.length" :description="t('lowcode.noDataSources')" />
           <a-list v-else :data-source="recentSources" size="small">
             <template #renderItem="{ item }">
               <a-list-item>
                 <a-list-item-meta :title="item.name" :description="sourceAddress(item)" />
                 <a-button type="link" @click="router.push('/model-design/select-data-table', { source: item.key })">
-                  建模
+                  {{ t('lowcode.modeling') }}
                 </a-button>
               </a-list-item>
             </template>
@@ -33,11 +33,11 @@
         </section>
 
         <section class="quick-actions">
-          <h3>快捷操作</h3>
+          <h3>{{ t('lowcode.quickActions') }}</h3>
           <a class="product-suite-link" href="https://product.flyfish.group" target="_blank" rel="noreferrer">
             <span>
-              office预览套件
-              <em>HOT</em>
+              {{ t('lowcode.officeSuite') }}
+              <em>{{ t('lowcode.hot') }}</em>
             </span>
           </a>
           <a-space direction="vertical">
@@ -48,7 +48,7 @@
               :type="action.path === '/model-design' ? 'primary' : 'default'"
               @click="goAction(action)"
             >
-              {{ action.name }}
+              {{ actionLabel(action) }}
             </a-button>
           </a-space>
         </section>
@@ -59,6 +59,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { message } from 'ant-design-vue';
 import useClientStore from '@/modules/auth/store/client.js';
 import { usePortalCapabilities } from '@/modules/portal/usePortalCapabilities.js';
@@ -68,16 +69,23 @@ import { getPortalWorkbench } from '@/modules/lowcode/api/workbench.js';
 
 const baseSummaryKeys = new Set(['user', 'dataSources', 'actions']);
 const extensionColors = ['purple', 'orange', 'cyan', 'geekblue', 'magenta'];
+const actionI18nKeys = {
+  '/model-design': 'modelDesign',
+  '/code-generate': 'codeGenerate',
+  '/online-launch': 'onlineLaunch',
+  '/integrate-test': 'integrateTest'
+};
 
 const router = useRouter();
 const store = useClientStore();
 const { capabilityByCode, loadPortalCapabilities } = usePortalCapabilities();
+const { t } = useI18n();
 const loading = ref(false);
 const workbench = ref(null);
 
 const userName = computed(() => {
   const user = workbench.value?.user || store.user;
-  return user?.id > 0 ? user.username : '游客模式';
+  return user?.id > 0 ? user.username : t('lowcode.guestMode');
 });
 const recentSources = computed(() => workbench.value?.dataSources?.recent || []);
 const actions = computed(() => workbench.value?.actions || []);
@@ -120,6 +128,10 @@ const extensionTags = computed(() => {
 });
 
 const sourceAddress = dataSourceAddress;
+const actionLabel = action => {
+  const key = actionI18nKeys[action.path];
+  return key ? t(`lowcode.modules.${key}.name`) : action.name;
+};
 
 const loadWorkbench = async () => {
   loading.value = true;
@@ -127,7 +139,7 @@ const loadWorkbench = async () => {
     await loadPortalCapabilities();
     workbench.value = await getPortalWorkbench();
   } catch (e) {
-    message.error(e.message || '加载首页失败');
+    message.error(e.message || t('common.homeLoadFailed'));
   } finally {
     loading.value = false;
   }
@@ -135,7 +147,7 @@ const loadWorkbench = async () => {
 
 const goAction = action => {
   if (action.status === 'later') {
-    message.info('二期开放');
+    message.info(t('common.phaseTwo'));
     return;
   }
   router.push(action.path);

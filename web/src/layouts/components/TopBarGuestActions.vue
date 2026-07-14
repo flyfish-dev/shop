@@ -1,6 +1,9 @@
 <script setup>
 import { FireTwoTone, LoginOutlined } from '@ant-design/icons-vue';
 import { h } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 defineProps({
   compactLogin: {
@@ -26,13 +29,13 @@ defineEmits(['login', 'start']);
       class='login-button'
       type='primary'
       :icon='h(LoginOutlined)'
-      :aria-label="compactLogin ? '去登录' : undefined"
+      :aria-label="compactLogin ? t('common.login') : undefined"
       @click="$emit('login')"
     >
-      {{ compactLogin ? '' : '去登录' }}
+      {{ compactLogin ? '' : t('common.login') }}
     </a-button>
     <a-button v-if='showStart' type='primary' ghost :icon='h(FireTwoTone)' @click="$emit('start')">
-      立即体验
+      {{ t('common.start') }}
     </a-button>
   </a-space>
 </template>

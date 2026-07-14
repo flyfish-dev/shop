@@ -3,6 +3,7 @@ import { CustomerServiceOutlined, UserOutlined } from '@ant-design/icons-vue';
 import { defineAsyncComponent, nextTick, ref, watch } from 'vue';
 import AttachmentList from '@/components/Attachments/AttachmentList.vue';
 import { customerSenderName } from './customerDisplay.js';
+import { useI18n } from 'vue-i18n';
 
 const MarkdownPreview = defineAsyncComponent(() => import('@/components/Markdown/MarkdownPreview.vue'));
 
@@ -16,12 +17,13 @@ const props = defineProps({
 });
 
 const messageBodyRef = ref(null);
+const { locale, t } = useI18n();
 
 const isAdminMessage = item => item?.senderRole === 'ADMIN' || item?.direction === 'OUTBOUND';
 const isMineMessage = item => props.manager ? item?.direction === 'OUTBOUND' : item?.direction === 'INBOUND';
 const senderName = item => isAdminMessage(item)
-  ? item?.senderName || '飞鱼小铺客服'
-  : customerSenderName(item, props.conversation);
+  ? item?.senderName || t('customerService.storeSupport')
+  : customerSenderName(item, props.conversation, locale.value);
 const senderAvatar = item => item?.senderAvatar || (!isAdminMessage(item) ? props.conversation?.avatar : '');
 const isMarkdown = item => item?.messageType === 'markdown';
 
@@ -39,7 +41,7 @@ watch(() => props.messages, scrollToBottom, { deep: true, immediate: true });
 <template>
   <div ref='messageBodyRef' class='customer-message-list'>
     <div v-if='!messages.length' class='message-empty'>
-      <a-empty description='暂无消息' />
+      <a-empty :description="t('customerService.noMessages')" />
     </div>
 
     <div
@@ -64,13 +66,13 @@ watch(() => props.messages, scrollToBottom, { deep: true, immediate: true });
             v-if='isMarkdown(item)'
             class='message-markdown'
             :model-value='item.content || ""'
-            language='zh-CN'
+            :language='locale'
             preview-theme='default'
             code-theme='github'
           />
           <p v-else>{{ item.content }}</p>
           <attachment-list :attachments='item.attachments' />
-          <small v-if='item.sendStatus === "FAILED"'>发送失败</small>
+          <small v-if='item.sendStatus === "FAILED"'>{{ t('customerService.sendFailed') }}</small>
         </div>
       </div>
     </div>

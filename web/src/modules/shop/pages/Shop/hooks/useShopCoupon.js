@@ -1,12 +1,14 @@
 import { computed, ref, watch } from 'vue';
 import { message } from 'ant-design-vue';
 import { applyCoupon } from '../apis/api.js';
+import { useI18n } from 'vue-i18n';
 
 const COUPON_FAILURE_PATTERN = /优惠券|订单金额未达到|门槛/;
 
 export const normalizeCouponCode = value => (value || '').trim().toUpperCase();
 
 export function useShopCoupon({ item, user, store, router, count = 1, baseAmount, orderAmountPayload }) {
+  const { t } = useI18n();
   const couponApplying = ref(false);
   const couponCode = ref('');
   const appliedCoupon = ref(null);
@@ -22,7 +24,7 @@ export function useShopCoupon({ item, user, store, router, count = 1, baseAmount
   };
 
   const removeInvalidCoupon = text => {
-    const tip = text || '优惠券不可用，已移除';
+    const tip = text || t('shop.couponMessages.unavailableRemoved');
     couponCode.value = '';
     appliedCoupon.value = null;
     couponError.value = tip;
@@ -34,12 +36,12 @@ export function useShopCoupon({ item, user, store, router, count = 1, baseAmount
   const applyCouponCode = async ({ silentSuccess = false } = {}) => {
     const code = normalizeCouponCode(couponCode.value);
     if (!code) {
-      couponError.value = '请输入优惠券编码';
+      couponError.value = t('shop.couponMessages.enterCode');
       return false;
     }
     if (!user.value?.id) {
       store.rememberRedirect(location.pathname + location.search);
-      message.warning('请先登录后使用优惠券');
+      message.warning(t('shop.couponMessages.signInRequired'));
       router.push('/login');
       return false;
     }
@@ -52,6 +54,7 @@ export function useShopCoupon({ item, user, store, router, count = 1, baseAmount
     try {
       const result = await applyCoupon({
         itemId: item.value.id,
+        skuId: item.value.skuId,
         count,
         couponCode: code,
         ...(orderAmountPayload ? orderAmountPayload() : {})
@@ -59,11 +62,11 @@ export function useShopCoupon({ item, user, store, router, count = 1, baseAmount
       appliedCoupon.value = result;
       couponCode.value = result.couponCode || code;
       if (!silentSuccess) {
-        message.success(`优惠券已应用，已优惠 ¥${result.discountAmount}`);
+        message.success(t('shop.couponMessages.applied', { amount: result.discountAmount }));
       }
       return true;
     } catch (e) {
-      removeInvalidCoupon(e.message || '优惠券不可用，已移除');
+      removeInvalidCoupon(e.message || t('shop.couponMessages.unavailableRemoved'));
       return false;
     } finally {
       couponApplying.value = false;

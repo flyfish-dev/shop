@@ -25,11 +25,13 @@ public interface ShopContractSignatureRepository extends DefaultReactiveReposito
               AND sign_token = :signToken
               AND buyer_id = :buyerId
               AND item_id = :itemId
+              AND ((:skuId IS NULL AND sku_id IS NULL) OR sku_id = :skuId)
               AND contract_file_id = :contractFileId
             ORDER BY id DESC
             LIMIT 1
             """)
-    Mono<ShopContractSignature> findSignedFile(String signToken, Long buyerId, Long itemId, Long contractFileId);
+    Mono<ShopContractSignature> findSignedFile(String signToken, Long buyerId, Long itemId, Long skuId,
+                                               Long contractFileId);
 
     @Query("""
             SELECT *
@@ -38,10 +40,11 @@ public interface ShopContractSignatureRepository extends DefaultReactiveReposito
               AND sign_token = :signToken
               AND buyer_id = :buyerId
               AND item_id = :itemId
+              AND ((:skuId IS NULL AND sku_id IS NULL) OR sku_id = :skuId)
               AND status IN ('AGREED', 'BOUND')
             ORDER BY create_time DESC, id DESC
             """)
-    Flux<ShopContractSignature> findAgreedByToken(String signToken, Long buyerId, Long itemId);
+    Flux<ShopContractSignature> findAgreedByToken(String signToken, Long buyerId, Long itemId, Long skuId);
 
     @Modifying
     @Query("""
@@ -53,9 +56,10 @@ public interface ShopContractSignatureRepository extends DefaultReactiveReposito
               AND sign_token = :signToken
               AND buyer_id = :buyerId
               AND item_id = :itemId
+              AND ((:skuId IS NULL AND sku_id IS NULL) OR sku_id = :skuId)
               AND order_no IS NULL
             """)
-    Mono<Integer> bindOrder(String signToken, Long buyerId, Long itemId, String orderNo);
+    Mono<Integer> bindOrder(String signToken, Long buyerId, Long itemId, Long skuId, String orderNo);
 
     private Sort orderByCreateTimeDesc() {
         return Sort.by(Sort.Order.desc("createTime"), Sort.Order.desc("id"));

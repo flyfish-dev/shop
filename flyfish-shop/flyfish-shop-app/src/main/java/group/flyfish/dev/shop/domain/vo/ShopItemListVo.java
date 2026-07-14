@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 商品列表实体
@@ -25,11 +26,23 @@ public class ShopItemListVo {
     // 商品价格
     private String price;
 
+    // 手工美元价格，为空时按汇率自动换算
+    private String usdPrice;
+
+    // 实际展示和结算使用的美元价格
+    private String effectiveUsdPrice;
+
+    // 人民币兑美元换算快照
+    private String cnyPerUsd;
+
     // 分组id
     private Long groupId;
 
     // 商品标签
     private List<String> tags;
+
+    // 商品多语言内容
+    private Map<String, ShopItemI18nVo> i18n;
 
     // 商品类型
     private String type;
@@ -80,4 +93,28 @@ public class ShopItemListVo {
 
     // 是否需要购买前签署合同
     private Boolean contractRequired;
+
+    // SKU模式
+    private String skuMode;
+
+    // 是否多SKU商品
+    private Boolean multiSku;
+
+    // SKU数量
+    private Integer skuCount;
+
+    // 最低SKU价格
+    private String minPrice;
+
+    // 最高SKU价格
+    private String maxPrice;
+
+    // 最低SKU美元价格
+    private String minEffectiveUsdPrice;
+
+    // 最高SKU美元价格
+    private String maxEffectiveUsdPrice;
+
+    // 默认SKU
+    private ShopItemSkuVo defaultSku;
 }

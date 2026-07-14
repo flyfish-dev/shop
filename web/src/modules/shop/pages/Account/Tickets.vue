@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { message } from 'ant-design-vue';
 import {
   FileTextOutlined,
@@ -15,13 +16,13 @@ import { openCustomerService } from '@/modules/shop/components/CustomerService/c
 import useClientStore from '@/modules/auth/store/client.js';
 import { useRoute, useRouter } from '@/router/use.js';
 import {
-  TICKET_CATEGORY_OPTIONS,
-  TICKET_PRIORITY_OPTIONS,
-  TICKET_STATUS_OPTIONS,
   isTicketDone,
+  ticketCategoryOptions,
   ticketCategoryText,
+  ticketPriorityOptions,
   ticketPriorityColor,
   ticketPriorityText,
+  ticketStatusOptions,
   ticketStatusColor,
   ticketStatusText
 } from '@/modules/shop/utils/supportTickets.js';
@@ -31,6 +32,7 @@ import { sortTicketsByNewest } from '@/modules/shop/utils/ticketSort.js';
 const router = useRouter();
 const route = useRoute();
 const clientStore = useClientStore();
+const { t } = useI18n();
 
 const loading = ref(false);
 const tickets = ref([]);
@@ -59,6 +61,9 @@ const activeTickets = computed(() => tickets.value.filter(ticket => !isTicketDon
 const resolvedTickets = computed(() => tickets.value.filter(ticket => ticket.status === 'RESOLVED').length);
 const drawerWidth = computed(() => clientStore.width < 640 ? '100%' : 620);
 const createDrawerWidth = computed(() => clientStore.width < 640 ? '100%' : 520);
+const statusOptions = computed(() => ticketStatusOptions(t));
+const categoryOptions = computed(() => ticketCategoryOptions(t));
+const priorityOptions = computed(() => ticketPriorityOptions(t));
 
 const resetForm = () => {
   formState.title = '';
@@ -75,7 +80,7 @@ const loadTickets = async () => {
     tickets.value = sortTicketsByNewest(await getTickets({ status: status.value }));
   } catch (e) {
     tickets.value = [];
-    message.error(e.message || '工单加载失败');
+    message.error(e.message || t('tickets.loadFailed'));
   } finally {
     loading.value = false;
   }
@@ -98,7 +103,7 @@ const submitTicket = async () => {
   try {
     await createFormRef.value?.validate();
     if (!formState.content.trim() && !createAttachments.value.length) {
-      message.warning('请填写问题内容或上传附件');
+      message.warning(t('tickets.contentRequired'));
       return;
     }
     selected.value = await createTicket({
@@ -109,15 +114,15 @@ const submitTicket = async () => {
       content: formState.content.trim(),
       attachments: createAttachments.value
     });
-    message.success('工单已提交');
+    message.success(t('tickets.submitted'));
     createOpen.value = false;
     detailOpen.value = true;
     await loadTickets();
   } catch (e) {
     if (e?.errorFields) {
-      message.warning('请先修正表单中的提示');
+      message.warning(t('tickets.formInvalid'));
     } else {
-      message.error(e.message || '提交失败');
+      message.error(e.message || t('tickets.submitFailed'));
     }
   } finally {
     saving.value = false;
@@ -132,7 +137,7 @@ const openDetail = async ticket => {
   try {
     selected.value = await getTicket(ticket.ticketNo);
   } catch (e) {
-    message.error(e.message || '工单详情加载失败');
+    message.error(e.message || t('tickets.detailLoadFailed'));
   } finally {
     detailLoading.value = false;
   }
@@ -159,9 +164,9 @@ const submitReply = async () => {
     replyContent.value = '';
     replyAttachments.value = [];
     await loadTickets();
-    message.success('已回复');
+    message.success(t('tickets.replied'));
   } catch (e) {
-    message.error(e.message || '回复失败');
+    message.error(e.message || t('tickets.replyFailed'));
   } finally {
     replyLoading.value = false;
   }
@@ -181,43 +186,43 @@ onMounted(loadTickets);
   <div class="tickets-page">
     <header class="tickets-header">
       <div>
-        <p class="eyebrow">Support Center</p>
-        <h2>我的工单</h2>
+        <p class="eyebrow">{{ t('tickets.eyebrow') }}</p>
+        <h2>{{ t('tickets.title') }}</h2>
       </div>
       <a-space>
         <a-button @click="loadTickets">
           <template #icon><reload-outlined /></template>
-          刷新
+          {{ t('common.refresh') }}
         </a-button>
         <a-button type="primary" @click="openCreate">
           <template #icon><plus-outlined /></template>
-          提交工单
+          {{ t('tickets.createTitle') }}
         </a-button>
       </a-space>
     </header>
 
     <div class="tickets-summary">
       <a-card :bordered="false">
-        <a-statistic title="工单数" :value="tickets.length" />
+        <a-statistic :title="t('tickets.ticketCount')" :value="tickets.length" />
       </a-card>
       <a-card :bordered="false">
-        <a-statistic title="处理中" :value="activeTickets" />
+        <a-statistic :title="t('tickets.activeCount')" :value="activeTickets" />
       </a-card>
       <a-card :bordered="false">
-        <a-statistic title="已解决" :value="resolvedTickets" />
+        <a-statistic :title="t('tickets.resolvedCount')" :value="resolvedTickets" />
       </a-card>
     </div>
 
     <a-card class="tickets-panel" :bordered="false">
       <div class="tickets-toolbar">
         <a-radio-group v-model:value="status" button-style="solid">
-          <a-radio-button v-for="item in TICKET_STATUS_OPTIONS" :key="item.value" :value="item.value">
+          <a-radio-button v-for="item in statusOptions" :key="item.value" :value="item.value">
             {{ item.label }}
           </a-radio-button>
         </a-radio-group>
       </div>
       <a-spin :spinning="loading">
-        <a-empty v-if="!tickets.length && !loading" description="暂无工单" />
+        <a-empty v-if="!tickets.length && !loading" :description="t('tickets.empty')" />
         <a-list v-else class="tickets-list" :data-source="tickets" item-layout="vertical">
           <template #renderItem="{ item }">
             <a-list-item class="ticket-item" @click="openDetail(item)">
@@ -231,15 +236,15 @@ onMounted(loadTickets);
                     <a-space wrap>
                       <a-button type="link" size="small" @click.stop="contactService(item)">
                         <template #icon><message-outlined /></template>
-                        联系客服
+                        {{ t('common.contactSupport') }}
                       </a-button>
-                      <a-tag :color="ticketStatusColor(item.status)">{{ ticketStatusText(item.status) }}</a-tag>
-                      <a-tag :color="ticketPriorityColor(item.priority)">{{ ticketPriorityText(item.priority) }}</a-tag>
+                      <a-tag :color="ticketStatusColor(item.status)">{{ ticketStatusText(item.status, t) }}</a-tag>
+                      <a-tag :color="ticketPriorityColor(item.priority)">{{ ticketPriorityText(item.priority, t) }}</a-tag>
                     </a-space>
                   </div>
                   <div class="ticket-meta">
                     <span>{{ item.ticketNo }}</span>
-                    <span>{{ ticketCategoryText(item.category) }}</span>
+                    <span>{{ ticketCategoryText(item.category, t) }}</span>
                     <span>{{ item.updateTime || item.createTime }}</span>
                   </div>
                   <p v-if="item.lastMessage" class="ticket-message">{{ item.lastMessage }}</p>
@@ -253,35 +258,35 @@ onMounted(loadTickets);
 
     <a-drawer
       v-model:open="createOpen"
-      title="提交工单"
+      :title="t('tickets.createTitle')"
       class="ticket-drawer"
       :width="createDrawerWidth"
       :body-style="{ paddingBottom: '88px' }"
       @close="closeCreate"
     >
       <a-form ref="createFormRef" :model="formState" layout="vertical">
-        <a-form-item label="标题" name="title" :rules="[{ required: true, message: '请输入工单标题' }]">
+        <a-form-item :label="t('tickets.subject')" name="title" :rules="[{ required: true, message: t('tickets.subjectRequired') }]">
           <a-input v-model:value="formState.title" :maxlength="120" />
         </a-form-item>
         <a-row :gutter="12">
           <a-col :span="12">
-            <a-form-item label="类型" name="category">
-              <a-select v-model:value="formState.category" :options="TICKET_CATEGORY_OPTIONS" />
+            <a-form-item :label="t('tickets.category')" name="category">
+              <a-select v-model:value="formState.category" :options="categoryOptions" />
             </a-form-item>
           </a-col>
           <a-col :span="12">
-            <a-form-item label="优先级" name="priority">
-              <a-select v-model:value="formState.priority" :options="TICKET_PRIORITY_OPTIONS" />
+            <a-form-item :label="t('tickets.priority')" name="priority">
+              <a-select v-model:value="formState.priority" :options="priorityOptions" />
             </a-form-item>
           </a-col>
         </a-row>
-        <a-form-item label="联系方式" name="contact">
+        <a-form-item :label="t('tickets.contact')" name="contact">
           <a-input v-model:value="formState.contact" :maxlength="512" />
         </a-form-item>
-        <a-form-item label="问题内容" name="content">
+        <a-form-item :label="t('tickets.content')" name="content">
           <a-textarea v-model:value="formState.content" :maxlength="4096" :auto-size="{ minRows: 6, maxRows: 10 }" />
         </a-form-item>
-        <a-form-item label="附件">
+        <a-form-item :label="t('tickets.attachments')">
           <attachment-upload
             v-model:value="createAttachments"
             @uploading-change="value => createUploading = value"
@@ -290,13 +295,13 @@ onMounted(loadTickets);
       </a-form>
       <template #footer>
         <a-space>
-          <a-button @click="closeCreate">取消</a-button>
-          <a-button type="primary" :loading="saving || createUploading" @click="submitTicket">提交</a-button>
+          <a-button @click="closeCreate">{{ t('common.cancel') }}</a-button>
+          <a-button type="primary" :loading="saving || createUploading" @click="submitTicket">{{ t('common.submit') }}</a-button>
         </a-space>
       </template>
     </a-drawer>
 
-    <a-drawer v-model:open="detailOpen" class="ticket-drawer" title="工单详情" :width="drawerWidth">
+    <a-drawer v-model:open="detailOpen" class="ticket-drawer" :title="t('tickets.detailTitle')" :width="drawerWidth">
       <a-spin :spinning="detailLoading">
         <template v-if="selected">
           <div class="detail-head">
@@ -304,17 +309,17 @@ onMounted(loadTickets);
               <h3>{{ selected.title }}</h3>
               <div class="ticket-meta">
                 <span>{{ selected.ticketNo }}</span>
-                <span>{{ ticketCategoryText(selected.category) }}</span>
+                <span>{{ ticketCategoryText(selected.category, t) }}</span>
                 <span>{{ selected.createTime }}</span>
               </div>
             </div>
             <a-space wrap>
               <a-button type="primary" ghost size="small" @click="contactService(selected)">
                 <template #icon><message-outlined /></template>
-                微信客服
+                {{ t('tickets.contactWechat') }}
               </a-button>
-              <a-tag :color="ticketStatusColor(selected.status)">{{ ticketStatusText(selected.status) }}</a-tag>
-              <a-tag :color="ticketPriorityColor(selected.priority)">{{ ticketPriorityText(selected.priority) }}</a-tag>
+              <a-tag :color="ticketStatusColor(selected.status)">{{ ticketStatusText(selected.status, t) }}</a-tag>
+              <a-tag :color="ticketPriorityColor(selected.priority)">{{ ticketPriorityText(selected.priority, t) }}</a-tag>
             </a-space>
           </div>
 
@@ -355,7 +360,7 @@ onMounted(loadTickets);
               @click="submitReply"
             >
               <template #icon><send-outlined /></template>
-              回复
+              {{ t('common.reply') }}
             </a-button>
           </div>
         </template>

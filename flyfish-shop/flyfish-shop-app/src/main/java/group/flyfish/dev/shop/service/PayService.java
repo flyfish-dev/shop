@@ -14,6 +14,11 @@ import reactor.core.publisher.Mono;
 public interface PayService {
 
     /**
+     * 支付提供方编码。
+     */
+    String providerCode();
+
+    /**
      * 订单支付
      *
      * @param order 订单

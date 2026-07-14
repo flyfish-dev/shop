@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 商品详情
@@ -40,6 +41,15 @@ public class ShopItemDetailVo {
     // 价格
     private BigDecimal price;
 
+    // 手工美元价格，为空时按汇率自动换算
+    private BigDecimal usdPrice;
+
+    // 实际展示和结算使用的美元价格
+    private BigDecimal effectiveUsdPrice;
+
+    // 人民币兑美元换算快照
+    private BigDecimal cnyPerUsd;
+
     // 商品标签
     private List<String> tags;
 
@@ -48,6 +58,9 @@ public class ShopItemDetailVo {
 
     // 商品描述
     private String description;
+
+    // 商品多语言内容
+    private Map<String, ShopItemI18nVo> i18n;
 
     // 上架状态
     private Boolean enabled;
@@ -66,6 +79,9 @@ public class ShopItemDetailVo {
 
     // 购买人数
     private Integer buyCount;
+
+    // 商品查看次数
+    private Long viewCount;
 
     // 醒目样式
     private String highlightStyle;
@@ -87,4 +103,16 @@ public class ShopItemDetailVo {
 
     // 绑定的合同id
     private List<Long> contractIds;
+
+    // SKU模式
+    private String skuMode;
+
+    // 是否多SKU商品
+    private Boolean multiSku;
+
+    // 默认SKU
+    private ShopItemSkuVo defaultSku;
+
+    // SKU列表
+    private List<ShopItemSkuVo> skus;
 }

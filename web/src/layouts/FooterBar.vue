@@ -4,6 +4,7 @@ import {
   CodeOutlined,
   DatabaseOutlined,
   FileTextOutlined,
+  FileProtectOutlined,
   GithubOutlined,
   SafetyCertificateOutlined,
   ShopOutlined,
@@ -11,55 +12,67 @@ import {
   WechatOutlined
 } from '@ant-design/icons-vue';
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import wechatMpQr from '@/assets/contact/wechat-mp.jpg';
 import { usePortalCapabilities } from '@/modules/portal/usePortalCapabilities.js';
 
 const year = new Date().getFullYear();
+const { t } = useI18n();
 const {
   hasLowcode,
   hasShop,
   portalTitle,
   lowcodeEntryPath,
-  shopEntryName,
   shopEntryPath,
   loadPortalCapabilities
 } = usePortalCapabilities();
 const customerWechatQr = ref('');
 const brandTitle = computed(() => {
-  return portalTitle.value;
+  if (hasShop.value && !hasLowcode.value) {
+    return t('brand.shopTitle');
+  }
+  if (hasLowcode.value) {
+    return t('brand.lowcodeTitle');
+  }
+  return portalTitle.value || t('brand.defaultTitle');
 });
 const brandDesc = computed(() => {
   if (hasShop.value && !hasLowcode.value) {
-    return '面向开发者服务的商品与交付小铺。';
+    return t('brand.shopDesc');
   }
-  return '轻量级、高性能、便捷的开源低代码集成平台。';
+  return t('brand.lowcodeDesc');
 });
 
 const productLinks = computed(() => [
   ...(hasLowcode.value ? [
-    { label: '数据建模', href: lowcodeEntryPath.value, icon: DatabaseOutlined },
-    { label: '代码生成', href: '/code-generate', icon: CodeOutlined }
+    { label: t('footer.dataModeling'), href: lowcodeEntryPath.value, icon: DatabaseOutlined },
+    { label: t('footer.codeGenerate'), href: '/code-generate', icon: CodeOutlined }
   ] : []),
   ...(hasShop.value ? [
-    { label: shopEntryName.value, href: shopEntryPath.value, icon: ShopOutlined }
+    { label: t('nav.market'), href: shopEntryPath.value, icon: ShopOutlined }
   ] : [])
 ]);
 
-const resourceLinks = [
-  { label: '博客', href: 'https://blog.flyfish.dev', icon: BookOutlined },
-  { label: '文件预览', href: 'https://viewer.flyfish.dev', icon: FileTextOutlined },
-  { label: 'Office 预览套件', href: 'https://product.flyfish.group', icon: FileTextOutlined },
-  { label: '代码仓库', href: 'https://github.com/flyfish-dev/shop', icon: GithubOutlined }
-];
+const resourceLinks = computed(() => [
+  { label: t('nav.blog'), href: 'https://blog.flyfish.dev', icon: BookOutlined },
+  { label: t('nav.filePreview'), href: 'https://viewer.flyfish.dev', icon: FileTextOutlined },
+  { label: t('nav.officeSuite'), href: 'https://product.flyfish.group', icon: FileTextOutlined },
+  { label: t('nav.gitRepository'), href: 'https://git.flyfish.dev', icon: GithubOutlined }
+]);
 
 const serviceItems = computed(() => [
-  ...(hasLowcode.value ? [{ label: '轻量级低代码开发工作台', icon: ToolOutlined }] : []),
-  ...(hasShop.value ? [{ label: 'Gitea 授权与仓库权限开通', icon: SafetyCertificateOutlined }] : [])
+  ...(hasLowcode.value ? [{ label: t('footer.lowcodeWorkbench'), icon: ToolOutlined }] : []),
+  ...(hasShop.value ? [{ label: t('footer.gitDelivery'), icon: SafetyCertificateOutlined }] : [])
+]);
+
+const legalLinks = computed(() => [
+  { label: t('footer.privacyPolicy'), href: '/privacy', icon: SafetyCertificateOutlined },
+  { label: t('footer.termsOfService'), href: '/terms', icon: FileProtectOutlined }
 ]);
 
 const contactItems = computed(() => [
-  ...(hasShop.value && customerWechatQr.value ? [{ label: '客服微信', image: customerWechatQr.value }] : []),
-  { label: '公众号', image: wechatMpQr }
+  ...(hasShop.value && customerWechatQr.value ? [{ label: t('footer.customerWechat'), image: customerWechatQr.value }] : []),
+  { label: t('footer.wechatOfficial'), image: wechatMpQr }
 ]);
 
 const loadShopContactImage = async () => {
@@ -84,7 +97,7 @@ watch(hasShop, () => {
     <div class='footer-inner'>
       <section class='footer-brand'>
         <div class='brand-line'>
-          <img src='@/assets/logo.svg' alt='Flyfish Logo'>
+          <img src='@/assets/logo.png' alt='Flyfish Logo'>
           <div>
             <strong>{{ brandTitle }}</strong>
             <p>{{ brandDesc }}</p>
@@ -93,7 +106,7 @@ watch(hasShop, () => {
       </section>
 
       <section class='footer-column'>
-        <h3>产品能力</h3>
+        <h3>{{ t('footer.productCapabilities') }}</h3>
         <router-link v-for='item in productLinks' :key='item.href' :href='item.href'>
           <component :is='item.icon' />
           <span>{{ item.label }}</span>
@@ -101,7 +114,7 @@ watch(hasShop, () => {
       </section>
 
       <section class='footer-column'>
-        <h3>资源入口</h3>
+        <h3>{{ t('footer.resourceLinks') }}</h3>
         <a v-for='item in resourceLinks' :key='item.href' :href='item.href' target='_blank' rel='noreferrer'>
           <component :is='item.icon' />
           <span>{{ item.label }}</span>
@@ -109,18 +122,22 @@ watch(hasShop, () => {
       </section>
 
       <section class='footer-column'>
-        <h3>服务信息</h3>
+        <h3>{{ t('footer.serviceInfo') }}</h3>
         <div v-for='item in serviceItems' :key='item.label' class='footer-text'>
           <component :is='item.icon' />
           <span>{{ item.label }}</span>
         </div>
+        <router-link v-for='item in legalLinks' :key='item.href' :href='item.href'>
+          <component :is='item.icon' />
+          <span>{{ item.label }}</span>
+        </router-link>
         <a href='https://beian.miit.gov.cn/' target='_blank' rel='noreferrer'>
-          晋ICP备2024030443号
+          {{ t('footer.icp') }}
         </a>
       </section>
 
       <section class='footer-column footer-contact'>
-        <h3>联系方式</h3>
+        <h3>{{ t('footer.contact') }}</h3>
         <div class='contact-grid'>
           <div v-for='item in contactItems' :key='item.label' class='contact-card'>
             <img :src='item.image' :alt='item.label'>
@@ -134,7 +151,7 @@ watch(hasShop, () => {
     </div>
 
     <div class='footer-bottom'>
-      <span>飞鱼开源 Copyright © 2015 - {{ year }}</span>
+      <span>{{ t('footer.copyright', { year }) }}</span>
       <span>Flyfish Dev</span>
     </div>
   </div>
@@ -159,7 +176,8 @@ watch(hasShop, () => {
   display: grid;
   grid-template-columns: minmax(240px, 1.25fr) repeat(3, minmax(140px, 1fr)) minmax(210px, .9fr);
   gap: 28px;
-  width: min(1100px, calc(100vw - 48px));
+  width: calc(100% - 48px);
+  max-width: 1100px;
   margin: 0 auto;
   padding: 34px 0 24px;
 }
@@ -229,7 +247,8 @@ watch(hasShop, () => {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  width: min(1100px, calc(100vw - 48px));
+  width: calc(100% - 48px);
+  max-width: 1100px;
   margin: 0 auto;
   padding: 14px 0 18px;
   border-top: 1px solid #edf2f7;
@@ -280,7 +299,14 @@ watch(hasShop, () => {
   }
 }
 
-@media only screen and (max-width: 820px) {
+@media only screen and (max-width: 1120px) {
+  .footer-inner {
+    grid-template-columns: minmax(210px, 1.2fr) repeat(3, minmax(108px, 1fr)) minmax(210px, .9fr);
+    gap: 24px 20px;
+  }
+}
+
+@media only screen and (max-width: 920px) {
   .footer-inner {
     grid-template-columns: 1fr 1fr;
     gap: 24px 20px;

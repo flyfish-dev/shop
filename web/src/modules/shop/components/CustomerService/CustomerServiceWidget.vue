@@ -10,10 +10,12 @@ import CustomerNotificationDrawer from './CustomerNotificationDrawer.vue';
 import { useCustomerServiceChat } from './useCustomerServiceChat.js';
 import { useCustomerServiceNotifications } from './useCustomerServiceNotifications.js';
 import { useCustomerWechatActivities } from './useCustomerWechatActivities.js';
+import { useI18n } from 'vue-i18n';
 
 const store = useClientStore();
 const router = useRouter();
 const { user, token, width } = storeToRefs(store);
+const { t } = useI18n();
 
 const {
   noticeOpen,
@@ -138,16 +140,16 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-if='visible' class='customer-service-widget'>
-    <button type='button' class='customer-bell' aria-label='消息中心' @click='handleOpenNotice'>
+    <button type='button' class='customer-bell' :aria-label="t('customerService.notificationCenter')" @click='handleOpenNotice'>
       <a-badge :count='ticketUnreadCount' :overflow-count='99' size='small'>
         <bell-outlined />
       </a-badge>
     </button>
 
     <a-badge class='customer-float-badge' :count='customerMessageUnreadCount' :overflow-count='99' size='small'>
-      <button type='button' class='customer-float' aria-label='打开客服聊天' @click='handleOpenChat()'>
+      <button type='button' class='customer-float' :aria-label="t('customerService.openChat')" @click='handleOpenChat()'>
         <customer-service-outlined />
-        <span class='customer-float-text'>客服</span>
+        <span class='customer-float-text'>{{ t('customerService.shortLabel') }}</span>
       </button>
     </a-badge>
 

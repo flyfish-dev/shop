@@ -1,10 +1,50 @@
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { getItemContracts, signItemContractFile } from '../apis/api.js';
+import { useI18n } from 'vue-i18n';
 
 const viewerBase = '/file-viewer/index.html';
 
+const extensionFrom = value => {
+  if (!value) {
+    return '';
+  }
+  const clean = String(value).split('?')[0].split('#')[0];
+  const match = clean.match(/\.([a-z0-9]+)$/i);
+  return match ? match[1].toLowerCase() : '';
+};
+
+const extensionFromContentType = contentType => {
+  const normalized = String(contentType || '').toLowerCase();
+  if (!normalized) {
+    return '';
+  }
+  if (normalized.includes('pdf')) {
+    return 'pdf';
+  }
+  if (normalized.includes('wordprocessingml')) {
+    return 'docx';
+  }
+  if (normalized.includes('msword')) {
+    return 'doc';
+  }
+  if (normalized.includes('spreadsheetml')) {
+    return 'xlsx';
+  }
+  if (normalized.includes('ms-excel') || normalized.includes('excel')) {
+    return 'xls';
+  }
+  return '';
+};
+
+const resolveContractFileType = file => (
+  extensionFrom(file?.fileName)
+  || extensionFromContentType(file?.contentType)
+  || extensionFrom(file?.fileUrl)
+);
+
 export function useShopContractAgreement({ item, user, store, router }) {
+  const { t } = useI18n();
   const visible = ref(false);
   const loading = ref(false);
   const signing = ref(false);
@@ -40,7 +80,7 @@ export function useShopContractAgreement({ item, user, store, router }) {
     }
     loading.value = true;
     try {
-      const data = await getItemContracts(item.value.id);
+      const data = await getItemContracts(item.value.id, item.value.skuId);
       contracts.value = data || [];
       return contracts.value;
     } finally {
@@ -101,14 +141,27 @@ export function useShopContractAgreement({ item, user, store, router }) {
     if (!file?.fileUrl) {
       return '';
     }
-    const options = encodeURIComponent(JSON.stringify({
+    const params = new URLSearchParams();
+    const type = resolveContractFileType(file);
+    params.set('url', file.fileUrl);
+    if (file.fileName) {
+      params.set('filename', file.fileName);
+      params.set('name', file.fileName);
+    }
+    if (type) {
+      params.set('type', type);
+    }
+    if (file.fileSize) {
+      params.set('size', String(file.fileSize));
+    }
+    params.set('options', JSON.stringify({
       toolbar: {
         download: true,
         print: true,
         exportHtml: false
       }
     }));
-    return `${viewerBase}?url=${encodeURIComponent(file.fileUrl)}&options=${options}`;
+    return `${viewerBase}?${params.toString()}`;
   };
 
   const updateReadProgress = target => {
@@ -236,7 +289,7 @@ export function useShopContractAgreement({ item, user, store, router }) {
         contractId: file.contractId,
         fileId: file.id,
         readPercent: 100
-      });
+      }, item.value.skuId);
       signToken.value = progress.signToken;
       agreedFileIds.value = new Set([...agreedFileIds.value, file.id]);
       if (progress.completed || agreedFileIds.value.size >= totalCount.value) {
@@ -251,7 +304,7 @@ export function useShopContractAgreement({ item, user, store, router }) {
       setActiveIndex(activeIndex.value + 1);
       await nextTick();
     } catch (e) {
-      message.error(e.message || '合同签署失败');
+      message.error(e.message || t('shop.contract.signingFailed'));
     } finally {
       signing.value = false;
     }

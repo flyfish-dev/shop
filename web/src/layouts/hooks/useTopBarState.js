@@ -1,4 +1,5 @@
 import { computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { storeToRefs } from 'pinia';
 import useClientStore from '@/modules/auth/store/client.js';
 import { useRouter } from '@/router/use';
@@ -12,11 +13,19 @@ export const useTopBarState = () => {
   const store = useClientStore();
   const { collapsed, topbarProgress, user, width } = storeToRefs(store);
   const { hasLowcode, hasShop, portalTitle, defaultEntryPath, loadPortalCapabilities } = usePortalCapabilities();
+  const { t } = useI18n();
 
   const isHome = computed(() => router.currentRoute.value === '/');
   const brandTitle = computed(() => {
-    return portalTitle.value;
+    if (hasShop.value && !hasLowcode.value) {
+      return t('brand.shopTitle');
+    }
+    if (hasLowcode.value) {
+      return t('brand.lowcodeTitle');
+    }
+    return portalTitle.value || t('brand.defaultTitle');
   });
+  const brandDescription = computed(() => t('home.appPurpose'));
   const gutter = computed(() => topbarProgress.value > 0.72 ? 10 : 20);
   const compactLogin = computed(() => topbarProgress.value > 0.84 && width.value < 560);
   const compactUser = computed(() => topbarProgress.value > 0.84 && width.value < 1180);
@@ -29,17 +38,20 @@ export const useTopBarState = () => {
     const mobile = viewport < 640;
     const hasUser = Boolean(user.value?.id);
     const compactUserAtRest = hasUser && viewport < 1180;
-    const expandedHeight = 445;
+    const expandedHeight = 500;
     const collapsedHeight = mobile ? 112 : 72;
     const expandedLogo = Math.min(280, viewport * 0.72);
     const collapsedLogo = mobile ? 56 : 60;
     const collapsedLogoLeft = mobile ? 12 : 20;
     const titleCollapsedLeft = collapsedLogoLeft + collapsedLogo + (mobile ? 8 : 18);
     const titleExpandedTop = 40 + expandedLogo + 20;
-    const collapsedToolRight = mobile ? 14 : 26;
-    const collapsedToolWidth = hasUser
+    const purposeExpandedTop = titleExpandedTop + 44;
+    const languageReserve = mobile ? 96 : 132;
+    const collapsedToolRight = languageReserve;
+    const authToolWidth = hasUser
       ? (compactUserAtRest ? 42 : 210)
       : (showStart.value ? 190 : 104);
+    const collapsedToolWidth = authToolWidth;
     const collapsedNavRight = mobile ? 0 : collapsedToolRight + collapsedToolWidth + 10;
     const collapsedTitleReserve = mobile ? 176 : collapsedNavRight + 320;
     const titleCollapsedMax = mobile
@@ -60,8 +72,13 @@ export const useTopBarState = () => {
       '--title-translate': `${lerp(-50, 0, progress).toFixed(3)}%`,
       '--title-font-size': px(lerp(30, 18, progress)),
       '--title-max-width': px(lerp(Math.min(viewport - 48, 760), titleCollapsedMax, progress)),
+      '--purpose-left': px(lerp(viewport / 2, titleCollapsedLeft, progress)),
+      '--purpose-top': px(lerp(purposeExpandedTop, mobile ? 68 : 28, progress)),
+      '--purpose-translate': `${lerp(-50, 0, progress).toFixed(3)}%`,
+      '--purpose-width': px(lerp(Math.min(viewport - 40, 760), 0, progress)),
+      '--purpose-opacity': Math.max(0, 1 - progress / 0.42).toFixed(4),
       '--tool-left': px(lerp(viewport / 2, viewport - collapsedToolRight, progress)),
-      '--tool-top': px(lerp(titleExpandedTop + 62, mobile ? 68 : 18, progress)),
+      '--tool-top': px(lerp(titleExpandedTop + 122, mobile ? 68 : 18, progress)),
       '--tool-translate': `${lerp(-50, -100, progress).toFixed(3)}%`,
       '--nav-top': px(lerp(12, mobile ? 6 : 18, progress)),
       '--nav-right': px(lerp(40, collapsedNavRight, progress)),
@@ -93,6 +110,7 @@ export const useTopBarState = () => {
   });
 
   return {
+    brandDescription,
     brandTitle,
     collapsed,
     compactLogin,

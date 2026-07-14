@@ -42,6 +42,9 @@ public class ShopTransaction extends AuditDomain {
     @Property("交易金额")
     private BigDecimal amount;
 
+    @Property("交易币种")
+    private String currency;
+
     @Property("交易类型")
     private Type type;
 

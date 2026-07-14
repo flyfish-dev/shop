@@ -29,6 +29,11 @@ public class DigitalDeliveryParamValue implements ShopItemParamValue {
      */
     private List<FileAttachmentVo> attachments;
 
+    /**
+     * 下单时需要买家补充的信息配置。
+     */
+    private ShopOrderFormParamValue orderForm;
+
     public void normalize() {
         title = StringUtils.defaultIfBlank(StringUtils.trimToNull(title), "数字商品提货内容");
         content = StringUtils.trimToNull(content);

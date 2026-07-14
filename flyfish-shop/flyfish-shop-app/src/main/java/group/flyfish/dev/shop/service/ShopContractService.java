@@ -40,18 +40,33 @@ public interface ShopContractService {
 
     Mono<Void> updateItemContracts(Long itemId, List<Long> contractIds);
 
+    Mono<Void> updateSkuContracts(Long itemId, Long skuId, List<Long> contractIds);
+
     Mono<List<Long>> getItemContractIds(Long itemId);
+
+    Mono<List<Long>> getSkuContractIds(Long skuId);
 
     Mono<Boolean> hasActiveContracts(Long itemId);
 
+    Mono<Boolean> hasActiveContracts(Long itemId, Long skuId);
+
     Flux<ShopContractAgreementVo> getItemAgreements(Long itemId);
+
+    Flux<ShopContractAgreementVo> getItemAgreements(Long itemId, Long skuId);
 
     Mono<ShopContractSignatureProgressVo> agreeFile(Long itemId, ShopContractSignDto dto,
                                                     PortalUserVo buyer, ServerWebExchange exchange);
 
+    Mono<ShopContractSignatureProgressVo> agreeFile(Long itemId, Long skuId, ShopContractSignDto dto,
+                                                    PortalUserVo buyer, ServerWebExchange exchange);
+
     Mono<Void> requireSigned(Long itemId, PortalUserVo buyer, String signToken);
 
+    Mono<Void> requireSigned(Long itemId, Long skuId, PortalUserVo buyer, String signToken);
+
     Mono<Void> bindOrder(String signToken, String orderNo, Long itemId, Long buyerId);
+
+    Mono<Void> bindOrder(String signToken, String orderNo, Long itemId, Long skuId, Long buyerId);
 
     Flux<ShopContractSignatureRecordVo> listSignatureRecords();
 }

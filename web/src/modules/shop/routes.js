@@ -9,6 +9,7 @@ const AccountTickets = lazy(() => import('@/modules/shop/pages/Account/Tickets.v
 const ShopEntry = lazy(() => import('@/modules/shop/pages/Shop/pages/ShopEntry.vue'));
 const ShopItemList = lazy(() => import('@/modules/shop/pages/Shop/pages/ShopItemList.vue'));
 const ShopItemDetail = lazy(() => import('@/modules/shop/pages/Shop/pages/ShopItemDetail.vue'));
+const ShopSponsor = lazy(() => import('@/modules/shop/pages/Shop/pages/ShopSponsor.vue'));
 const ShopManageWorkbench = lazy(() => import('@/modules/shop/pages/Shop/pages/manage/ShopManageWorkbench.vue'));
 const ShopManage = lazy(() => import('@/modules/shop/pages/Shop/pages/manage/ShopManage.vue'));
 const ItemManage = lazy(() => import('@/modules/shop/pages/Shop/pages/manage/ItemManage.vue'));
@@ -27,6 +28,16 @@ const shopMeta = meta => ({
 });
 
 export const shopRoutes = {
+  '/sponsor': {
+    name: '支持 file-viewer',
+    layout: Shop,
+    component: ShopSponsor
+  },
+  '/donate': {
+    name: '打赏 file-viewer',
+    layout: Shop,
+    component: ShopSponsor
+  },
   '/account/orders': {
     name: '我的订单',
     component: AccountOrders,
@@ -57,6 +68,16 @@ export const shopRoutes = {
       '/detail/:id': {
         name: '商品详情',
         component: ShopItemDetail,
+        meta: shopMeta()
+      },
+      '/sponsor': {
+        name: '支持 file-viewer',
+        component: ShopSponsor,
+        meta: shopMeta()
+      },
+      '/donate': {
+        name: '打赏 file-viewer',
+        component: ShopSponsor,
         meta: shopMeta()
       },
       '/manage': {

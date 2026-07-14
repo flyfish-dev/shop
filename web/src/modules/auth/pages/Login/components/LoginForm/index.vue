@@ -1,23 +1,31 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import gitee from '@/assets/gitee.svg';
-import gitea from '@/assets/gitea-text.svg';
-import github from '@/assets/github-text.svg';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   CheckCircleOutlined,
-  LoadingOutlined,
+  DownOutlined,
+  GithubOutlined,
+  GoogleOutlined,
+  LockOutlined,
   MailOutlined,
-  ReloadOutlined,
-  SendOutlined
-} from '@ant-design/icons-vue'
+  SendOutlined,
+  WechatOutlined,
+  WindowsOutlined
+} from '@ant-design/icons-vue';
+import giteeLogo from '@/assets/gitee.svg';
+import giteaLogo from '@/assets/gitea-text.svg';
 import { getQrCode, getResult } from '@/modules/auth/pages/Login/api';
 import { useRouter } from '@/router/use';
 import useClientStore from '@/modules/auth/store/client.js';
 import { PortalOauth } from '@/modules/auth/api.js';
 import { useEmailMagicLink } from './useEmailMagicLink.js';
+import WechatLoginPanel from './WechatLoginPanel.vue';
 
+const { t, locale } = useI18n();
 const router = useRouter();
 const store = useClientStore();
+const moreOpen = ref(false);
+const wechatOpen = ref(false);
 const qrCode = ref('');
 const scene = ref('');
 const message = ref('');
@@ -27,30 +35,50 @@ const polling = ref(false);
 const status = ref('IDLE');
 const oauthProviders = ref({
   email: true,
+  google: true,
+  github: true,
+  microsoft: true,
+  wechat: true,
   gitea: true,
-  gitee: true,
-  github: true
+  gitee: true
 });
 let pollTimer = null;
 
 const statusText = computed(() => {
-  if (message.value) {
+  if (message.value && locale.value === 'zh-CN') {
     return message.value;
   }
-  const texts = {
-    IDLE: '准备登录二维码',
-    LOADING: '正在加载二维码',
-    WAITING: simpleMode.value ? '等待公众号回复' : '等待扫码',
-    SCANNED: '等待验证码回复',
-    CONFIRMED: '登录成功，正在进入平台',
-    EXPIRED: '二维码已过期，请重新获取',
-    ERROR: '请稍后重试',
-  };
-  return texts[status.value] || '等待扫码';
+  const key = simpleMode.value && status.value === 'WAITING'
+    ? 'auth.wechat.statusReply'
+    : `auth.wechat.status.${status.value}`;
+  return t(key);
 });
-
 const hasOverlay = computed(() => ['LOADING', 'CONFIRMED', 'EXPIRED', 'ERROR'].includes(status.value));
-const emailEnabled = computed(() => oauthProviders.value?.email !== false);
+const emailEnabled = computed(() => oauthProviders.value.email !== false);
+const isChinese = computed(() => locale.value === 'zh-CN');
+const providerCatalog = computed(() => ({
+  google: { key: 'google', label: t('auth.providers.google'), icon: GoogleOutlined, className: 'google' },
+  github: { key: 'github', label: t('auth.providers.github'), icon: GithubOutlined, className: 'github' },
+  microsoft: { key: 'microsoft', label: t('auth.providers.microsoft'), icon: WindowsOutlined, className: 'microsoft' },
+  wechat: { key: 'wechat', label: t('auth.providers.wechat'), icon: WechatOutlined, className: 'wechat' },
+  gitee: { key: 'gitee', label: t('auth.providers.gitee'), image: giteeLogo, imageOnly: true, className: 'gitee' },
+  gitea: { key: 'gitea', label: t('auth.providers.gitea'), image: giteaLogo, imageOnly: true, className: 'gitea' }
+}));
+const availableProviders = keys => keys
+  .filter(key => oauthProviders.value[key] !== false)
+  .map(key => providerCatalog.value[key]);
+const primaryProviders = computed(() => availableProviders(
+  isChinese.value
+    ? ['gitee', 'github', 'gitea']
+    : ['google', 'github', 'microsoft']
+));
+const secondaryProviders = computed(() => availableProviders(
+  isChinese.value
+    ? ['google', 'microsoft']
+    : ['wechat', 'gitee', 'gitea']
+));
+const hasPrimaryProviders = computed(() => primaryProviders.value.length > 0);
+const hasSecondaryProviders = computed(() => secondaryProviders.value.length > 0);
 
 const clearPollTimer = () => {
   if (pollTimer) {
@@ -71,7 +99,7 @@ const fetchQrCode = async () => {
   status.value = 'LOADING';
   try {
     const { simple, url, sceneId } = await getQrCode();
-    simpleMode.value = simple
+    simpleMode.value = simple;
     qrCode.value = url;
     scene.value = sceneId;
     message.value = '';
@@ -81,9 +109,60 @@ const fetchQrCode = async () => {
     status.value = 'ERROR';
     message.value = '';
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
+
+const rememberRedirect = () => {
+  store.rememberOAuthLoginRedirect(store.redirection || '/');
+};
+
+const startOauth = provider => {
+  if (!oauthProviders.value[provider]) {
+    return;
+  }
+  rememberRedirect();
+  window.location.assign(`/oauth/${provider}`);
+};
+
+const hideWechat = () => {
+  wechatOpen.value = false;
+  polling.value = false;
+  clearPollTimer();
+};
+
+const showWechat = async ({ expandMore = !isChinese.value, remember = true } = {}) => {
+  if (!oauthProviders.value.wechat) {
+    return;
+  }
+  if (expandMore) {
+    moreOpen.value = true;
+  }
+  wechatOpen.value = true;
+  if (remember) {
+    rememberRedirect();
+  }
+  if (!qrCode.value || ['EXPIRED', 'ERROR'].includes(status.value)) {
+    await fetchQrCode();
+  } else if (status.value !== 'CONFIRMED') {
+    schedulePoll(300);
+  }
+};
+
+const toggleWechat = () => {
+  if (wechatOpen.value) {
+    hideWechat();
+    return;
+  }
+  showWechat({ expandMore: false });
+};
+
+const toggleMore = () => {
+  moreOpen.value = !moreOpen.value;
+  if (!moreOpen.value && !isChinese.value) {
+    hideWechat();
+  }
+};
 
 const loadOauthProviders = async () => {
   try {
@@ -93,45 +172,35 @@ const loadOauthProviders = async () => {
     };
   } catch (e) {
     oauthProviders.value = {
-      email: false,
+      email: true,
+      google: false,
+      github: false,
+      microsoft: false,
+      wechat: true,
       gitea: false,
-      gitee: false,
-      github: false
+      gitee: false
     };
   }
-};
-
-const startOauth = provider => {
-  if (!oauthProviders.value?.[provider]) {
-    return;
+  if (isChinese.value && oauthProviders.value.wechat) {
+    await showWechat({ expandMore: false, remember: false });
   }
-  store.rememberOAuthLoginRedirect(store.redirection || '/');
-  window.location.assign(`/oauth/${provider}`);
 };
 
 const normalizeRedirect = value => {
   const redirect = (value || '').trim();
-  if (redirect && redirect.startsWith('/') && !redirect.startsWith('//')) {
-    return redirect;
-  }
-  return '/';
+  return redirect && redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/';
 };
 
 const emailRedirect = computed(() => normalizeRedirect(store.redirection));
 const {
-  emailLoginOpen,
   emailAddress,
   emailSending,
   emailNotice,
   emailNoticeType,
   emailCanSend,
   emailSendButtonText,
-  toggleEmailLogin,
   sendEmailLogin
-} = useEmailMagicLink({
-  emailEnabled,
-  redirect: emailRedirect
-});
+} = useEmailMagicLink({ emailEnabled, redirect: emailRedirect });
 
 const completeLogin = async ({ token }) => {
   if (!token) {
@@ -149,387 +218,461 @@ const waitForResult = async () => {
   }
   polling.value = true;
   try {
-    const resp = await getResult(scene.value)
-    const nextStatus = resp?.status || 'WAITING';
+    const response = await getResult(scene.value);
+    const nextStatus = response?.status || 'WAITING';
     status.value = nextStatus;
-    message.value = resp?.statusText || '';
+    message.value = response?.statusText || '';
     if (nextStatus === 'CONFIRMED') {
-      await completeLogin(resp);
+      await completeLogin(response);
       return;
     }
-    if (nextStatus === 'EXPIRED') {
-      return;
+    if (nextStatus !== 'EXPIRED') {
+      schedulePoll(nextStatus === 'SCANNED' ? 1000 : 1500);
     }
-    schedulePoll(nextStatus === 'SCANNED' ? 1000 : 1500);
   } catch (e) {
     status.value = 'ERROR';
     message.value = '';
   } finally {
     polling.value = false;
   }
-}
+};
 
-onMounted(() => {
-  fetchQrCode();
-  loadOauthProviders();
-})
+watch(locale, value => {
+  if (value === 'zh-CN' && oauthProviders.value.wechat) {
+    showWechat({ expandMore: false, remember: false });
+  } else {
+    hideWechat();
+  }
+});
 
+onMounted(loadOauthProviders);
 onBeforeUnmount(clearPollTimer);
 </script>
 
 <template>
-<a-form class='login-form'>
-  <div class='login-main'>
-    <h2>微信扫码登录</h2>
-    <p v-if='simpleMode'>公众号回复<span>{{scene}}</span></p>
-    <p v-else>扫码后回复<span>{{scene}}</span></p>
-    <div class='qr-code'>
-      <img :src='qrCode' alt='登录二维码' :class='{muted: hasOverlay}' />
-      <div v-if='hasOverlay' class='overlay'>
-        <div v-if='loading || status === "LOADING"'>
-          <loading-outlined /> {{statusText}}
-        </div>
-        <div v-else>
-          <div>{{statusText}}</div>
-          <a v-if='status !== "CONFIRMED"' @click='fetchQrCode'><reload-outlined /> 重新获取</a>
-        </div>
-      </div>
-    </div>
-    <div class='login-status' :class='status.toLowerCase()'>
-      <loading-outlined v-if='polling && status !== "CONFIRMED"' />
-      {{statusText}}
-    </div>
-  </div>
-  <div class='other'>
-    <a-divider style='border-color: darkgrey'>其它登录方式</a-divider>
-    <div class='oauth-links'>
-      <a
-        class='other-link gitee-login'
-        :class='{ disabled: !oauthProviders.gitee }'
-        :href='oauthProviders.gitee ? "/oauth/gitee" : undefined'
-        title='码云登录'
-        @click.prevent='startOauth("gitee")'
-      >
-        <img :src='gitee' alt='码云'>
-      </a>
-      <a
-        class='other-link gitea-login'
-        :class='{ disabled: !oauthProviders.gitea }'
-        :href='oauthProviders.gitea ? "/oauth/gitea" : undefined'
-        title='Gitea 登录'
-        @click.prevent='startOauth("gitea")'
-      >
-        <img :src='gitea' alt='Gitea'>
-      </a>
-      <a
-        class='other-link github-login'
-        :class='{ disabled: !oauthProviders.github }'
-        :href='oauthProviders.github ? "/oauth/github" : undefined'
-        title='GitHub 登录'
-        @click.prevent='startOauth("github")'
-      >
-        <img :src='github' alt='GitHub'>
-      </a>
+  <a-form class="login-form" :class="{ 'locale-zh': isChinese }" @submit.prevent="sendEmailLogin">
+    <section v-if="isChinese && oauthProviders.wechat" class="wechat-priority">
       <button
-        type='button'
-        class='other-link text-login email-login'
-        :class='{ active: emailLoginOpen, disabled: !emailEnabled }'
-        :disabled='!emailEnabled || emailSending'
-        title='邮箱快速登录'
-        @click='toggleEmailLogin'
+        type="button"
+        class="wechat-primary-button"
+        :aria-expanded="wechatOpen"
+        @click="toggleWechat"
       >
-        <span class='login-icon'>
-          <mail-outlined />
+        <span class="wechat-mark"><wechat-outlined /></span>
+        <span class="wechat-button-copy">
+          <strong>{{ t('auth.wechat.title') }}</strong>
+          <small>{{ t('auth.wechat.hint') }}</small>
         </span>
-        <span>邮箱登录</span>
+        <span class="recommended-label">{{ t('auth.recommended') }}</span>
+        <down-outlined class="wechat-chevron" :class="{ rotated: wechatOpen }" />
       </button>
-    </div>
-    <div v-if='emailLoginOpen' class='email-login-panel'>
-      <a-input
-        v-model:value='emailAddress'
-        :maxlength='128'
-        allow-clear
-        placeholder='邮箱地址'
-        :disabled='emailSending'
-        @pressEnter='sendEmailLogin'
-      >
-        <template #prefix>
-          <mail-outlined />
-        </template>
-      </a-input>
-      <a-button type='primary' :loading='emailSending' :disabled='!emailCanSend' @click='sendEmailLogin'>
-        <template #icon>
-          <send-outlined />
-        </template>
-        {{ emailSendButtonText }}
-      </a-button>
-      <p v-if='emailNotice' class='email-login-note' :class='emailNoticeType'>
-        <check-circle-outlined v-if='emailNoticeType === "success"' />
+      <transition name="method-expand">
+        <wechat-login-panel
+          v-if="wechatOpen"
+          :has-overlay="hasOverlay"
+          :loading="loading"
+          :polling="polling"
+          :qr-code="qrCode"
+          :scene="scene"
+          :simple-mode="simpleMode"
+          :status="status"
+          :status-text="statusText"
+          @reload="fetchQrCode"
+        />
+      </transition>
+    </section>
+
+    <section class="email-section" :aria-label="t('auth.email.title')">
+      <label class="section-label" for="login-email">{{ t('auth.email.title') }}</label>
+      <div class="email-row">
+        <a-input
+          id="login-email"
+          v-model:value="emailAddress"
+          :maxlength="128"
+          allow-clear
+          autocomplete="email"
+          :placeholder="t('auth.email.placeholder')"
+          :disabled="emailSending || !emailEnabled"
+          @pressEnter="sendEmailLogin"
+        >
+          <template #prefix><mail-outlined /></template>
+        </a-input>
+        <a-button
+          type="primary"
+          html-type="submit"
+          :loading="emailSending"
+          :disabled="!emailCanSend"
+        >
+          <template #icon><send-outlined /></template>
+          {{ emailSendButtonText }}
+        </a-button>
+      </div>
+      <p v-if="emailNotice" class="email-notice" :class="emailNoticeType" role="status">
+        <check-circle-outlined v-if="emailNoticeType === 'success'" />
         <span>{{ emailNotice }}</span>
       </p>
-    </div>
-  </div>
-</a-form>
+      <p v-else class="email-hint">{{ t('auth.email.hint') }}</p>
+    </section>
+
+    <template v-if="hasPrimaryProviders">
+      <a-divider>{{ isChinese ? t('auth.accountOptions') : t('auth.orContinue') }}</a-divider>
+
+      <div class="primary-providers">
+        <button
+          v-for="provider in primaryProviders"
+          :key="provider.key"
+          type="button"
+          class="provider-button"
+          :class="provider.className"
+          @click="startOauth(provider.key)"
+        >
+          <component v-if="provider.icon" :is="provider.icon" class="provider-icon" />
+          <img v-else :src="provider.image" class="provider-logo" alt="" />
+          <span :class="{ 'visually-hidden': provider.imageOnly }">{{ provider.label }}</span>
+        </button>
+      </div>
+    </template>
+
+    <button
+      v-if="hasSecondaryProviders"
+      type="button"
+      class="more-toggle"
+      :aria-expanded="moreOpen"
+      @click="toggleMore"
+    >
+      <span>{{ isChinese ? t('auth.otherOptions') : t('auth.moreOptions') }}</span>
+      <down-outlined :class="{ rotated: moreOpen }" />
+    </button>
+
+    <transition name="method-expand">
+      <div v-if="moreOpen && hasSecondaryProviders" class="secondary-section">
+        <div class="secondary-providers">
+          <button
+            v-for="provider in secondaryProviders"
+            :key="provider.key"
+            type="button"
+            class="secondary-button"
+            :class="provider.className"
+            @click="provider.key === 'wechat' ? showWechat() : startOauth(provider.key)"
+          >
+            <component v-if="provider.icon" :is="provider.icon" />
+            <img v-else :src="provider.image" class="secondary-logo" alt="" />
+            <span :class="{ 'visually-hidden': provider.imageOnly }">{{ provider.label }}</span>
+          </button>
+        </div>
+
+        <wechat-login-panel
+          v-if="!isChinese && wechatOpen"
+          :has-overlay="hasOverlay"
+          :loading="loading"
+          :polling="polling"
+          :qr-code="qrCode"
+          :scene="scene"
+          :simple-mode="simpleMode"
+          :status="status"
+          :status-text="statusText"
+          @reload="fetchQrCode"
+        />
+      </div>
+    </transition>
+
+    <p class="privacy-note"><lock-outlined /> {{ t('auth.privacy') }}</p>
+  </a-form>
 </template>
 
-<style scoped lang='less'>
+<style scoped lang="less">
 .login-form {
-  .login-main {
-    p>span {
-      color: #5cb05c;
-      font-weight: bold;
-      font-size: 19px;
-      margin: 0 2px;
-    }
-    .qr-code {
-      width: 200px;
-      height: 200px;
-      margin: 0 auto;
-      padding: 10px;
-      background-color: #e1e1e1;
-      position: relative;
-      img {
-        display: block;
-        line-height: 170px;
-        width: 100%;
-        height: 100%;
-        transition: opacity .2s ease, filter .2s ease;
+  color: #172338;
+  font-family: Avenir, "Helvetica Neue", Arial, Helvetica, sans-serif;
+}
 
-        &.muted {
-          opacity: .35;
-          filter: grayscale(.35);
-        }
-      }
-      div {
-        width: 100%;
-      }
-      a {
-        display: block;
-        margin-top: 12px;
-      }
-      .overlay {
-        position: absolute;
-        width: 100%;
-        height: 100%;
-        left: 0;
-        top: 0;
-        background: #000000AB;
-        color: white;
-        padding: 20px;
-        display: flex;
-        align-items: center;
-      }
-    }
-    .login-status {
-      display: flex;
-      width: 260px;
-      min-height: 36px;
-      margin: 14px auto 0;
-      padding: 8px 12px;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      border: 1px solid #d9eddf;
-      border-radius: 8px;
-      background: #f6fbf7;
-      color: #40614b;
-      font-size: 13px;
-      line-height: 1.45;
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+  white-space: nowrap;
+}
 
-      &.scanned {
-        border-color: #91caff;
-        background: #f0f7ff;
-        color: #0958d9;
-      }
+.wechat-priority {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 17px;
+}
 
-      &.confirmed {
-        border-color: #b7eb8f;
-        background: #f6ffed;
-        color: #237804;
-      }
+.wechat-primary-button {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-height: 58px;
+  grid-template-columns: 38px minmax(0, 1fr) auto 16px;
+  gap: 11px;
+  align-items: center;
+  padding: 9px 13px;
+  overflow: hidden;
+  border: 1px solid #9dd7b5;
+  border-radius: 8px;
+  background: #f4fbf7;
+  color: #16432d;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease;
 
-      &.expired,
-      &.error {
-        border-color: #ffccc7;
-        background: #fff2f0;
-        color: #a8071a;
-      }
-    }
-  }
-  .other {
-    margin-top: 24px;
-    line-height: 22px;
-    text-align: center;
-
-    .oauth-links {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-wrap: wrap;
-      gap: 14px;
-    }
-
-    .other-link {
-      display: inline-flex;
-      width: auto;
-      min-width: 112px;
-      height: 52px;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 12px 14px;
-      border: 0;
-      border-radius: 8px;
-      background: transparent;
-      color: #253248;
-      font-family: Avenir, Helvetica Neue, Arial, Helvetica, sans-serif;
-      font-size: 15px;
-      line-height: 1;
-      cursor: pointer;
-      transition: background-color .2s ease, color .2s ease, box-shadow .2s ease;
-
-      &:hover {
-        background-color: #edf5ff;
-      }
-
-      &.active {
-        background-color: #e6f4ff;
-        color: #0958d9;
-        box-shadow: inset 0 0 0 1px #91caff;
-      }
-
-      &.disabled {
-        cursor: not-allowed;
-        opacity: .38;
-
-        &:hover {
-          background-color: transparent;
-        }
-      }
-
-      img {
-        display: block;
-        max-height: 26px;
-        width: auto;
-        max-width: 112px;
-        object-fit: contain;
-      }
-
-      &.text-login {
-        min-width: 124px;
-        border: 1px solid #e5ebf3;
-        background: #fff;
-        color: #1f2f46;
-        box-shadow: 0 8px 20px rgba(31, 47, 70, .06);
-
-        &:hover {
-          border-color: #b9d6ff;
-          background: #f7fbff;
-          color: #0958d9;
-          box-shadow: 0 10px 24px rgba(22, 119, 255, .12);
-        }
-
-        &.active {
-          border-color: #91caff;
-          background: #eef7ff;
-          color: #0958d9;
-          box-shadow: 0 10px 24px rgba(22, 119, 255, .14);
-        }
-
-        &.disabled {
-          background: #f8fafc;
-          box-shadow: none;
-        }
-
-        .login-icon {
-          display: inline-flex;
-          width: 26px;
-          height: 26px;
-          align-items: center;
-          justify-content: center;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #edf6ff 0%, #e8fff4 100%);
-          color: #1677ff;
-
-          .anticon {
-            font-size: 15px;
-          }
-        }
-      }
-    }
-
-    .email-login-panel {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 12px;
-      align-items: center;
-      width: min(100%, 380px);
-      margin: 16px auto 0;
-      padding: 14px 16px;
-      border: 1px solid #dfeaf8;
-      border-radius: 8px;
-      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-      box-shadow: 0 12px 32px rgba(33, 54, 88, .08);
-
-      :deep(.ant-input-affix-wrapper) {
-        height: 40px;
-        border-color: #d9e5f3;
-        border-radius: 8px;
-        font-family: Avenir, Helvetica Neue, Arial, Helvetica, sans-serif;
-
-        .ant-input-prefix {
-          color: #6d7f94;
-        }
-      }
-
-      :deep(.ant-btn) {
-        height: 40px;
-        border-radius: 8px;
-        font-family: Avenir, Helvetica Neue, Arial, Helvetica, sans-serif;
-        box-shadow: none;
-      }
-
-      .email-login-note {
-        grid-column: 1 / -1;
-        display: flex;
-        min-height: 20px;
-        align-items: center;
-        gap: 6px;
-        margin: 0;
-        color: #42526d;
-        font-size: 13px;
-        line-height: 1.45;
-        text-align: left;
-
-        &.success {
-          color: #237804;
-        }
-
-        &.error {
-          color: #a8071a;
-        }
-      }
-    }
-
-    @media (max-width: 430px) {
-      .email-login-panel {
-        grid-template-columns: 1fr;
-
-        :deep(.ant-btn) {
-          width: 100%;
-        }
-      }
-    }
-  }
-  a {
-    color: #1890ff;
-    text-decoration: none;
-    background-color: transparent;
+  &:hover,
+  &:focus-visible {
+    border-color: #42ad70;
+    background: #eef9f2;
+    box-shadow: 0 8px 22px rgba(18, 118, 65, .10);
     outline: none;
-    cursor: pointer;
-    transition: color 0.3s;
-    -webkit-text-decoration-skip: objects;
   }
 }
 
+.wechat-mark {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 50%;
+  background: #20ad58;
+  color: #fff;
+  font-size: 21px;
+}
+
+.wechat-button-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+
+  strong { font-size: 14px; line-height: 1.35; }
+  small { overflow: hidden; color: #60786a; font-size: 11px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+.recommended-label {
+  padding: 3px 7px;
+  border: 1px solid #a9ddbd;
+  border-radius: 5px;
+  background: #fff;
+  color: #148146;
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.wechat-chevron {
+  color: #527160;
+  font-size: 11px;
+  transition: transform .18s ease;
+
+  &.rotated { transform: rotate(180deg); }
+}
+
+.section-label {
+  display: block;
+  margin-bottom: 9px;
+  color: #24344d;
+  font-weight: 650;
+  font-size: 14px;
+}
+
+.email-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+
+  :deep(.ant-input-affix-wrapper),
+  :deep(.ant-btn) {
+    height: 44px;
+    border-radius: 6px;
+    box-shadow: none;
+  }
+
+  :deep(.ant-input-prefix) {
+    margin-right: 8px;
+    color: #708097;
+  }
+
+  :deep(.ant-btn) {
+    padding-inline: 17px;
+    font-weight: 600;
+  }
+}
+
+.locale-zh .email-section {
+  padding-top: 1px;
+}
+
+.email-hint,
+.email-notice {
+  min-height: 20px;
+  margin: 8px 0 0;
+  color: #6b778c;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.email-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+
+  &.success { color: #27723e; }
+  &.error { color: #b42318; }
+}
+
+:deep(.ant-divider) {
+  margin: 20px 0 16px;
+  color: #8591a3;
+  font-size: 12px;
+}
+
+.primary-providers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.provider-button,
+.secondary-button,
+.more-toggle {
+  border: 1px solid #dce2ea;
+  background: #fff;
+  color: #24324a;
+  cursor: pointer;
+  transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease, color .18s ease;
+}
+
+.provider-button {
+  display: flex;
+  min-width: 0;
+  height: 47px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 13px;
+
+  &:hover {
+    border-color: #9eb8d7;
+    background: #f8fbff;
+    box-shadow: 0 5px 14px rgba(29, 62, 99, .08);
+  }
+
+  .provider-icon { flex: 0 0 auto; font-size: 18px; }
+  .provider-logo { width: auto; max-width: 68px; height: 19px; object-fit: contain; }
+  &.google .provider-icon { color: #4285f4; }
+  &.github .provider-icon { color: #171a1f; }
+  &.microsoft .provider-icon { color: #0078d4; }
+}
+
+.more-toggle {
+  display: flex;
+  width: 100%;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 13px;
+  border-color: transparent;
+  border-radius: 6px;
+  color: #607087;
+  font-size: 13px;
+
+  &:hover { background: #f5f7fa; color: #245f9d; }
+  .anticon { transition: transform .18s ease; }
+  .rotated { transform: rotate(180deg); }
+}
+
+.secondary-section {
+  padding-top: 4px;
+}
+
+.secondary-providers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.secondary-button {
+  display: flex;
+  min-width: 0;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+
+  &:hover { border-color: #abc3d9; background: #f8fafc; }
+  &.wechat { color: #167e48; }
+  img { object-fit: contain; }
+  .secondary-logo { width: auto; max-width: 62px; height: 17px; }
+}
+
+.secondary-section :deep(.wechat-panel) { margin-top: 10px; }
+
+.method-expand-enter-active,
+.method-expand-leave-active {
+  transform-origin: top;
+  transition: opacity .2s ease, transform .2s ease;
+}
+
+.method-expand-enter-from,
+.method-expand-leave-to {
+  opacity: 0;
+  transform: translateY(-5px);
+}
+
+.privacy-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 18px 0 0;
+  color: #8490a1;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+@media (min-width: 521px) and (max-height: 820px) {
+  .wechat-priority { gap: 8px; margin-bottom: 12px; }
+  .wechat-primary-button { min-height: 54px; padding-block: 7px; }
+  .section-label { margin-bottom: 7px; }
+
+  .email-row :deep(.ant-input-affix-wrapper),
+  .email-row :deep(.ant-btn) { height: 42px; }
+
+  .email-hint,
+  .email-notice { min-height: 18px; margin-top: 6px; }
+
+  :deep(.ant-divider) { margin: 14px 0 12px; }
+  .provider-button { height: 44px; }
+  .more-toggle { height: 34px; margin-top: 9px; }
+  .privacy-note { margin-top: 13px; }
+}
+
+@media (max-width: 520px) {
+  .email-row { grid-template-columns: 1fr; }
+  .email-row :deep(.ant-btn) { width: 100%; }
+  .primary-providers { gap: 6px; }
+  .provider-button { gap: 5px; padding-inline: 5px; font-size: 12px; }
+  .recommended-label { display: none; }
+  .wechat-primary-button { grid-template-columns: 38px minmax(0, 1fr) 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .provider-button,
+  .secondary-button,
+  .more-toggle,
+  .wechat-primary-button,
+  .wechat-chevron,
+  .method-expand-enter-active,
+  .method-expand-leave-active { transition: none; }
+}
 </style>

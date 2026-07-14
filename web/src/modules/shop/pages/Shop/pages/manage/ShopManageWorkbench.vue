@@ -17,6 +17,7 @@ import {
   UserOutlined
 } from '@ant-design/icons-vue';
 import { useShopManageWorkbench } from '../../hooks/useShopManageWorkbench.js';
+import { formatRevenueBreakdown } from '@/modules/shop/utils/shopMoney.js';
 
 const {
   loading,
@@ -28,12 +29,10 @@ const {
   loadWorkbench
 } = useShopManageWorkbench();
 
-const formatMoney = value => `¥${Number(value || 0).toFixed(2)}`;
-
 const statCards = computed(() => [
   {
     title: '今日成交',
-    value: formatMoney(summary.value.todayRevenueAmount),
+    value: formatRevenueBreakdown(summary.value.todayRevenueAmount, summary.value.todayRevenueUsdAmount),
     meta: `${summary.value.todayOrderCount} 笔订单`,
     icon: DashboardOutlined,
     tone: 'green',
@@ -41,7 +40,7 @@ const statCards = computed(() => [
   },
   {
     title: '累计成交',
-    value: formatMoney(summary.value.revenueAmount),
+    value: formatRevenueBreakdown(summary.value.revenueAmount, summary.value.revenueUsdAmount),
     meta: `${summary.value.paidOrderCount} / ${summary.value.orderTotal} 单`,
     icon: ShoppingCartOutlined,
     tone: 'blue',

@@ -1,6 +1,7 @@
 <script setup>
 import { ReloadOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons-vue';
 import { customerDisplayName } from './customerDisplay.js';
+import { useI18n } from 'vue-i18n';
 
 defineProps({
   conversations: {
@@ -16,12 +17,13 @@ const emit = defineEmits([
   'refresh',
   'select'
 ]);
+const { locale, t } = useI18n();
 </script>
 
 <template>
   <aside class='customer-conversations'>
     <div class='conversation-toolbar'>
-      <span><team-outlined /> 客户会话</span>
+      <span><team-outlined /> {{ t('customerService.customerChats') }}</span>
       <a-button size='small' @click='emit("refresh")'>
         <template #icon><reload-outlined /></template>
       </a-button>
@@ -51,15 +53,15 @@ const emit = defineEmits([
 
         <span class='conversation-main'>
           <span class='conversation-name'>
-            <strong>{{ customerDisplayName(item) }}</strong>
+            <strong>{{ customerDisplayName(item, locale) }}</strong>
             <small>{{ item.lastMessageTime || item.lastInboundTime || '' }}</small>
           </span>
-          <span class='conversation-preview'>{{ item.lastMessage || '暂无消息' }}</span>
+          <span class='conversation-preview'>{{ item.lastMessage || t('customerService.noMessages') }}</span>
         </span>
       </button>
 
       <div v-if='!conversations.length' class='conversation-empty'>
-        <a-empty description='暂无会话' />
+        <a-empty :description="t('customerService.noConversations')" />
       </div>
     </div>
   </aside>

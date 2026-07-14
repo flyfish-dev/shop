@@ -5,10 +5,12 @@ import {
   showBrowserNotification
 } from '@/utils/browserNotifications.js';
 import { customerDisplayName } from './customerDisplay.js';
+import { useI18n } from 'vue-i18n';
 
 const EMPTY_LIST = [];
 
 export function useCustomerServiceNotifications(options) {
+  const { locale, t } = useI18n();
   const permission = ref(browserNotificationPermission());
   const initialized = ref(false);
   const previousConversationUnread = new Map();
@@ -63,8 +65,12 @@ export function useCustomerServiceNotifications(options) {
 
     const manager = Boolean(options.manager?.value);
     showBrowserNotification({
-      title: manager ? '新的客户消息' : '客服回复了你',
-      body: notificationBody(customerDisplayName(changed), changed.lastMessage || '有新的客服消息'),
+      title: manager ? t('customerService.newCustomerMessage') : t('customerService.supportReplied'),
+      body: notificationBody(
+        customerDisplayName(changed, locale.value),
+        changed.lastMessage || t('customerService.newSupportMessage'),
+        locale.value
+      ),
       tag: `flyfish-customer-${changed.id}`,
       onClick: () => options.openChat?.({ conversationId: changed.id })
     });
@@ -79,8 +85,14 @@ export function useCustomerServiceNotifications(options) {
     }
 
     showBrowserNotification({
-      title: Boolean(options.manager?.value) ? '新的工单消息' : '工单有新的回复',
-      body: notificationBody(changed.title || changed.ticketNo || '工单', changed.lastMessage || '有新的工单消息'),
+      title: Boolean(options.manager?.value)
+        ? t('customerService.newTicketTitle')
+        : t('customerService.ticketReplied'),
+      body: notificationBody(
+        changed.title || changed.ticketNo || t('customerService.ticket'),
+        changed.lastMessage || t('customerService.newTicketMessage'),
+        locale.value
+      ),
       tag: `flyfish-ticket-${changed.ticketNo || changed.id}`,
       onClick: () => options.openTickets?.()
     });
@@ -119,7 +131,7 @@ const recentTime = item => {
   return Number.isFinite(time) ? time : 0;
 };
 
-const notificationBody = (title, message) => {
+const notificationBody = (title, message, locale) => {
   const prefix = String(title || '').trim();
   const content = String(message || '').replace(/\s+/g, ' ').trim();
   if (!prefix) {
@@ -128,5 +140,5 @@ const notificationBody = (title, message) => {
   if (!content) {
     return prefix;
   }
-  return `${prefix}：${content}`;
+  return String(locale || '').startsWith('en') ? `${prefix}: ${content}` : `${prefix}：${content}`;
 };

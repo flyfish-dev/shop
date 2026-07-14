@@ -5,6 +5,7 @@ import group.flyfish.dev.customer.domain.po.CustomerConversation;
 import group.flyfish.dev.customer.domain.po.CustomerMessage;
 import group.flyfish.dev.customer.repository.CustomerConversationRepository;
 import group.flyfish.dev.customer.repository.CustomerMessageRepository;
+import group.flyfish.dev.customer.service.CustomerPresenceRegistry;
 import group.flyfish.dev.customer.service.CustomerRealtimeNotifier;
 import group.flyfish.dev.support.service.SupportTicketService;
 import group.flyfish.dev.auth.api.client.AuthUserGateway;
@@ -182,6 +183,31 @@ class CustomerServiceCenterServiceImplTest {
                 .verifyComplete();
     }
 
+    @Test
+    void managerConversationIncludesCustomerPresence() {
+        Fixture fixture = new Fixture();
+        fixture.seedConversation();
+        Runnable release = fixture.presenceRegistry.registerCustomer(100L);
+
+        StepVerifier.create(fixture.service.getManagementConversation(fixture.maintainer(), 1L))
+                .assertNext(detail -> {
+                    assertEquals(Boolean.TRUE, detail.getConversation().getOnline());
+                    assertEquals("ONLINE", detail.getConversation().getOnlineStatus());
+                    assertNotNull(detail.getConversation().getLastActiveTime());
+                })
+                .verifyComplete();
+
+        release.run();
+
+        StepVerifier.create(fixture.service.getManagementConversation(fixture.maintainer(), 1L))
+                .assertNext(detail -> {
+                    assertEquals(Boolean.FALSE, detail.getConversation().getOnline());
+                    assertEquals("OFFLINE", detail.getConversation().getOnlineStatus());
+                    assertNotNull(detail.getConversation().getLastActiveTime());
+                })
+                .verifyComplete();
+    }
+
     private static class Fixture {
 
         private final CustomerConversationRepository conversationRepository = mock(CustomerConversationRepository.class);
@@ -189,9 +215,10 @@ class CustomerServiceCenterServiceImplTest {
         private final AuthUserGateway authUserGateway = mock(AuthUserGateway.class);
         private final SupportTicketService supportTicketService = mock(SupportTicketService.class);
         private final CustomerRealtimeNotifier realtimeNotifier = mock(CustomerRealtimeNotifier.class);
+        private final CustomerPresenceRegistry presenceRegistry = new CustomerPresenceRegistry();
         private final CustomerServiceCenterServiceImpl service = new CustomerServiceCenterServiceImpl(
                 conversationRepository, messageRepository, authUserGateway, supportTicketService,
-                realtimeNotifier);
+                realtimeNotifier, presenceRegistry);
         private final AtomicLong conversationIds = new AtomicLong(1);
         private final AtomicLong messageIds = new AtomicLong(1);
         private final List<CustomerConversation> conversations = new ArrayList<>();

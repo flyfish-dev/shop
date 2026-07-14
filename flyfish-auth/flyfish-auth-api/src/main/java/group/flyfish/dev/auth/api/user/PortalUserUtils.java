@@ -17,7 +17,8 @@ public final class PortalUserUtils {
         return authorizations.stream()
                 .filter(Objects::nonNull)
                 .filter(vo -> vo.getType() == OAuthType.GITEA || vo.getType() == OAuthType.GITEE
-                        || vo.getType() == OAuthType.GITHUB || vo.getType() == OAuthType.WECHAT)
+                        || vo.getType() == OAuthType.GITHUB || vo.getType() == OAuthType.GOOGLE
+                        || vo.getType() == OAuthType.MICROSOFT || vo.getType() == OAuthType.WECHAT)
                 .map(PortalUserOauthVo::getAvatar)
                 .filter(StringUtils::isNotBlank)
                 .findFirst()

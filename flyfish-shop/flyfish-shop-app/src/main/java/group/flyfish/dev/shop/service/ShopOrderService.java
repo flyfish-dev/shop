@@ -3,6 +3,7 @@ package group.flyfish.dev.shop.service;
 import group.flyfish.dev.shop.domain.dto.ShopCouponApplyDto;
 import group.flyfish.dev.shop.domain.dto.ShopOrderDto;
 import group.flyfish.dev.shop.domain.dto.ShopOrderDeliveryDto;
+import group.flyfish.dev.shop.domain.qo.ShopOrderListQo;
 import group.flyfish.dev.shop.domain.vo.ShopCouponApplyVo;
 import group.flyfish.dev.shop.domain.vo.ShopOrderCreateVo;
 import group.flyfish.dev.shop.domain.vo.ShopOrderDeliveryDownloadVo;
@@ -10,6 +11,7 @@ import group.flyfish.dev.shop.domain.vo.ShopOrderDeliveryExtractVo;
 import group.flyfish.dev.shop.domain.vo.ShopOrderVo;
 import group.flyfish.dev.shop.domain.vo.ShopPurchaseAvailabilityVo;
 import group.flyfish.dev.shop.service.support.h5zhifu.bean.H5ZhiFuNotifyDto;
+import group.flyfish.dev.shop.service.support.stripe.bean.StripeCheckoutSessionDto;
 import group.flyfish.dev.auth.api.user.PortalUserVo;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -22,7 +24,9 @@ public interface ShopOrderService {
 
     Mono<ShopPurchaseAvailabilityVo> checkPurchaseAvailability(Long itemId, PortalUserVo buyer);
 
-    Flux<ShopOrderVo> getOrders(PortalUserVo buyer, Long itemId);
+    Mono<ShopPurchaseAvailabilityVo> checkPurchaseAvailability(Long itemId, Long skuId, PortalUserVo buyer);
+
+    Flux<ShopOrderVo> getOrders(PortalUserVo buyer, ShopOrderListQo qo);
 
     Flux<ShopOrderVo> getMyOrders(PortalUserVo buyer);
 
@@ -39,6 +43,8 @@ public interface ShopOrderService {
     Mono<ShopOrderVo> retryDelivery(String orderNo);
 
     Mono<Void> handlePaymentNotify(H5ZhiFuNotifyDto dto);
+
+    Mono<Void> handleStripeCheckoutSession(StripeCheckoutSessionDto session, String eventType);
 
     Mono<Integer> closeExpiredUnpaidOrders();
 }

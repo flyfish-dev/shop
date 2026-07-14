@@ -6,6 +6,7 @@ import group.flyfish.dev.oauth.service.OAuthProfileEnrichmentService;
 import group.flyfish.dev.oauth.vender.gitea.GiteaProfile;
 import group.flyfish.dev.oauth.vender.gitee.GiteeProfile;
 import group.flyfish.dev.oauth.vender.github.GithubProfile;
+import group.flyfish.dev.oauth.vender.microsoft.MicrosoftProfile;
 import group.flyfish.dev.auth.api.user.OAuthType;
 import group.flyfish.dev.user.domain.UserToken;
 import group.flyfish.dev.user.domain.bo.OAuthBindPlan;
@@ -27,6 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.UserProfile;
+import org.pac4j.oauth.profile.google2.Google2Profile;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Flux;
 
@@ -103,12 +105,20 @@ public class PortalUserServiceImpl implements PortalUserService {
         return buildUserInfoSnapshot(userProfile, type)
                 .flatMap(snapshot -> {
                     AuthorizationMetadata metadata = resolveAuthorizationMetadata(type, userProfile.getId(), snapshot);
+                    String verifiedEmail = verifiedOAuthEmail(type, metadata, snapshot);
                     return findUserByAuthorization(type, userProfile.getId())
                             .flatMap(user -> refreshAuthorization(user.getId(), type, userProfile.getId(), snapshot)
+                                    .then(syncVerifiedEmailIfPresent(user, verifiedEmail))
                                     .then(refreshUserDisplayName(user.getId()))
                                     .thenReturn(user))
-                            .switchIfEmpty(Mono.defer(() -> createUserWithAuthorization(type, userProfile.getId(),
-                                    metadata.preferredUsername(type, userProfile.getId()), snapshot)));
+                            .switchIfEmpty(Mono.defer(() -> findUserByVerifiedEmailIfPresent(verifiedEmail)
+                                    .flatMap(user -> saveAuthorization(user.getId(), type, userProfile.getId(), snapshot)
+                                            .then(syncVerifiedEmailIfPresent(user, verifiedEmail))
+                                            .then(refreshUserDisplayName(user.getId()))
+                                            .thenReturn(user))
+                                    .switchIfEmpty(Mono.defer(() -> createUserWithAuthorization(type,
+                                            userProfile.getId(), metadata.preferredUsername(type,
+                                                    userProfile.getId()), snapshot)))));
                 })
                 .flatMap(this::getToken);
     }
@@ -350,7 +360,13 @@ public class PortalUserServiceImpl implements PortalUserService {
         if (profile instanceof GithubProfile) {
             return OAuthType.GITHUB;
         }
-        return OAuthType.GITEE;
+        if (profile instanceof Google2Profile) {
+            return OAuthType.GOOGLE;
+        }
+        if (profile instanceof MicrosoftProfile) {
+            return OAuthType.MICROSOFT;
+        }
+        throw new IllegalArgumentException("Unsupported OAuth profile: " + profile.getClass().getName());
     }
 
     private Mono<Void> saveAuthorization(Long userId, UserProfile userProfile) {
@@ -472,9 +488,18 @@ public class PortalUserServiceImpl implements PortalUserService {
         snapshot.put("login", StringUtils.defaultIfBlank(valueOf(attributes.get("login")), profile.getUsername()));
         snapshot.put("display_name", profileUsername(profile, type, attributes));
         snapshot.put("nickname", firstNotBlankValue(attributes, "nickname", "name", "full_name"));
-        snapshot.put("avatar_url", firstNotBlankValue(attributes, "avatar_url", "picture_url", "headimgurl"));
-        snapshot.put("profile_url", firstNotBlankValue(attributes, "html_url", "profile_url", "url"));
-        snapshot.put("email", firstNotBlankValue(attributes, "primary_email", "email"));
+        CommonProfile commonProfile = profile instanceof CommonProfile value ? value : null;
+        snapshot.put("avatar_url", firstNotBlankString(
+                firstNotBlankValue(attributes, "avatar_url", "picture_url", "picture", "headimgurl"),
+                commonProfile == null || commonProfile.getPictureUrl() == null
+                        ? null : commonProfile.getPictureUrl().toString()));
+        snapshot.put("profile_url", firstNotBlankString(
+                firstNotBlankValue(attributes, "html_url", "profile_url", "profile", "url"),
+                commonProfile == null || commonProfile.getProfileUrl() == null
+                        ? null : commonProfile.getProfileUrl().toString()));
+        snapshot.put("email", firstNotBlankString(
+                firstNotBlankValue(attributes, "primary_email", "email", "mail", "userPrincipalName"),
+                commonProfile == null ? null : commonProfile.getEmail()));
         snapshot.put("captured_at", LocalDateTime.now().toString());
         snapshot.put("attributes", attributes);
         return JacksonUtils.toJson(snapshot);
@@ -572,6 +597,10 @@ public class PortalUserServiceImpl implements PortalUserService {
                     }
                     return Mono.just(users.get(0));
                 });
+    }
+
+    private Mono<PortalUser> findUserByVerifiedEmailIfPresent(String email) {
+        return StringUtils.isBlank(email) ? Mono.empty() : findUserByVerifiedEmail(email);
     }
 
     private Mono<Void> moveAuthorizationToUser(Long userId, OAuthType type, String openid, PortalUserOauth oauth) {
@@ -680,7 +709,7 @@ public class PortalUserServiceImpl implements PortalUserService {
         if (StringUtils.isBlank(text) || FunNicknameGenerator.isGenericWechatName(text)) {
             return true;
         }
-        boolean hasCodeHostAccount = authorizations.stream().anyMatch(this::isCodeHostAccount);
+        boolean hasNamedAccount = authorizations.stream().anyMatch(this::isNamedAccount);
         for (PortalUserOauth oauth : authorizations) {
             if (oauth.getType() != OAuthType.WECHAT) {
                 continue;
@@ -689,7 +718,7 @@ public class PortalUserServiceImpl implements PortalUserService {
                     || StringUtils.equals(text, FunNicknameGenerator.generate(oauth.getOpenid()))) {
                 return true;
             }
-            if (hasCodeHostAccount) {
+            if (hasNamedAccount) {
                 AuthorizationMetadata metadata = resolveAuthorizationMetadata(oauth.getType(), oauth.getOpenid(), oauth.getUserInfo());
                 if (StringUtils.equalsAny(text, metadata.displayName(), metadata.nickname(), metadata.loginName())) {
                     return true;
@@ -701,11 +730,27 @@ public class PortalUserServiceImpl implements PortalUserService {
 
     private String preferredAccountDisplayName(List<PortalUserOauth> authorizations) {
         return firstNotBlankString(
+                preferredIdentityDisplayName(authorizations, OAuthType.GOOGLE),
+                preferredIdentityDisplayName(authorizations, OAuthType.MICROSOFT),
                 preferredCodeHostDisplayName(authorizations, OAuthType.GITEA),
                 preferredCodeHostDisplayName(authorizations, OAuthType.GITHUB),
                 preferredCodeHostDisplayName(authorizations, OAuthType.GITEE),
                 preferredWechatDisplayName(authorizations)
         );
+    }
+
+    private String preferredIdentityDisplayName(List<PortalUserOauth> authorizations, OAuthType type) {
+        return authorizations.stream()
+                .filter(oauth -> oauth.getType() == type)
+                .map(oauth -> {
+                    AuthorizationMetadata metadata = resolveAuthorizationMetadata(oauth.getType(), oauth.getOpenid(),
+                            oauth.getUserInfo());
+                    return firstNotBlankString(metadata.displayName(), metadata.nickname(), metadata.loginName(),
+                            oauth.getOpenid());
+                })
+                .filter(StringUtils::isNotBlank)
+                .findFirst()
+                .orElse(null);
     }
 
     private String preferredCodeHostDisplayName(List<PortalUserOauth> authorizations, OAuthType type) {
@@ -733,9 +778,10 @@ public class PortalUserServiceImpl implements PortalUserService {
                 .orElse(null);
     }
 
-    private boolean isCodeHostAccount(PortalUserOauth oauth) {
+    private boolean isNamedAccount(PortalUserOauth oauth) {
         return oauth.getType() == OAuthType.GITEA || oauth.getType() == OAuthType.GITHUB
-                || oauth.getType() == OAuthType.GITEE;
+                || oauth.getType() == OAuthType.GITEE || oauth.getType() == OAuthType.GOOGLE
+                || oauth.getType() == OAuthType.MICROSOFT;
     }
 
     private Mono<PortalUser> syncVerifiedEmail(PortalUser user, String email) {
@@ -745,6 +791,22 @@ public class PortalUserServiceImpl implements PortalUserService {
         user.setEmail(email);
         user.setUpdateTime(LocalDateTime.now());
         return portalUserRepository.save(user);
+    }
+
+    private Mono<PortalUser> syncVerifiedEmailIfPresent(PortalUser user, String email) {
+        return StringUtils.isBlank(email) ? Mono.just(user) : syncVerifiedEmail(user, email);
+    }
+
+    private String verifiedOAuthEmail(OAuthType type, AuthorizationMetadata metadata, String userInfo) {
+        String email = normalizeEmail(metadata.email());
+        if (email == null) {
+            return null;
+        }
+        if (type == OAuthType.MICROSOFT) {
+            return email;
+        }
+        Object verified = parseUserInfoSnapshot(userInfo).get("email_verified");
+        return Boolean.parseBoolean(String.valueOf(verified)) ? email : null;
     }
 
     private Mono<Void> ensureUsernameAvailable(String username, Long currentUserId) {
@@ -805,7 +867,7 @@ public class PortalUserServiceImpl implements PortalUserService {
         String nickname = trim(firstNotBlankValue(snapshot, "nickname", "name", "full_name", "display_name"));
         String displayName = trim(firstNotBlankValue(snapshot, "display_name", "full_name", "name", "nickname",
                 "login", "username"));
-        String avatarUrl = trim(firstNotBlankValue(snapshot, "avatar_url", "picture_url", "headimgurl"));
+        String avatarUrl = trim(firstNotBlankValue(snapshot, "avatar_url", "picture_url", "picture", "headimgurl"));
         String email = trim(firstNotBlankValue(snapshot, "primary_email", "email"));
         String profileUrl = trim(firstNotBlankValue(snapshot, "profile_url", "html_url", "url", "blog", "website"));
         String unionId = trim(firstNotBlankValue(snapshot, "union_id", "unionid"));

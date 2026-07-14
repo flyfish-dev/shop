@@ -3,6 +3,8 @@ package group.flyfish.dev.oauth.config;
 import group.flyfish.dev.oauth.vender.gitea.GiteaClient;
 import group.flyfish.dev.oauth.vender.gitee.GiteeClient;
 import group.flyfish.dev.oauth.vender.github.GithubClient;
+import group.flyfish.dev.oauth.vender.google.GoogleOAuthClient;
+import group.flyfish.dev.oauth.vender.microsoft.MicrosoftClient;
 import org.apache.commons.lang3.StringUtils;
 import org.pac4j.core.client.Client;
 import org.pac4j.core.client.Clients;
@@ -46,6 +48,8 @@ public class Pac4jConfig {
         OAuthProperties.Gitea gitea = properties.getGitea();
         OAuthProperties.Gitee gitee = properties.getGitee();
         OAuthProperties.Github github = properties.getGithub();
+        OAuthProperties.Google google = properties.getGoogle();
+        OAuthProperties.Microsoft microsoft = properties.getMicrosoft();
         List<Client> oauthClients = new ArrayList<>();
 
         if (StringUtils.isNoneBlank(gitea.getClientId(), gitea.getClientSecret())) {
@@ -56,6 +60,15 @@ public class Pac4jConfig {
         }
         if (StringUtils.isNoneBlank(github.getClientId(), github.getClientSecret())) {
             oauthClients.add(new GithubClient(github.getClientId(), github.getClientSecret(), github.getScope()));
+        }
+        if (StringUtils.isNoneBlank(google.getClientId(), google.getClientSecret())) {
+            GoogleOAuthClient googleClient = new GoogleOAuthClient(google.getClientId(), google.getClientSecret());
+            googleClient.setName("Google2Client");
+            oauthClients.add(googleClient);
+        }
+        if (StringUtils.isNoneBlank(microsoft.getClientId(), microsoft.getClientSecret())) {
+            oauthClients.add(new MicrosoftClient(microsoft.getClientId(), microsoft.getClientSecret(),
+                    microsoft.getScope()));
         }
 
         final Clients clients = new Clients(properties.getCallbackUrl(), oauthClients);
@@ -96,5 +109,23 @@ public class Pac4jConfig {
             return (exchange, chain) -> chain.filter(exchange);
         }
         return SecurityFilter.build(config, "GithubClient", new PathMatcher().includePath("/oauth/github"));
+    }
+
+    @Bean
+    public WebFilter googleFilter(Config config, OAuthProperties properties) {
+        OAuthProperties.Google google = properties.getGoogle();
+        if (!StringUtils.isNoneBlank(google.getClientId(), google.getClientSecret())) {
+            return (exchange, chain) -> chain.filter(exchange);
+        }
+        return SecurityFilter.build(config, "Google2Client", new PathMatcher().includePath("/oauth/google"));
+    }
+
+    @Bean
+    public WebFilter microsoftFilter(Config config, OAuthProperties properties) {
+        OAuthProperties.Microsoft microsoft = properties.getMicrosoft();
+        if (!StringUtils.isNoneBlank(microsoft.getClientId(), microsoft.getClientSecret())) {
+            return (exchange, chain) -> chain.filter(exchange);
+        }
+        return SecurityFilter.build(config, "MicrosoftClient", new PathMatcher().includePath("/oauth/microsoft"));
     }
 }

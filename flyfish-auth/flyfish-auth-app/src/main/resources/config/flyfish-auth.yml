@@ -2,7 +2,7 @@ oauth:
   callback-url: ${OAUTH_CALLBACK_URL:http://127.0.0.1:9999/oauth/callback}
   gitea:
     app-name: ${OAUTH_GITEA_APP_NAME:飞鱼}
-    server: ${OAUTH_GITEA_SERVER:https://gitea.example.com}
+    server: ${OAUTH_GITEA_SERVER:https://git.flyfish.dev}
     client-id: ${OAUTH_GITEA_CLIENT_ID:}
     client-secret: ${OAUTH_GITEA_CLIENT_SECRET:}
     admin-token: ${OAUTH_GITEA_ADMIN_TOKEN:}
@@ -17,9 +17,21 @@ oauth:
     app-name: ${OAUTH_GITHUB_APP_NAME:飞鱼}
     server: ${OAUTH_GITHUB_SERVER:https://github.com}
     api-base-url: ${OAUTH_GITHUB_API_BASE_URL:https://api.github.com}
+    token-url: ${OAUTH_GITHUB_TOKEN_URL:}
     client-id: ${OAUTH_GITHUB_CLIENT_ID:}
     client-secret: ${OAUTH_GITHUB_CLIENT_SECRET:}
     scope: ${OAUTH_GITHUB_SCOPE:read:user user:email}
+  google:
+    client-id: ${OAUTH_GOOGLE_CLIENT_ID:}
+    client-secret: ${OAUTH_GOOGLE_CLIENT_SECRET:}
+    token-url: ${OAUTH_GOOGLE_TOKEN_URL:https://oauth2.googleapis.com/token}
+    profile-url: ${OAUTH_GOOGLE_PROFILE_URL:https://www.googleapis.com/oauth2/v3/userinfo}
+  microsoft:
+    tenant: ${OAUTH_MICROSOFT_TENANT:common}
+    graph-base-url: ${OAUTH_MICROSOFT_GRAPH_BASE_URL:https://graph.microsoft.com/v1.0}
+    client-id: ${OAUTH_MICROSOFT_CLIENT_ID:}
+    client-secret: ${OAUTH_MICROSOFT_CLIENT_SECRET:}
+    scope: ${OAUTH_MICROSOFT_SCOPE:openid profile email User.Read}
 
 pac4j:
   callback:

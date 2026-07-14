@@ -1,9 +1,19 @@
 package group.flyfish.dev.shop.service.support.h5zhifu.config;
 
 import lombok.Data;
+import org.apache.commons.lang3.StringUtils;
+
+import java.util.LinkedHashSet;
+import java.util.Locale;
+import java.util.Set;
 
 @Data
 public class H5ZhiFuProperties {
+
+    /**
+     * 总开关。关闭后不再向前端公布该通道，也拒绝创建新支付。
+     */
+    private boolean enabled = true;
 
     /**
      * H5支付接口网关地址。官方文档默认是 https://open.h5zhifu.com/api；
@@ -32,6 +42,11 @@ public class H5ZhiFuProperties {
     private String defaultPayType = "wechat";
 
     /**
+     * 商户实际开通的支付类型。默认只开放微信，支付宝需确认开通后显式加入。
+     */
+    private Set<String> enabledPayTypes = new LinkedHashSet<>(Set.of("wechat"));
+
+    /**
      * 默认支付场景。PC 使用 native，手机浏览器使用 h5，微信内置浏览器可使用 jsapi。
      */
     private String defaultTradeType = "native";
@@ -50,5 +65,16 @@ public class H5ZhiFuProperties {
             url = url.substring(0, url.length() - 1);
         }
         return url.endsWith("/api") ? url : url + "/api";
+    }
+
+    public boolean isConfigured() {
+        return enabled && appId != null && StringUtils.isNotBlank(key) && StringUtils.isNotBlank(notifyUrl);
+    }
+
+    public boolean isPayTypeEnabled(String payType) {
+        String normalized = StringUtils.trimToEmpty(payType).toLowerCase(Locale.ROOT);
+        return enabled && enabledPayTypes != null && enabledPayTypes.stream()
+                .map(value -> StringUtils.trimToEmpty(value).toLowerCase(Locale.ROOT))
+                .anyMatch(normalized::equals);
     }
 }

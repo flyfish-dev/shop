@@ -118,7 +118,7 @@ export default {
         dateType: 'ONLY_DATE',
         commentDate: 'yyyy-MM-dd',
         packageConfig: {
-          parent: 'com.example.demo',
+          parent: 'com.example.system',
           moduleName: '',
           entity: 'domain.po',
           service: 'service',

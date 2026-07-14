@@ -601,7 +601,10 @@ class ModuleBoundaryTest {
         Path userDir = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
         Path current = userDir;
         while (current != null) {
-            if (Files.exists(current.resolve("pom.xml")) && "flyfish-dev-next".equals(current.getFileName().toString())) {
+            if (Files.exists(current.resolve("pom.xml"))
+                    && Files.isDirectory(current.resolve("flyfish-auth"))
+                    && Files.isDirectory(current.resolve("flyfish-lowcode"))
+                    && Files.isDirectory(current.resolve("flyfish-shop"))) {
                 return current;
             }
             current = current.getParent();

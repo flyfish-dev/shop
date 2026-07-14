@@ -4,21 +4,25 @@ import UserInfo from '@/components/UserInfo';
 import ShopHomeLink from './components/ShopHomeLink.vue';
 import ShopSupportEntry from './components/ShopSupportEntry.vue';
 import CustomerServiceWidget from '@/modules/shop/components/CustomerService/CustomerServiceWidget.vue';
-import { RightOutlined, SettingOutlined, ShopFilled } from '@ant-design/icons-vue';
+import shopLogo from '@/assets/shop/flyfish-shop-logo.png';
+import { RightOutlined, SettingOutlined } from '@ant-design/icons-vue';
 import { storeToRefs } from 'pinia';
 import useClientStore from '@/modules/auth/store/client.js';
 import { computed, onMounted, ref } from 'vue';
 import { isShopMaintainer } from '@/modules/shop/authority.js';
 import RouterLink from '@/components/RouterLink/index.vue';
 import { useRouter } from '@/router/use.js';
+import { useI18n } from 'vue-i18n';
 
 const store = useClientStore();
 const { user } = storeToRefs(store);
 const router = useRouter();
+const { t } = useI18n();
 const userLoading = ref(true);
 
 const canManage = computed(() => isShopMaintainer(user.value));
 const isManageRoute = computed(() => router.currentRoute.value.startsWith('/shop/manage'));
+const isCatalogRoute = computed(() => router.currentRoute.value.replace(/\/$/, '') === '/shop/item-list');
 const showManageGuard = computed(() => isManageRoute.value && !canManage.value);
 
 onMounted(async () => {
@@ -36,58 +40,63 @@ onMounted(async () => {
     }"
   >
     <div class='shop-page'>
-      <div class='shop-container' :class="{ 'shop-container-manage': isManageRoute }">
+      <div
+        class='shop-container'
+        :class="{
+          'shop-container-catalog': isCatalogRoute,
+          'shop-container-manage': isManageRoute
+        }"
+      >
         <div class='shop-header'>
-          <router-link href='/shop' class='shop-brand' aria-label='飞鱼小铺首页'>
+          <router-link href='/shop' class='shop-brand' :aria-label='t("shop.shell.brandHome")'>
             <span class='brand-mark'>
-              <shop-filled />
+              <img class='brand-logo' :src='shopLogo' alt='' aria-hidden='true' />
             </span>
             <span class='brand-copy'>
-              <span class='brand-title'>飞鱼小铺</span>
-              <span class='brand-subtitle'>Flyfish Market</span>
+              <span class='brand-title'>{{ t('shop.shell.brandName') }}</span>
+              <span class='brand-subtitle'>{{ t('shop.shell.brandSubtitle') }}</span>
             </span>
           </router-link>
           <div class="header-right">
             <shop-home-link />
             <shop-support-entry />
-            <!-- 管理入口 -->
             <a-dropdown v-if="canManage">
               <a-button class='manage-button'>
                 <setting-outlined />
-                <span class='manage-label'>管理</span>
+                <span class='manage-label'>{{ t('shop.shell.manage') }}</span>
                 <right-outlined class='manage-arrow' />
               </a-button>
               <template #overlay>
                 <a-menu>
                   <a-menu-item key="workbench">
-                    <router-link href="/shop/manage/workbench">小铺工作台</router-link>
+                    <router-link href="/shop/manage/workbench">{{ t('shop.shell.workbench') }}</router-link>
                   </a-menu-item>
                   <a-menu-item key="shop">
-                    <router-link href="/shop/manage/shops">店铺管理</router-link>
+                    <router-link href="/shop/manage/shops">{{ t('shop.shell.shops') }}</router-link>
                   </a-menu-item>
                   <a-menu-item key="groups">
-                    <router-link href="/shop/manage/groups">分组管理</router-link>
+                    <router-link href="/shop/manage/groups">{{ t('shop.shell.groups') }}</router-link>
                   </a-menu-item>
                   <a-menu-item key="items">
-                    <router-link href="/shop/manage/items">商品管理</router-link>
+                    <router-link href="/shop/manage/items">{{ t('shop.shell.items') }}</router-link>
                   </a-menu-item>
                   <a-menu-item key="repositories">
-                    <router-link href="/shop/manage/repositories">仓库管理</router-link>
+                    <router-link href="/shop/manage/repositories">{{ t('shop.shell.repositories') }}</router-link>
                   </a-menu-item>
                   <a-menu-item key="orders">
-                    <router-link href="/shop/manage/orders">订单管理</router-link>
+                    <router-link href="/shop/manage/orders">{{ t('shop.shell.orders') }}</router-link>
                   </a-menu-item>
                   <a-menu-item key="users">
-                    <router-link href="/shop/manage/users">用户管理</router-link>
+                    <router-link href="/shop/manage/users">{{ t('shop.shell.users') }}</router-link>
                   </a-menu-item>
                   <a-menu-item key="coupons">
-                    <router-link href="/shop/manage/coupons">优惠券管理</router-link>
+                    <router-link href="/shop/manage/coupons">{{ t('shop.shell.coupons') }}</router-link>
                   </a-menu-item>
                   <a-menu-item key="contracts">
-                    <router-link href="/shop/manage/contracts">合同管理</router-link>
+                    <router-link href="/shop/manage/contracts">{{ t('shop.shell.contracts') }}</router-link>
                   </a-menu-item>
                   <a-menu-item key="tickets">
-                    <router-link href="/shop/manage/tickets">工单管理</router-link>
+                    <router-link href="/shop/manage/tickets">{{ t('shop.shell.tickets') }}</router-link>
                   </a-menu-item>
                 </a-menu>
               </template>
@@ -96,17 +105,17 @@ onMounted(async () => {
           </div>
         </div>
         <div v-if="userLoading && isManageRoute" class="shop-auth-state">
-          <a-spin tip="正在校验维护权限" />
+          <a-spin :tip="t('shop.shell.checkingAccess')" />
         </div>
         <a-result
           v-else-if="showManageGuard"
           class="shop-auth-state"
           status="403"
-          title="无权访问"
+          :title="t('shop.shell.accessDenied')"
         >
           <template #extra>
             <router-link href="/shop/item-list">
-              <a-button type="primary">返回小铺</a-button>
+              <a-button type="primary">{{ t('shop.shell.returnStore') }}</a-button>
             </router-link>
           </template>
         </a-result>
@@ -134,6 +143,10 @@ onMounted(async () => {
     padding: 32px 25px 40px;
     max-width: 1200px;
     margin: 0 auto;
+
+    &.shop-container-catalog {
+      max-width: 1508px;
+    }
 
     &.shop-container-manage {
       max-width: 1480px;
@@ -169,23 +182,14 @@ onMounted(async () => {
         flex: none;
         border: 1px solid rgba(51, 162, 4, .18);
         border-radius: 8px;
-        background:
-          linear-gradient(135deg, rgba(255, 255, 255, .92), rgba(239, 255, 245, .86)),
-          linear-gradient(135deg, #33a204, #1677ff);
+        background: rgba(255, 255, 255, .8);
         box-shadow: 0 12px 30px rgba(38, 125, 74, .12);
-        color: #219653;
-        font-size: 28px;
 
-        &::after {
-          content: '';
-          position: absolute;
-          right: 10px;
-          bottom: 10px;
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: #1677ff;
-          box-shadow: 0 0 0 4px rgba(22, 119, 255, .1);
+        .brand-logo {
+          display: block;
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
         }
       }
 
@@ -261,15 +265,6 @@ onMounted(async () => {
         .brand-mark {
           width: 44px;
           height: 44px;
-          font-size: 22px;
-
-          &::after {
-            right: 8px;
-            bottom: 8px;
-            width: 7px;
-            height: 7px;
-            box-shadow: 0 0 0 3px rgba(22, 119, 255, .1);
-          }
         }
 
         .brand-title {
@@ -325,7 +320,6 @@ onMounted(async () => {
         .brand-mark {
           width: 40px;
           height: 40px;
-          font-size: 20px;
         }
 
         .brand-title {

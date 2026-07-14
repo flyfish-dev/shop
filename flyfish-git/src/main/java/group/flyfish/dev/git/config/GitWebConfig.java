@@ -34,7 +34,7 @@ public class GitWebConfig {
                 .orElseGet(GiteaProperties::new);
         if (StringUtils.isBlank(properties.getServer())) {
             properties.setServer(binder.bind("oauth.gitea.server", String.class)
-                    .orElse("https://gitea.example.com"));
+                    .orElse("https://git.flyfish.dev"));
         }
         if (StringUtils.isBlank(properties.getAdminToken())) {
             String oauthAdminToken = binder.bind("oauth.gitea.admin-token", String.class).orElse(null);

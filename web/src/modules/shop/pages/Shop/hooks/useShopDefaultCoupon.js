@@ -2,8 +2,10 @@ import { computed, watch } from 'vue';
 import { normalizeCouponCode } from './useShopCoupon.js';
 import { resolveShopItemPromotion } from './useShopItemPromotion.js';
 
-export function useShopDefaultCoupon({ item, couponCode, appliedCoupon, couponError }) {
-  const defaultPromotion = computed(() => resolveShopItemPromotion(item.value));
+export function useShopDefaultCoupon({ item, couponCode, appliedCoupon, couponError, enabled }) {
+  const defaultPromotion = computed(() => enabled?.value === false
+    ? resolveShopItemPromotion({})
+    : resolveShopItemPromotion(item.value));
 
   const applyDefaultCoupon = ({ force = false } = {}) => {
     const promotion = defaultPromotion.value;
@@ -33,7 +35,8 @@ export function useShopDefaultCoupon({ item, couponCode, appliedCoupon, couponEr
     () => [
       item.value?.id,
       item.value?.defaultCouponPreview?.couponCode,
-      item.value?.defaultCouponPreview?.payableAmount
+      item.value?.defaultCouponPreview?.payableAmount,
+      enabled?.value
     ],
     () => applyDefaultCoupon({ force: true }),
     { immediate: true }

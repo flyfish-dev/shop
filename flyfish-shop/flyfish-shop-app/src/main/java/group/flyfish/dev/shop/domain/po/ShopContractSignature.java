@@ -29,6 +29,10 @@ public class ShopContractSignature extends AuditDomain {
     @Column("item_id")
     private Long itemId;
 
+    @Property("SKU id")
+    @Column("sku_id")
+    private Long skuId;
+
     @Property("购买用户id")
     @Column("buyer_id")
     private Long buyerId;

@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import { CheckCircleOutlined, FileDoneOutlined } from '@ant-design/icons-vue';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
   agreement: {
@@ -8,6 +9,7 @@ const props = defineProps({
     required: true
   }
 });
+const { t } = useI18n();
 
 const open = computed({
   get: () => props.agreement.visible.value,
@@ -34,7 +36,7 @@ const progressPercent = computed(() => {
 
 const shortName = name => {
   if (!name) {
-    return '合同文件';
+    return t('shop.contract.fileFallback');
   }
   return name.length > 18 ? `${name.slice(0, 18)}...` : name;
 };
@@ -50,24 +52,24 @@ const shortName = name => {
     :body-style="{ padding: 0, overflow: 'hidden' }"
     :maskClosable="false"
     destroy-on-close
-    title="合同确认"
+    :title="t('shop.contract.title')"
   >
     <template #footer>
       <div class="contract-action-bar">
         <div class="read-progress">
-          <span>阅读进度 {{ agreement.readPercent.value }}%</span>
-          <a-tag v-if="agreement.readToEnd.value" color="green">已到底部</a-tag>
-          <a-tag v-else color="orange">需阅读到底部</a-tag>
+          <span>{{ t('shop.contract.readProgress', { percent: agreement.readPercent.value }) }}</span>
+          <a-tag v-if="agreement.readToEnd.value" color="green">{{ t('shop.contract.reachedBottom') }}</a-tag>
+          <a-tag v-else color="orange">{{ t('shop.contract.readToBottom') }}</a-tag>
         </div>
         <a-checkbox
           v-model:checked="agreement.agreedCurrent.value"
           :disabled="agreement.loading.value || !agreement.readToEnd.value"
         >
-          我已阅读并同意
+          {{ t('shop.contract.agreement') }}
         </a-checkbox>
         <div class="contract-action-buttons">
           <a-button @click="agreement.cancelAgreement">
-            取消
+            {{ t('common.cancel') }}
           </a-button>
           <a-button
             type="primary"
@@ -75,7 +77,9 @@ const shortName = name => {
             :disabled="agreement.loading.value || !agreement.readToEnd.value || !agreement.agreedCurrent.value"
             @click="agreement.agreeCurrentFile"
           >
-            {{ agreement.activeIndex.value + 1 >= agreement.totalCount.value ? '完成并继续付款' : '同意并阅读下一份' }}
+            {{ agreement.activeIndex.value + 1 >= agreement.totalCount.value
+              ? t('shop.contract.completeAndPay')
+              : t('shop.contract.agreeAndNext') }}
           </a-button>
         </div>
       </div>
@@ -84,7 +88,7 @@ const shortName = name => {
       <div class="contract-shell">
         <div class="contract-progress">
           <div>
-            <strong>{{ agreement.currentFile.value?.contractName || '合同文件' }}</strong>
+            <strong>{{ agreement.currentFile.value?.contractName || t('shop.contract.fileFallback') }}</strong>
             <span>{{ agreement.agreedCount.value }}/{{ agreement.totalCount.value }}</span>
           </div>
           <a-progress :percent="progressPercent" size="small" :show-info="false" />
@@ -111,7 +115,7 @@ const shortName = name => {
           <iframe
             v-if="agreement.currentFile.value"
             :src="agreement.viewerUrl(agreement.currentFile.value)"
-            title="合同预览"
+            :title="t('shop.contract.previewTitle')"
             loading="lazy"
             @load="agreement.handleViewerFrameLoad"
           />

@@ -10,8 +10,9 @@ spring:
 shop:
   payment:
     h5zhifu:
+      enabled: false
       app-id: 10001
-      key: flyfish-local-h5zhifu-secret
+      key:
       notify-url: http://127.0.0.1:9999/shops/payments/h5zhifu/notify
       default-pay-type: wechat
       default-trade-type: native

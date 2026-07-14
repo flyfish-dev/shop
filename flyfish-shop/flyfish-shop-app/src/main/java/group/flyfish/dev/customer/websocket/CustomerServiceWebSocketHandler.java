@@ -13,6 +13,7 @@ import group.flyfish.dev.customer.domain.vo.CustomerServiceSummaryVo;
 import group.flyfish.dev.customer.domain.vo.CustomerSocketEnvelopeVo;
 import group.flyfish.dev.customer.service.CustomerRealtimeEvent;
 import group.flyfish.dev.customer.service.CustomerRealtimeNotifier;
+import group.flyfish.dev.customer.service.CustomerPresenceRegistry;
 import group.flyfish.dev.customer.service.CustomerServiceCenterService;
 import group.flyfish.dev.shop.support.ShopAuthorizationUtils;
 import lombok.RequiredArgsConstructor;
@@ -47,6 +48,7 @@ public class CustomerServiceWebSocketHandler implements WebSocketHandler {
     private final AuthUserGateway authUserGateway;
     private final CustomerServiceCenterService customerServiceCenterService;
     private final CustomerRealtimeNotifier realtimeNotifier;
+    private final CustomerPresenceRegistry presenceRegistry;
 
     @Override
     public Mono<Void> handle(WebSocketSession session) {
@@ -57,6 +59,12 @@ public class CustomerServiceWebSocketHandler implements WebSocketHandler {
 
     private Mono<Void> handleAuthenticated(WebSocketSession session, PortalUserVo user) {
         AtomicLong activeConversationId = new AtomicLong(0);
+        boolean customerSession = !ShopAuthorizationUtils.isShopMaintainer(user);
+        Runnable releasePresence = customerSession ? presenceRegistry.registerCustomer(user.getId()) : () -> {
+        };
+        if (customerSession) {
+            realtimeNotifier.customerPresenceChanged(user.getId());
+        }
         Sinks.Empty<Void> sessionClosed = Sinks.empty();
         Mono<Void> closeSignal = sessionClosed.asMono();
         Flux<CustomerSocketEnvelopeVo> initial = Flux.concat(
@@ -77,6 +85,10 @@ public class CustomerServiceWebSocketHandler implements WebSocketHandler {
                         .onErrorResume(e -> Mono.just(errorEnvelope(e))));
         Flux<CustomerSocketEnvelopeVo> outbound = Flux.concat(initial, Flux.merge(commandReplies, pushes))
                 .doFinally(signal -> {
+                    releasePresence.run();
+                    if (customerSession) {
+                        realtimeNotifier.customerPresenceChanged(user.getId());
+                    }
                     activeConversationId.set(0);
                     sessionClosed.tryEmitEmpty();
                     log.debug("客服 WebSocket 会话释放。sessionId={}, userId={}, signal={}",
@@ -94,6 +106,9 @@ public class CustomerServiceWebSocketHandler implements WebSocketHandler {
             return Flux.just(CustomerSocketEnvelopeVo.error("PAYLOAD_TOO_LARGE", "消息内容过长"));
         }
         CustomerSocketCommand command = readCommand(payload);
+        if (!ShopAuthorizationUtils.isShopMaintainer(user)) {
+            presenceRegistry.touchCustomer(user.getId());
+        }
         String type = StringUtils.upperCase(StringUtils.defaultIfBlank(command.getType(), "SYNC"));
         return switch (type) {
             case "OPEN" -> openConversation(user, command)

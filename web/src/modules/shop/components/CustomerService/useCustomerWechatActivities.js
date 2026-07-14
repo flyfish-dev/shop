@@ -1,10 +1,12 @@
 import { computed, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { getManagedWechatActivities } from './apis.js';
+import { useI18n } from 'vue-i18n';
 
 const REFRESH_INTERVAL = 20000;
 
 export function useCustomerWechatActivities() {
+  const { t } = useI18n();
   const loading = ref(false);
   const activities = ref([]);
   const keyword = ref('');
@@ -32,7 +34,7 @@ export function useCustomerWechatActivities() {
       }
     } catch (e) {
       if (currentRequest === requestId && !silent) {
-        message.warning(e?.message || '公众号动态加载失败');
+        message.warning(e?.message || t('customerService.activity.loadFailed'));
       }
     } finally {
       if (currentRequest === requestId && (!silent || loading.value)) {

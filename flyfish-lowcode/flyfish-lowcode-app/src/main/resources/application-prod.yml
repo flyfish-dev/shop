@@ -5,4 +5,4 @@ spring:
     password: ${SPRING_R2DBC_PASSWORD:}
 
 oauth:
-  callback-url: ${OAUTH_CALLBACK_URL:https://shop.example.com/oauth/callback}
+  callback-url: ${OAUTH_CALLBACK_URL:https://app.example.com/oauth/callback}

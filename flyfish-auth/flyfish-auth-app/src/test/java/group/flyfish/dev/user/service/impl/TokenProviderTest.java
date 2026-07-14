@@ -66,7 +66,7 @@ class TokenProviderTest {
         assertNotNull(cookieToken);
 
         MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/portal/users/logout")
-                .header("X-Forwarded-Host", "shop.example.com")
+                .header("X-Forwarded-Host", "dev.flyfish.group")
                 .header("X-Forwarded-Proto", "https")
                 .cookie(new HttpCookie(TokenProvider.AUTHORIZATION_COOKIE, cookieToken.getToken())));
 

@@ -25,12 +25,38 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class CallbackControllerTest {
+
+    @Test
+    void sanitizesOAuthSecretsBeforeLogging() {
+        String githubToken = "gho_exampleSecret123";
+        String message = "JSON {\"access_token\":\"" + githubToken
+                + "\",\"refresh_token\":\"refresh-secret\"}; form access_token=" + githubToken
+                + "&scope=user; Authorization: Bearer bearer.secret-value";
+
+        String sanitized = CallbackController.sanitizeOAuthError(message);
+
+        assertFalse(sanitized.contains(githubToken));
+        assertFalse(sanitized.contains("refresh-secret"));
+        assertFalse(sanitized.contains("bearer.secret-value"));
+        assertEquals(4, sanitized.split("\\[REDACTED]", -1).length - 1);
+    }
+
+    @Test
+    void boundsOAuthErrorLogLengthAndHandlesMissingMessages() {
+        String sanitized = CallbackController.sanitizeOAuthError("x".repeat(1000));
+
+        assertTrue(sanitized.endsWith("..."));
+        assertEquals(803, sanitized.length());
+        assertEquals("OAuth provider request failed", CallbackController.sanitizeOAuthError(null));
+    }
 
     @Test
     void providersExposeEmailMagicLinkSwitch() {

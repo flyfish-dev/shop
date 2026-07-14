@@ -1,12 +1,14 @@
 package group.flyfish.dev.shop.service.impl;
 
+import group.flyfish.dev.auth.api.user.PortalUserVo;
 import group.flyfish.dev.common.exception.ServiceException;
 import group.flyfish.dev.common.utils.IdGenerators;
 import group.flyfish.dev.shop.converter.ShopItemParamValue;
 import group.flyfish.dev.shop.converter.ShopItemDeliveryPlan;
 import group.flyfish.dev.shop.converter.impl.LicenseDeliveryParamValue;
-import group.flyfish.dev.shop.domain.po.ShopItem;
+import group.flyfish.dev.shop.converter.impl.ShopOrderFormParamValue;
 import group.flyfish.dev.shop.domain.po.ShopDeliveryAction;
+import group.flyfish.dev.shop.domain.po.ShopItem;
 import group.flyfish.dev.shop.domain.po.ShopLicenseKeyPair;
 import group.flyfish.dev.shop.domain.po.ShopLicenseRoot;
 import group.flyfish.dev.shop.domain.po.ShopOrder;
@@ -18,7 +20,6 @@ import group.flyfish.dev.shop.repository.ShopLicenseRootRepository;
 import group.flyfish.dev.shop.repository.ShopOrderDeliveryRepository;
 import group.flyfish.dev.shop.service.DeliveryResult;
 import group.flyfish.dev.shop.service.ShopDeliveryHandler;
-import group.flyfish.dev.auth.api.user.PortalUserVo;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
@@ -45,14 +46,17 @@ public class LicenseDeliveryService implements ShopDeliveryHandler {
 
     @Override
     public Mono<DeliveryResult> deliver(ShopOrder order, ShopItem item, PortalUserVo buyer) {
-        LicenseDeliveryParamValue param = ShopItemParamValue.licenseDelivery(item.getParams(), item.getName());
-        return keyPairRepository.findByOrderNo(order.getOrderNo())
-                .flatMap(existing -> upsertDelivery(order, item, param, existing)
-                        .thenReturn(DeliveryResult.ok("授权许可已签发，可在我的订单中提取授权文件")))
-                .switchIfEmpty(Mono.defer(() -> defaultRoot()
-                        .flatMap(root -> issueLicense(order, item, buyer, param, root))
-                        .flatMap(license -> upsertDelivery(order, item, param, license)
-                                .thenReturn(DeliveryResult.ok("授权许可已签发，可在我的订单中提取授权文件")))));
+        return Mono.defer(() -> {
+            LicenseDeliveryParamValue param = ShopItemParamValue.licenseDelivery(item.getParams(), item.getName());
+            ShopOrderFormParamValue.applyLicenseOverrides(param, item, order);
+            return keyPairRepository.findByOrderNo(order.getOrderNo())
+                    .flatMap(existing -> upsertDelivery(order, item, param, existing)
+                            .thenReturn(DeliveryResult.ok("授权许可已签发，可在我的订单中提取授权文件")))
+                    .switchIfEmpty(Mono.defer(() -> defaultRoot()
+                            .flatMap(root -> issueLicense(order, item, buyer, param, root))
+                            .flatMap(license -> upsertDelivery(order, item, param, license)
+                                    .thenReturn(DeliveryResult.ok("授权许可已签发，可在我的订单中提取授权文件")))));
+        });
     }
 
     private Mono<ShopLicenseRoot> defaultRoot() {
@@ -97,7 +101,8 @@ public class LicenseDeliveryService implements ShopDeliveryHandler {
     private Mono<ShopOrderDelivery> upsertDelivery(ShopOrder order, ShopItem item,
                                                    LicenseDeliveryParamValue param,
                                                    ShopLicenseKeyPair license) {
-        return deliveryRepository.findByOrderNo(order.getOrderNo())
+        return deliveryRepository.findByOrderNoAndDeliveryType(order.getOrderNo(),
+                        ShopOrderDelivery.DeliveryType.LICENSE.name())
                 .defaultIfEmpty(new ShopOrderDelivery())
                 .map(delivery -> {
                     applyDelivery(delivery, order, item, param, license);
@@ -123,6 +128,9 @@ public class LicenseDeliveryService implements ShopDeliveryHandler {
     }
 
     private String deliveryContent(LicenseDeliveryParamValue param, ShopLicenseKeyPair license) {
+        if (param.isBrandRemoval()) {
+            return brandRemovalDeliveryContent(param, license);
+        }
         return """
                 授权编号：%s
                 授权名称：%s
@@ -134,5 +142,20 @@ public class LicenseDeliveryService implements ShopDeliveryHandler {
                 为降低泄露风险，页面不会直接展示授权正文，请勿通过聊天、截图或公开页面传播授权文件。
                 """.formatted(license.getLicenseNo(), param.getLicenseName(), param.getScope(),
                 param.getEdition(), String.join("，", param.getAllowedOrigins()));
+    }
+
+    private String brandRemovalDeliveryContent(LicenseDeliveryParamValue param, ShopLicenseKeyPair license) {
+        return """
+                授权编号：%s
+                授权名称：%s
+                授权范围：%s
+                授权依据：Apache License 2.0
+                声明有效期：%s
+
+                授权声明文件已签发。请在我的订单中下载 flyfish-viewer-brand-removal-statement.lic 作为采购、审计和合规留痕。
+                Flyfish Viewer 的 Apache 2.0 开源协议允许修改和移除界面可见品牌标识；使用方仍需保留版权声明、Apache 2.0 许可证文本、NOTICE 文件和必要的项目来源说明。
+                该声明不代表 Flyfish 对使用方产品、服务或客户项目提供背书、认证或联合发布，也不包含其他闭源产品授权。
+                """.formatted(license.getLicenseNo(), param.getLicenseName(), param.getScope(),
+                param.getValidDays() == null ? "长期" : param.getValidDays() + " 天");
     }
 }

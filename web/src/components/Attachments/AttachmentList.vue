@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import { FileOutlined } from '@ant-design/icons-vue';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
   attachments: {
@@ -8,6 +9,7 @@ const props = defineProps({
     default: () => []
   }
 });
+const { t } = useI18n();
 
 const files = computed(() => props.attachments.filter(item => item?.url));
 
@@ -26,12 +28,12 @@ const fileSize = size => {
   <div v-if='files.length' class='attachment-list'>
     <template v-for='item in files' :key='item.url'>
       <a class='image-attachment' v-if='isImage(item)' :href='item.url' target='_blank' rel='noreferrer'>
-        <img :src='item.url' :alt='item.name || "图片附件"'>
+        <img :src='item.url' :alt='item.name || t("attachments.imageAlt")'>
       </a>
       <a v-else class='file-attachment' :href='item.url' target='_blank' rel='noreferrer'>
         <file-outlined />
         <span>
-          <strong>{{ item.name || '附件' }}</strong>
+          <strong>{{ item.name || t('attachments.fallbackName') }}</strong>
           <small>{{ fileSize(item.size) }}</small>
         </span>
       </a>

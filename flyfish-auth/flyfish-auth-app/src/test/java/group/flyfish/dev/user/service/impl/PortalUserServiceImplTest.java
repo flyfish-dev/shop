@@ -9,6 +9,7 @@ import group.flyfish.dev.user.repository.PortalUserRepository;
 import group.flyfish.dev.user.service.TokenService;
 import group.flyfish.dev.auth.api.user.FunNicknameGenerator;
 import org.junit.jupiter.api.Test;
+import org.pac4j.oauth.profile.google2.Google2Profile;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -17,6 +18,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -74,6 +76,44 @@ class PortalUserServiceImplTest {
                 && oauth.getType() == OAuthType.EMAIL
                 && "user@example.com".equals(oauth.getOpenid())
                 && "user@example.com".equals(oauth.getEmail())));
+    }
+
+    @Test
+    void verifiedGoogleEmailConnectsToExistingUser() {
+        Fixture fixture = new Fixture();
+        PortalUser existing = fixture.user(300L, "Mona");
+        existing.setEmail("mona@example.com");
+        Google2Profile profile = new Google2Profile();
+        profile.setId("google-sub-300");
+        profile.addAttribute("email", "mona@example.com");
+        profile.addAttribute("email_verified", true);
+        profile.addAttribute("name", "Mona Lisa");
+
+        when(fixture.enrichmentService.enrich(eq(profile), eq(OAuthType.GOOGLE)))
+                .thenReturn(Mono.just(Map.copyOf(profile.getAttributes())));
+        when(fixture.oauthRepository.findAllByTypeAndOpenid(OAuthType.GOOGLE, "google-sub-300"))
+                .thenReturn(Flux.empty());
+        when(fixture.userRepository.findAllByEmailIgnoreCase("mona@example.com"))
+                .thenReturn(Flux.just(existing));
+        when(fixture.oauthRepository.deleteByTypeAndOpenidAndUserIdNot(any(), any(), any()))
+                .thenReturn(Mono.just(0));
+        when(fixture.oauthRepository.deleteByUserIdAndType(any(), any())).thenReturn(Mono.just(0));
+        when(fixture.oauthRepository.save(any(PortalUserOauth.class)))
+                .thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
+        when(fixture.userRepository.findById(300L)).thenReturn(Mono.just(existing));
+        when(fixture.oauthRepository.findAllByUserId(300L)).thenReturn(Flux.empty());
+        when(fixture.tokenService.createToken(300L))
+                .thenReturn(Mono.just(new group.flyfish.dev.user.domain.UserToken("google-token",
+                        Date.from(Instant.now().plusSeconds(600)))));
+
+        StepVerifier.create(fixture.service.registerOrLogin(profile))
+                .assertNext(token -> assertThat(token.getToken()).isEqualTo("google-token"))
+                .verifyComplete();
+
+        verify(fixture.oauthRepository).save(argThat(oauth -> oauth.getUserId().equals(300L)
+                && oauth.getType() == OAuthType.GOOGLE
+                && "google-sub-300".equals(oauth.getOpenid())));
+        verify(fixture.userRepository, never()).save(any(PortalUser.class));
     }
 
     private static class Fixture {

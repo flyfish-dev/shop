@@ -68,6 +68,11 @@ public class ShopManageWorkbenchSummaryVo {
     private BigDecimal revenueAmount = BigDecimal.ZERO;
 
     /**
+     * 累计美元成交金额。
+     */
+    private BigDecimal revenueUsdAmount = BigDecimal.ZERO;
+
+    /**
      * 今日成交订单数。
      */
     private long todayOrderCount;
@@ -76,6 +81,11 @@ public class ShopManageWorkbenchSummaryVo {
      * 今日成交金额。
      */
     private BigDecimal todayRevenueAmount = BigDecimal.ZERO;
+
+    /**
+     * 今日美元成交金额。
+     */
+    private BigDecimal todayRevenueUsdAmount = BigDecimal.ZERO;
 
     /**
      * 工单总数。

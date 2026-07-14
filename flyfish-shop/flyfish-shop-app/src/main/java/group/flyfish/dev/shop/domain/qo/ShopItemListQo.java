@@ -27,8 +27,14 @@ public class ShopItemListQo extends PageableQo<ShopItem> {
     // 模糊匹配的商品名
     private String name;
 
+    // 快速搜索关键词，匹配商品名、标签、描述和多语言内容
+    private String keyword;
+
     // 商品标签
     private String tag;
+
+    // 商品类型
+    private ShopItem.Type type;
 
     // 是否包含已下架商品
     private Boolean includeDisabled = false;
@@ -79,8 +85,19 @@ public class ShopItemListQo extends PageableQo<ShopItem> {
         if (StringUtils.isNotEmpty(name)) {
             criteria = criteria.and("name").like("%" + name + "%");
         }
+        String normalizedKeyword = StringUtils.trimToNull(keyword);
+        if (normalizedKeyword != null) {
+            String pattern = "%" + normalizedKeyword + "%";
+            criteria = criteria.and(Criteria.where("name").like(pattern)
+                    .or("tags").like(pattern)
+                    .or("description").like(pattern)
+                    .or("i18n").like(pattern));
+        }
         if (StringUtils.isNotEmpty(tag)) {
             criteria = criteria.and("tags").like("%" + tag + "%");
+        }
+        if (type != null) {
+            criteria = criteria.and("type").is(type.name());
         }
         if (pinned != null) {
             criteria = criteria.and("pinned").is(pinned);

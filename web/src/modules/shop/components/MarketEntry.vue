@@ -3,11 +3,11 @@
     <div class="market-copy">
       <span>Flyfish Market</span>
       <strong>{{ name }}</strong>
-      <small>源码 · 部署 · 授权</small>
+      <small>{{ t('home.marketSubtitle') }}</small>
     </div>
     <a-button class="market-button" type="primary" size="large" @click="router.push(path)">
       <shop-outlined />
-      <span>进入小铺</span>
+      <span>{{ t('home.enterMarket') }}</span>
       <arrow-right-outlined />
     </a-button>
   </section>
@@ -15,6 +15,7 @@
 
 <script setup>
 import { ArrowRightOutlined, ShopOutlined } from '@ant-design/icons-vue';
+import { useI18n } from 'vue-i18n';
 import { useRouter } from '@/router/use';
 
 defineProps({
@@ -29,6 +30,7 @@ defineProps({
 });
 
 const router = useRouter();
+const { t } = useI18n();
 </script>
 
 <style scoped lang="less">

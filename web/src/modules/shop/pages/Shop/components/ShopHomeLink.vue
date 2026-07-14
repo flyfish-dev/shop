@@ -1,12 +1,15 @@
 <script setup>
 import { HomeFilled } from '@ant-design/icons-vue';
 import RouterLink from '@/components/RouterLink/index.vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 </script>
 
 <template>
-  <router-link href="/" class="shop-home-link" aria-label="返回首页">
+  <router-link href="/" class="shop-home-link" :aria-label="t('shop.shell.backHome')">
     <HomeFilled />
-    <span class="shop-home-link-text">首页</span>
+    <span class="shop-home-link-text">{{ t('shop.shell.home') }}</span>
   </router-link>
 </template>
 

@@ -5,16 +5,20 @@ import group.flyfish.dev.auth.api.user.PortalUserVo;
 import group.flyfish.dev.common.exception.BusinessException;
 import group.flyfish.dev.common.exception.ServiceException;
 import group.flyfish.dev.common.json.JacksonUtils;
+import group.flyfish.dev.common.upload.domain.vo.FileAttachmentVo;
 import group.flyfish.dev.common.utils.IdGenerators;
 import group.flyfish.dev.shop.converter.ShopItemDeliveryPlan;
+import group.flyfish.dev.shop.converter.impl.ShopOrderFormParamValue;
 import group.flyfish.dev.shop.domain.dto.ShopCouponApplyDto;
 import group.flyfish.dev.shop.domain.dto.ShopOrderDeliveryDto;
 import group.flyfish.dev.shop.domain.dto.ShopOrderDto;
 import group.flyfish.dev.shop.domain.po.ShopItem;
+import group.flyfish.dev.shop.domain.po.ShopItemSku;
 import group.flyfish.dev.shop.domain.po.ShopDeliveryAction;
 import group.flyfish.dev.shop.domain.po.ShopLicenseKeyPair;
 import group.flyfish.dev.shop.domain.po.ShopOrder;
 import group.flyfish.dev.shop.domain.po.ShopOrderDelivery;
+import group.flyfish.dev.shop.domain.qo.ShopOrderListQo;
 import group.flyfish.dev.shop.domain.po.ShopTransaction;
 import group.flyfish.dev.shop.domain.vo.ShopCouponApplyVo;
 import group.flyfish.dev.shop.domain.vo.ShopOrderCreateVo;
@@ -24,9 +28,11 @@ import group.flyfish.dev.shop.domain.vo.ShopOrderDeliveryFileVo;
 import group.flyfish.dev.shop.domain.vo.ShopOrderPaymentVo;
 import group.flyfish.dev.shop.domain.vo.ShopOrderVo;
 import group.flyfish.dev.shop.domain.vo.ShopPurchaseAvailabilityVo;
+import group.flyfish.dev.shop.pricing.ShopPricingService;
 import group.flyfish.dev.shop.service.CouponDiscount;
 import group.flyfish.dev.shop.repository.ShopLicenseKeyPairRepository;
 import group.flyfish.dev.shop.repository.ShopItemRepository;
+import group.flyfish.dev.shop.repository.ShopItemSkuRepository;
 import group.flyfish.dev.shop.repository.ShopOrderDeliveryRepository;
 import group.flyfish.dev.shop.repository.ShopOrderRepository;
 import group.flyfish.dev.shop.repository.ShopTransactionRepository;
@@ -40,6 +46,7 @@ import group.flyfish.dev.shop.service.checker.GitRepositoryAccessOrderChecker;
 import group.flyfish.dev.shop.service.support.h5zhifu.H5ZhiFuSigner;
 import group.flyfish.dev.shop.service.support.h5zhifu.bean.H5ZhiFuNotifyDto;
 import group.flyfish.dev.shop.service.support.h5zhifu.config.H5ZhiFuProperties;
+import group.flyfish.dev.shop.service.support.stripe.bean.StripeCheckoutSessionDto;
 import group.flyfish.dev.shop.support.ShopAuthorizationUtils;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
@@ -56,6 +63,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Locale;
+import java.util.Set;
+
+import tools.jackson.core.type.TypeReference;
 
 @Service
 @RequiredArgsConstructor
@@ -65,11 +77,25 @@ public class ShopOrderServiceImpl implements ShopOrderService {
     private static final long UNPAID_ORDER_TTL_MINUTES = 15;
     private static final String EXPIRED_ORDER_MESSAGE = "订单超过15分钟未支付，已自动关闭";
     private static final String ORDER_PROPERTY_DONATION_AMOUNT = "donationAmount";
+    private static final String ORDER_PROPERTY_CURRENCY = "currency";
+    private static final String CURRENCY_CNY = "CNY";
+    private static final String CURRENCY_USD = "USD";
     private static final String LICENSE_FILE_CODE = "lic";
     private static final String LICENSE_JSON_FILE_CODE = "json";
     private static final String LICENSE_PAYLOAD_FILE_CODE = "payload";
     private static final String LICENSE_CONTENT_TYPE = "application/octet-stream";
     private static final String JSON_CONTENT_TYPE = "application/json; charset=UTF-8";
+    private static final String STRIPE_PROVIDER = "stripe";
+    private static final String STRIPE_CHECKOUT_SESSION_COMPLETED = "checkout.session.completed";
+    private static final String STRIPE_CHECKOUT_SESSION_ASYNC_PAYMENT_SUCCEEDED =
+            "checkout.session.async_payment_succeeded";
+    private static final String STRIPE_CHECKOUT_SESSION_ASYNC_PAYMENT_FAILED =
+            "checkout.session.async_payment_failed";
+    private static final String STRIPE_CHECKOUT_SESSION_EXPIRED = "checkout.session.expired";
+    private static final Set<String> ZERO_DECIMAL_CURRENCIES = Set.of(
+            "bif", "clp", "djf", "gnf", "jpy", "kmf", "krw", "mga", "pyg", "rwf",
+            "ugx", "vnd", "vuv", "xaf", "xof", "xpf"
+    );
     private static final Comparator<ShopOrder> ORDER_TIME_DESC = Comparator
             .comparing(ShopOrderServiceImpl::orderSortTime, Comparator.nullsLast(Comparator.reverseOrder()))
             .thenComparing(ShopOrder::getId, Comparator.nullsLast(Comparator.reverseOrder()));
@@ -77,6 +103,7 @@ public class ShopOrderServiceImpl implements ShopOrderService {
     private final ShopOrderRepository shopOrderRepository;
     private final ShopTransactionRepository shopTransactionRepository;
     private final ShopItemRepository shopItemRepository;
+    private final ShopItemSkuRepository shopItemSkuRepository;
     private final ShopOrderDeliveryRepository shopOrderDeliveryRepository;
     private final ShopLicenseKeyPairRepository shopLicenseKeyPairRepository;
     private final PayService payService;
@@ -86,6 +113,7 @@ public class ShopOrderServiceImpl implements ShopOrderService {
     private final H5ZhiFuProperties h5ZhiFuProperties;
     private final GitRepositoryAccessOrderChecker gitRepositoryAccessOrderChecker;
     private final ShopContractService shopContractService;
+    private final ShopPricingService shopPricingService;
 
     @Override
     @Transactional
@@ -94,22 +122,36 @@ public class ShopOrderServiceImpl implements ShopOrderService {
         Long itemId = parseItemId(dto.getItemId());
         return shopItemRepository.findById(itemId)
                 .switchIfEmpty(Mono.error(new BusinessException("ITEM_NOT_FOUND", "商品不存在")))
-                .flatMap(item -> ensurePurchasable(item, buyer)
-                        .then(shopContractService.requireSigned(item.getId(), buyer, dto.getContractSignToken()))
-                        .then(Mono.defer(() -> {
-                    int count = normalizeCount(dto.getCount(), item);
-                    BigDecimal originalAmount = calculateOriginalAmount(item, count, dto.getDonationAmount());
-                    return shopCouponService.applyCoupon(dto.getCouponCode(), originalAmount)
-                            .map(discount -> buildOrder(dto, buyer, item, count, discount))
-                            .flatMap(shopOrderRepository::save)
-                            .flatMap(saved -> shopContractService
-                                    .bindOrder(dto.getContractSignToken(), saved.getOrderNo(), item.getId(), buyer.getId())
-                                    .thenReturn(saved))
-                            .flatMap(saved -> payService.pay(saved, item, dto)
-                                    .flatMap(payment -> shopOrderRepository.save(applyPayment(saved, payment))
-                                            .flatMap(paying -> toCreateVo(paying, item, payment)))
-                                    .onErrorResume(e -> markOrderFailed(saved, e)));
-                })));
+                .flatMap(item -> resolvePurchaseContext(item, dto.getSkuId())
+                        .flatMap(context -> {
+                            ensureItemEnabled(context.effectiveItem());
+                            return ensurePurchasable(context.effectiveItem(), buyer)
+                                    .then(shopContractService.requireSigned(context.item().getId(), context.skuId(), buyer,
+                                            dto.getContractSignToken()))
+                                    .then(Mono.defer(() -> {
+                                        ShopItem saleItem = context.effectiveItem();
+                                        int count = normalizeCount(dto.getCount(), saleItem);
+                                        String currency = resolvePaymentCurrency(dto.getPaymentCurrency(), saleItem);
+                                        ensurePaymentProviderSupportsCurrency(dto, currency);
+                                        ensureCouponSupportsCurrency(dto.getCouponCode(), currency);
+                                        BigDecimal originalAmount = calculateOriginalAmount(saleItem, count,
+                                                dto.getDonationAmount(), currency);
+                                        Map<String, Object> orderFormValues = ShopOrderFormParamValue.fromItem(saleItem)
+                                                .validateSubmitted(dto);
+                                        return shopCouponService.applyCoupon(dto.getCouponCode(), originalAmount)
+                                                .map(discount -> buildOrder(dto, buyer, context, count, currency,
+                                                        discount, orderFormValues))
+                                                .flatMap(shopOrderRepository::save)
+                                                .flatMap(saved -> shopContractService
+                                                        .bindOrder(dto.getContractSignToken(), saved.getOrderNo(),
+                                                                context.item().getId(), context.skuId(), buyer.getId())
+                                                        .thenReturn(saved))
+                                                .flatMap(saved -> payService.pay(saved, saleItem, dto)
+                                                        .flatMap(payment -> shopOrderRepository.save(applyPayment(saved, payment))
+                                                                .flatMap(paying -> toCreateVo(paying, saleItem, payment)))
+                                                        .onErrorResume(e -> markOrderFailed(saved, e)));
+                                    }));
+                        }));
     }
 
     @Override
@@ -121,10 +163,14 @@ public class ShopOrderServiceImpl implements ShopOrderService {
         Long itemId = parseItemId(dto.getItemId());
         return shopItemRepository.findById(itemId)
                 .switchIfEmpty(Mono.error(new BusinessException("ITEM_NOT_FOUND", "商品不存在")))
-                .flatMap(item -> {
-                    ensureItemEnabled(item);
-                    int count = normalizeCount(dto.getCount(), item);
-                    BigDecimal originalAmount = calculateOriginalAmount(item, count, dto.getDonationAmount());
+                .flatMap(item -> resolvePurchaseContext(item, dto.getSkuId()))
+                .flatMap(context -> {
+                    ensureItemEnabled(context.effectiveItem());
+                    int count = normalizeCount(dto.getCount(), context.effectiveItem());
+                    String currency = resolvePaymentCurrency(dto.getPaymentCurrency(), context.effectiveItem());
+                    ensureCouponSupportsCurrency(dto.getCouponCode(), currency);
+                    BigDecimal originalAmount = calculateOriginalAmount(context.effectiveItem(), count,
+                            dto.getDonationAmount(), currency);
                     return shopCouponService.applyCoupon(dto.getCouponCode(), originalAmount);
                 })
                 .map(ShopCouponApplyVo::new);
@@ -132,18 +178,23 @@ public class ShopOrderServiceImpl implements ShopOrderService {
 
     @Override
     public Mono<ShopPurchaseAvailabilityVo> checkPurchaseAvailability(Long itemId, PortalUserVo buyer) {
-        ShopAuthorizationUtils.requireLogin(buyer);
-        return shopItemRepository.findById(itemId)
-                .switchIfEmpty(Mono.error(new BusinessException("ITEM_NOT_FOUND", "商品不存在")))
-                .flatMap(item -> gitRepositoryAccessOrderChecker.check(item, buyer));
+        return checkPurchaseAvailability(itemId, null, buyer);
     }
 
     @Override
-    public Flux<ShopOrderVo> getOrders(PortalUserVo buyer, Long itemId) {
+    public Mono<ShopPurchaseAvailabilityVo> checkPurchaseAvailability(Long itemId, Long skuId, PortalUserVo buyer) {
         ShopAuthorizationUtils.requireLogin(buyer);
-        Flux<ShopOrder> orders = ShopAuthorizationUtils.isShopMaintainer(buyer)
-                ? adminOrders(itemId)
-                : buyerOrders(buyer.getId(), itemId);
+        return shopItemRepository.findById(itemId)
+                .switchIfEmpty(Mono.error(new BusinessException("ITEM_NOT_FOUND", "商品不存在")))
+                .flatMap(item -> resolvePurchaseContext(item, skuId == null ? null : String.valueOf(skuId)))
+                .flatMap(context -> gitRepositoryAccessOrderChecker.check(context.effectiveItem(), buyer));
+    }
+
+    @Override
+    public Flux<ShopOrderVo> getOrders(PortalUserVo buyer, ShopOrderListQo qo) {
+        ShopAuthorizationUtils.requireLogin(buyer);
+        ShopOrderListQo query = normalizeOrderListQo(buyer, qo);
+        Flux<ShopOrder> orders = shopOrderRepository.findAll(query, query.sorts());
         return closeExpiredUnpaidOrders().thenMany(orders).sort(ORDER_TIME_DESC).concatMap(this::toVo);
     }
 
@@ -156,16 +207,18 @@ public class ShopOrderServiceImpl implements ShopOrderService {
                 .concatMap(this::toVo);
     }
 
-    private Flux<ShopOrder> adminOrders(Long itemId) {
-        return itemId == null
-                ? shopOrderRepository.findAllOrderByCreateTimeDesc()
-                : shopOrderRepository.findAllByItemIdOrderByCreateTimeDesc(itemId);
-    }
-
     private Flux<ShopOrder> buyerOrders(Long buyerId, Long itemId) {
         return itemId == null
                 ? shopOrderRepository.findAllByBuyerIdOrderByCreateTimeDesc(buyerId)
                 : shopOrderRepository.findAllByBuyerIdAndItemIdOrderByCreateTimeDesc(buyerId, itemId);
+    }
+
+    private ShopOrderListQo normalizeOrderListQo(PortalUserVo buyer, ShopOrderListQo qo) {
+        ShopOrderListQo query = qo == null ? new ShopOrderListQo() : qo;
+        if (!ShopAuthorizationUtils.isShopMaintainer(buyer)) {
+            query.setBuyerId(buyer.getId());
+        }
+        return query;
     }
 
     @Override
@@ -186,16 +239,17 @@ public class ShopOrderServiceImpl implements ShopOrderService {
                 .filter(order -> buyer.getId().equals(order.getBuyerId()) || ShopAuthorizationUtils.isShopMaintainer(buyer))
                 .switchIfEmpty(Mono.error(new BusinessException("ORDER_NOT_FOUND", "订单不存在")))
                 .flatMap(this::ensureExtractable)
-                .flatMap(order -> shopOrderDeliveryRepository.findByOrderNo(order.getOrderNo())
-                        .switchIfEmpty(Mono.error(new BusinessException("DELIVERY_NOT_FOUND", "该订单暂无可提取内容"))))
-                .flatMap(delivery -> {
-                    if (delivery.getExtractedTime() != null) {
-                        return Mono.just(delivery);
-                    }
-                    delivery.setExtractedTime(LocalDateTime.now());
-                    return shopOrderDeliveryRepository.save(delivery);
-                })
-                .flatMap(delivery -> toDeliveryExtractVo(delivery, false));
+                .flatMap(order -> shopOrderDeliveryRepository.findAllByOrderNoOrderByCreateTimeAsc(order.getOrderNo())
+                        .collectList()
+                        .flatMap(deliveries -> {
+                            if (deliveries.isEmpty()) {
+                                return Mono.error(new BusinessException("DELIVERY_NOT_FOUND", "该订单暂无可提取内容"));
+                            }
+                            return Flux.fromIterable(deliveries)
+                                    .concatMap(delivery -> markExtractedForBuyer(delivery, order, buyer))
+                                    .collectList();
+                        }))
+                .flatMap(deliveries -> toDeliveryExtractVo(deliveries, false));
     }
 
     @Override
@@ -204,9 +258,14 @@ public class ShopOrderServiceImpl implements ShopOrderService {
         return closeExpiredUnpaidOrders()
                 .then(shopOrderRepository.findByOrderNo(orderNo))
                 .switchIfEmpty(Mono.error(new BusinessException("ORDER_NOT_FOUND", "订单不存在")))
-                .flatMap(order -> shopOrderDeliveryRepository.findByOrderNo(order.getOrderNo())
-                        .switchIfEmpty(Mono.error(new BusinessException("DELIVERY_NOT_FOUND", "该订单暂无交付快照"))))
-                .flatMap(delivery -> toDeliveryExtractVo(delivery, true));
+                .flatMap(order -> shopOrderDeliveryRepository.findAllByOrderNoOrderByCreateTimeAsc(order.getOrderNo())
+                        .collectList())
+                .flatMap(deliveries -> {
+                    if (deliveries.isEmpty()) {
+                        return Mono.error(new BusinessException("DELIVERY_NOT_FOUND", "该订单暂无交付快照"));
+                    }
+                    return toDeliveryExtractVo(deliveries, true);
+                });
     }
 
     @Override
@@ -219,7 +278,8 @@ public class ShopOrderServiceImpl implements ShopOrderService {
                 .filter(order -> user.getId().equals(order.getBuyerId()) || maintainer)
                 .switchIfEmpty(Mono.error(new BusinessException("ORDER_NOT_FOUND", "订单不存在")))
                 .flatMap(this::ensureExtractable)
-                .flatMap(order -> shopOrderDeliveryRepository.findByOrderNo(order.getOrderNo())
+                .flatMap(order -> shopOrderDeliveryRepository.findByOrderNoAndDeliveryType(order.getOrderNo(),
+                                ShopOrderDelivery.DeliveryType.LICENSE.name())
                         .switchIfEmpty(Mono.error(new BusinessException("DELIVERY_NOT_FOUND", "该订单暂无可下载内容")))
                         .flatMap(delivery -> markExtractedForBuyer(delivery, order, user)
                                 .flatMap(saved -> toDeliveryDownload(saved, fileCode, maintainer))));
@@ -231,7 +291,8 @@ public class ShopOrderServiceImpl implements ShopOrderService {
         return shopOrderRepository.findByOrderNo(orderNo)
                 .switchIfEmpty(Mono.error(new BusinessException("ORDER_NOT_FOUND", "订单不存在")))
                 .map(order -> applyDeliveryUpdate(order, dto))
-                .flatMap(shopOrderRepository::save)
+                .flatMap(order -> shopOrderRepository.save(order)
+                        .flatMap(saved -> upsertManualDeliveryIfNeeded(saved, dto).thenReturn(saved)))
                 .flatMap(this::toVo);
     }
 
@@ -240,8 +301,7 @@ public class ShopOrderServiceImpl implements ShopOrderService {
     public Mono<ShopOrderVo> retryDelivery(String orderNo) {
         return shopOrderRepository.findByOrderNo(orderNo)
                 .switchIfEmpty(Mono.error(new BusinessException("ORDER_NOT_FOUND", "订单不存在")))
-                .flatMap(order -> Mono.zip(shopItemRepository.findById(order.getItemId()),
-                                authUserGateway.getById(order.getBuyerId()))
+                .flatMap(order -> Mono.zip(resolveOrderItem(order), authUserGateway.getById(order.getBuyerId()))
                         .switchIfEmpty(Mono.error(new BusinessException("ORDER_CONTEXT_NOT_FOUND", "订单交付上下文不存在")))
                         .flatMap(tuple -> retryAutomaticDelivery(order, tuple.getT1(), tuple.getT2())))
                 .flatMap(this::toVo);
@@ -270,6 +330,81 @@ public class ShopOrderServiceImpl implements ShopOrderService {
         throw new BusinessException("DELIVERY_STATUS_INVALID", "交付状态不支持");
     }
 
+    private Mono<ShopOrderDelivery> upsertManualDeliveryIfNeeded(ShopOrder order, ShopOrderDeliveryDto dto) {
+        if (!hasManualDeliveryContent(dto) || dto.getDeliveryStatus() != ShopOrder.DeliveryStatus.SUCCESS) {
+            return Mono.empty();
+        }
+        ShopOrderDelivery.DeliveryType deliveryType = dto.getDeliveryType() == null
+                ? ShopOrderDelivery.DeliveryType.DIGITAL
+                : dto.getDeliveryType();
+        List<FileAttachmentVo> attachments = normalizeDeliveryAttachments(dto.getDeliveryAttachments());
+        return shopOrderDeliveryRepository.findByOrderNoAndDeliveryType(order.getOrderNo(), deliveryType.name())
+                .defaultIfEmpty(new ShopOrderDelivery())
+                .map(delivery -> {
+                    applyManualDelivery(delivery, order, dto, deliveryType, attachments);
+                    return delivery;
+                })
+                .flatMap(shopOrderDeliveryRepository::save);
+    }
+
+    private boolean hasManualDeliveryContent(ShopOrderDeliveryDto dto) {
+        return dto != null && (StringUtils.isNotBlank(dto.getDeliveryContent())
+                || !normalizeDeliveryAttachments(dto.getDeliveryAttachments()).isEmpty());
+    }
+
+    private void applyManualDelivery(ShopOrderDelivery delivery, ShopOrder order, ShopOrderDeliveryDto dto,
+                                     ShopOrderDelivery.DeliveryType deliveryType,
+                                     List<FileAttachmentVo> attachments) {
+        if (delivery.getId() == null) {
+            delivery.setCreateBy("manual-delivery");
+        }
+        delivery.setUpdateBy("manual-delivery");
+        delivery.setOrderNo(order.getOrderNo());
+        delivery.setItemId(order.getItemId());
+        delivery.setBuyerId(order.getBuyerId());
+        delivery.setDeliveryType(deliveryType.name());
+        delivery.setTitle(StringUtils.left(StringUtils.defaultIfBlank(StringUtils.trimToNull(dto.getDeliveryTitle()),
+                deliveryType == ShopOrderDelivery.DeliveryType.LICENSE ? "授权许可补充资源" : "补充交付资源"), 128));
+        delivery.setContent(StringUtils.trimToNull(dto.getDeliveryContent()));
+        delivery.setAttachments(attachmentsJson(attachments));
+        if (deliveryType != ShopOrderDelivery.DeliveryType.LICENSE) {
+            delivery.setLicenseNo(null);
+        }
+    }
+
+    private List<FileAttachmentVo> normalizeDeliveryAttachments(List<FileAttachmentVo> attachments) {
+        if (attachments == null || attachments.isEmpty()) {
+            return List.of();
+        }
+        return attachments.stream()
+                .map(this::normalizeDeliveryAttachment)
+                .filter(Objects::nonNull)
+                .limit(12)
+                .toList();
+    }
+
+    private FileAttachmentVo normalizeDeliveryAttachment(FileAttachmentVo source) {
+        if (source == null || StringUtils.isBlank(source.getUrl())) {
+            return null;
+        }
+        FileAttachmentVo target = new FileAttachmentVo();
+        target.setId(source.getId());
+        target.setName(StringUtils.left(StringUtils.defaultIfBlank(StringUtils.trimToNull(source.getName()), "附件"), 160));
+        target.setUrl(StringUtils.trim(source.getUrl()));
+        target.setSize(source.getSize());
+        target.setContentType(StringUtils.left(StringUtils.trimToNull(source.getContentType()), 128));
+        target.setImage(Boolean.TRUE.equals(source.getImage())
+                || StringUtils.startsWithIgnoreCase(target.getContentType(), "image/"));
+        return target;
+    }
+
+    private String attachmentsJson(List<FileAttachmentVo> attachments) {
+        if (attachments == null || attachments.isEmpty()) {
+            return null;
+        }
+        return JacksonUtils.toJson(attachments);
+    }
+
     @Override
     @Transactional
     public Mono<Void> handlePaymentNotify(H5ZhiFuNotifyDto dto) {
@@ -277,6 +412,9 @@ public class ShopOrderServiceImpl implements ShopOrderService {
         return shopOrderRepository.findByOrderNo(dto.getOutTradeNo())
                 .switchIfEmpty(Mono.error(new BusinessException("ORDER_NOT_FOUND", "订单不存在")))
                 .flatMap(order -> {
+                    if (!CURRENCY_CNY.equalsIgnoreCase(StringUtils.defaultIfBlank(order.getCurrency(), CURRENCY_CNY))) {
+                        return Mono.error(new BusinessException("PAYMENT_CURRENCY_INVALID", "国内支付回调币种不匹配"));
+                    }
                     verifyAmount(order, dto);
                     if (order.getStatus() == ShopOrder.Status.CLOSED) {
                         return Mono.empty();
@@ -296,24 +434,52 @@ public class ShopOrderServiceImpl implements ShopOrderService {
 
     @Override
     @Transactional
+    public Mono<Void> handleStripeCheckoutSession(StripeCheckoutSessionDto session, String eventType) {
+        if (session == null || StringUtils.isBlank(session.getId())
+                || StringUtils.isBlank(session.getClientReferenceId())) {
+            return Mono.error(new BusinessException("STRIPE_SESSION_INVALID", "Stripe Checkout Session 无效"));
+        }
+        return switch (StringUtils.defaultString(eventType)) {
+            case STRIPE_CHECKOUT_SESSION_COMPLETED, STRIPE_CHECKOUT_SESSION_ASYNC_PAYMENT_SUCCEEDED ->
+                    handleStripePaidSession(session);
+            case STRIPE_CHECKOUT_SESSION_ASYNC_PAYMENT_FAILED ->
+                    closeStripeSessionOrder(session, "Stripe 支付未完成，请重新下单或更换支付方式");
+            case STRIPE_CHECKOUT_SESSION_EXPIRED ->
+                    closeStripeSessionOrder(session, "Stripe Checkout 已过期，请重新下单");
+            default -> Mono.empty();
+        };
+    }
+
+    @Override
+    @Transactional
     public Mono<Integer> closeExpiredUnpaidOrders() {
         return shopOrderRepository.closeExpiredUnpaidOrders(LocalDateTime.now(), EXPIRED_ORDER_MESSAGE);
     }
 
-    private ShopOrder buildOrder(ShopOrderDto dto, PortalUserVo buyer, ShopItem item, int count,
-                                 CouponDiscount discount) {
+    private ShopOrder buildOrder(ShopOrderDto dto, PortalUserVo buyer, PurchaseContext context, int count,
+                                 String currency, CouponDiscount discount, Map<String, Object> orderFormValues) {
+        ShopItem item = context.item();
+        ShopItem saleItem = context.effectiveItem();
         ShopOrder order = new ShopOrder();
         order.setOrderNo("FF" + IdGenerators.idString());
         order.setItemId(item.getId());
+        order.setSkuId(context.skuId());
+        order.setSkuCode(context.sku() == null ? null : context.sku().getCode());
+        order.setSkuName(context.sku() == null ? null : context.sku().getName());
+        order.setItemName(item.getName());
+        order.setItemType(saleItem.getType() == null ? null : saleItem.getType().name());
         order.setShopId(item.getShopId());
         order.setBuyerId(buyer.getId());
         order.setCount(count);
-        order.setProperties(JacksonUtils.toJson(orderProperties(dto, item, discount.originalAmount())));
+        order.setProperties(JacksonUtils.toJson(orderProperties(dto, context, discount.originalAmount(), orderFormValues)));
+        order.setItemSnapshot(JacksonUtils.toJson(item));
+        order.setSkuSnapshot(context.sku() == null ? null : JacksonUtils.toJson(context.sku()));
+        order.setCurrency(currency);
         order.setOriginalAmount(discount.originalAmount());
         order.setDiscountAmount(discount.discountAmount());
         order.setCouponCode(discount.code());
         order.setAmount(discount.payableAmount());
-        order.setPaymentProvider("h5zhifu");
+        order.setPaymentProvider(initialPaymentProvider(dto));
         order.setStatus(ShopOrder.Status.PENDING);
         order.setDeliveryStatus(ShopOrder.DeliveryStatus.WAITING);
         order.setExpireTime(LocalDateTime.now().plusMinutes(UNPAID_ORDER_TTL_MINUTES));
@@ -333,12 +499,157 @@ public class ShopOrderServiceImpl implements ShopOrderService {
         }
     }
 
-    private Map<String, Object> orderProperties(ShopOrderDto dto, ShopItem item, BigDecimal originalAmount) {
-        Map<String, Object> properties = gitRepositoryAccessOrderChecker.orderProperties(dto, item);
-        if (isDonationAccess(item)) {
+    private Mono<PurchaseContext> resolvePurchaseContext(ShopItem item, String rawSkuId) {
+        if (!isMultiSku(item)) {
+            return Mono.just(new PurchaseContext(item, null, item));
+        }
+        Long skuId = parseSkuId(rawSkuId);
+        return shopItemSkuRepository.findById(skuId)
+                .filter(sku -> item.getId().equals(sku.getItemId()))
+                .switchIfEmpty(Mono.error(new BusinessException("SKU_NOT_FOUND", "SKU不存在")))
+                .map(sku -> new PurchaseContext(item, sku, effectiveItem(item, sku)));
+    }
+
+    private Mono<ShopItem> resolveOrderItem(ShopOrder order) {
+        ShopItem snapshotItem = parseSnapshot(order.getItemSnapshot(), ShopItem.class);
+        ShopItemSku snapshotSku = parseSnapshot(order.getSkuSnapshot(), ShopItemSku.class);
+        if (snapshotItem != null && snapshotSku != null) {
+            return Mono.just(effectiveItem(snapshotItem, snapshotSku));
+        }
+        if (snapshotItem != null) {
+            return Mono.just(snapshotItem);
+        }
+        return shopItemRepository.findById(order.getItemId())
+                .flatMap(item -> {
+                    if (order.getSkuId() == null) {
+                        return Mono.just(item);
+                    }
+                    return shopItemSkuRepository.findById(order.getSkuId())
+                            .filter(sku -> item.getId().equals(sku.getItemId()))
+                            .map(sku -> effectiveItem(item, sku))
+                            .defaultIfEmpty(item);
+                });
+    }
+
+    private ShopItem effectiveItem(ShopItem item, ShopItemSku sku) {
+        ShopItem effective = new ShopItem();
+        effective.setId(item.getId());
+        effective.setShopId(item.getShopId());
+        effective.setGroupId(item.getGroupId());
+        effective.setName(displayName(item.getName(), sku.getName()));
+        effective.setCover(item.getCover());
+        effective.setImages(item.getImages());
+        effective.setPrice(sku.getPrice());
+        effective.setUsdPrice(sku.getUsdPrice());
+        effective.setType(sku.getType());
+        effective.setDeliveryMode(sku.getDeliveryMode());
+        effective.setTags(StringUtils.defaultIfBlank(sku.getTags(), item.getTags()));
+        effective.setParams(sku.getParams());
+        effective.setBuyCount(sku.getBuyCount());
+        effective.setDescription(StringUtils.defaultIfBlank(sku.getDescription(), item.getDescription()));
+        effective.setI18n(StringUtils.defaultIfBlank(sku.getI18n(), item.getI18n()));
+        effective.setEnabled(Boolean.TRUE.equals(item.getEnabled()) && Boolean.TRUE.equals(sku.getEnabled()));
+        effective.setDefaultCouponEnabled(effectiveCouponEnabled(item, sku));
+        effective.setDefaultCouponCode(effectiveCouponCode(item, sku));
+        effective.setSkuMode(ShopItem.SkuMode.SINGLE);
+        return effective;
+    }
+
+    private Boolean effectiveCouponEnabled(ShopItem item, ShopItemSku sku) {
+        return sku.getDefaultCouponEnabled() == null ? item.getDefaultCouponEnabled() : sku.getDefaultCouponEnabled();
+    }
+
+    private String effectiveCouponCode(ShopItem item, ShopItemSku sku) {
+        return Boolean.TRUE.equals(effectiveCouponEnabled(item, sku))
+                ? StringUtils.defaultIfBlank(sku.getDefaultCouponEnabled() == null
+                ? item.getDefaultCouponCode()
+                : sku.getDefaultCouponCode(), null)
+                : null;
+    }
+
+    private boolean isMultiSku(ShopItem item) {
+        return item != null && item.getSkuMode() == ShopItem.SkuMode.MULTI;
+    }
+
+    private Long parseSkuId(String rawSkuId) {
+        if (StringUtils.isBlank(rawSkuId)) {
+            throw new BusinessException("SKU_REQUIRED", "请选择SKU");
+        }
+        try {
+            return Long.parseLong(rawSkuId);
+        } catch (Exception e) {
+            throw new BusinessException("INVALID_SKU", "SKU不正确");
+        }
+    }
+
+    private <T> T parseSnapshot(String snapshot, Class<T> type) {
+        if (StringUtils.isBlank(snapshot)) {
+            return null;
+        }
+        try {
+            return JacksonUtils.readValue(snapshot, type);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Map<String, Object> readSnapshot(String snapshot) {
+        if (StringUtils.isBlank(snapshot)) {
+            return Map.of();
+        }
+        try {
+            return JacksonUtils.readValue(snapshot, new TypeReference<>() {
+            });
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    private String displayName(String itemName, String skuName) {
+        if (StringUtils.isBlank(skuName)) {
+            return itemName;
+        }
+        if (StringUtils.isBlank(itemName)) {
+            return skuName;
+        }
+        return itemName + " - " + skuName;
+    }
+
+    private ShopItem.Type parseItemType(String value) {
+        if (StringUtils.isBlank(value)) {
+            return null;
+        }
+        try {
+            return ShopItem.Type.valueOf(value);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Map<String, Object> orderProperties(ShopOrderDto dto, PurchaseContext context, BigDecimal originalAmount,
+                                                Map<String, Object> orderFormValues) {
+        Map<String, Object> properties = gitRepositoryAccessOrderChecker.orderProperties(dto, context.effectiveItem());
+        if (context.sku() != null) {
+            properties.put("skuId", context.sku().getId());
+            properties.put("skuCode", context.sku().getCode());
+            properties.put("skuName", context.sku().getName());
+        }
+        if (orderFormValues != null && !orderFormValues.isEmpty()) {
+            properties.put(ShopOrderFormParamValue.PARAM_KEY, orderFormValues);
+        }
+        if (isDonationItem(context.effectiveItem())) {
             properties.put(ORDER_PROPERTY_DONATION_AMOUNT, originalAmount);
+            properties.put(ORDER_PROPERTY_CURRENCY, resolvePaymentCurrency(dto.getPaymentCurrency(),
+                    context.effectiveItem()));
         }
         return properties;
+    }
+
+    private record PurchaseContext(ShopItem item, ShopItemSku sku, ShopItem effectiveItem) {
+
+        private Long skuId() {
+            return sku == null ? null : sku.getId();
+        }
     }
 
     private int normalizeCount(Integer count, ShopItem item) {
@@ -346,27 +657,57 @@ public class ShopOrderServiceImpl implements ShopOrderService {
         if (normalized <= 0) {
             throw new BusinessException("INVALID_COUNT", "购买数量必须大于0");
         }
-        if (isDonationAccess(item) && normalized != 1) {
-            throw new BusinessException("INVALID_COUNT", "打赏开通商品不支持购买数量");
+        if (isDonationItem(item) && normalized != 1) {
+            throw new BusinessException("INVALID_COUNT", "打赏商品不支持购买数量");
         }
         return normalized;
     }
 
-    private BigDecimal calculateOriginalAmount(ShopItem item, int count, BigDecimal donationAmount) {
-        if (isDonationAccess(item)) {
-            return normalizeDonationAmount(item, donationAmount);
+    private BigDecimal calculateOriginalAmount(ShopItem item, int count, BigDecimal donationAmount, String currency) {
+        if (isDonationItem(item)) {
+            return normalizeDonationAmount(item, donationAmount, currency);
         }
-        return item.getPrice().multiply(BigDecimal.valueOf(count));
+        BigDecimal unitPrice = CURRENCY_USD.equals(currency)
+                ? shopPricingService.effectiveUsdPrice(item)
+                : item.getPrice();
+        if (unitPrice == null || unitPrice.signum() <= 0) {
+            throw new BusinessException("ITEM_PRICE_INVALID", "商品价格配置不正确");
+        }
+        return unitPrice.multiply(BigDecimal.valueOf(count)).setScale(2, RoundingMode.HALF_UP);
     }
 
-    private BigDecimal normalizeDonationAmount(ShopItem item, BigDecimal donationAmount) {
-        BigDecimal minimumAmount = money(item.getPrice());
+    private BigDecimal normalizeDonationAmount(ShopItem item, BigDecimal donationAmount, String currency) {
+        BigDecimal minimumAmount = CURRENCY_USD.equals(currency)
+                ? shopPricingService.minimumDonationUsd(item)
+                : money(item.getPrice());
         BigDecimal amount = money(donationAmount == null ? minimumAmount : donationAmount);
         if (amount.compareTo(minimumAmount) < 0) {
+            String symbol = CURRENCY_USD.equals(currency) ? "$" : "¥";
             throw new BusinessException("DONATION_AMOUNT_TOO_LOW",
-                    "打赏金额不能低于 ¥" + minimumAmount.toPlainString());
+                    "打赏金额不能低于 " + symbol + minimumAmount.toPlainString());
         }
         return amount;
+    }
+
+    private String resolvePaymentCurrency(String requestedCurrency, ShopItem item) {
+        String currency = StringUtils.defaultIfBlank(StringUtils.trimToNull(requestedCurrency), CURRENCY_CNY)
+                .toUpperCase(Locale.ROOT);
+        if (!CURRENCY_CNY.equals(currency) && !CURRENCY_USD.equals(currency)) {
+            throw new BusinessException("PAYMENT_CURRENCY_UNSUPPORTED", "暂不支持该支付币种");
+        }
+        return currency;
+    }
+
+    private void ensurePaymentProviderSupportsCurrency(ShopOrderDto dto, String currency) {
+        if (CURRENCY_USD.equals(currency) && !STRIPE_PROVIDER.equals(initialPaymentProvider(dto))) {
+            throw new BusinessException("PAYMENT_PROVIDER_CURRENCY_UNSUPPORTED", "美元支付请使用 Stripe");
+        }
+    }
+
+    private void ensureCouponSupportsCurrency(String couponCode, String currency) {
+        if (CURRENCY_USD.equals(currency) && StringUtils.isNotBlank(couponCode)) {
+            throw new BusinessException("COUPON_CURRENCY_UNSUPPORTED", "美元支付暂不支持人民币优惠券");
+        }
     }
 
     private BigDecimal money(BigDecimal amount) {
@@ -376,8 +717,9 @@ public class ShopOrderServiceImpl implements ShopOrderService {
         return amount.setScale(2, RoundingMode.HALF_UP);
     }
 
-    private boolean isDonationAccess(ShopItem item) {
-        return item != null && item.getType() == ShopItem.Type.GIT_REPOSITORY_DONATION_ACCESS;
+    private boolean isDonationItem(ShopItem item) {
+        return item != null && (item.getType() == ShopItem.Type.GIT_REPOSITORY_DONATION_ACCESS
+                || item.getType() == ShopItem.Type.DONATION);
     }
 
     private ShopOrder applyPayment(ShopOrder order, ShopOrderPaymentVo payment) {
@@ -425,6 +767,7 @@ public class ShopOrderServiceImpl implements ShopOrderService {
                     transaction.setPayer(dto.getInTradeNo());
                     transaction.setReceiver(String.valueOf(dto.getAppId()));
                     transaction.setAmount(order.getAmount());
+                    transaction.setCurrency(StringUtils.defaultIfBlank(order.getCurrency(), CURRENCY_CNY));
                     transaction.setType(ShopTransaction.Type.PAYMENT);
                     transaction.setCreateBy("payment-notify");
                     transaction.setUpdateBy("payment-notify");
@@ -434,7 +777,7 @@ public class ShopOrderServiceImpl implements ShopOrderService {
     }
 
     private Mono<Void> increaseBuyCount(ShopOrder order) {
-        return shopItemRepository.findById(order.getItemId())
+        Mono<Void> itemCount = shopItemRepository.findById(order.getItemId())
                 .map(item -> {
                     int current = item.getBuyCount() == null ? 0 : item.getBuyCount();
                     item.setBuyCount(current + order.getCount());
@@ -442,6 +785,18 @@ public class ShopOrderServiceImpl implements ShopOrderService {
                 })
                 .flatMap(shopItemRepository::save)
                 .then();
+        if (order.getSkuId() == null) {
+            return itemCount;
+        }
+        Mono<Void> skuCount = shopItemSkuRepository.findById(order.getSkuId())
+                .map(sku -> {
+                    int current = sku.getBuyCount() == null ? 0 : sku.getBuyCount();
+                    sku.setBuyCount(current + order.getCount());
+                    return sku;
+                })
+                .flatMap(shopItemSkuRepository::save)
+                .then();
+        return itemCount.then(skuCount);
     }
 
     private Mono<ShopOrder> deliverIfNeeded(ShopOrder order) {
@@ -451,7 +806,10 @@ public class ShopOrderServiceImpl implements ShopOrderService {
         if (order.getDeliveryStatus() == ShopOrder.DeliveryStatus.FAILED) {
             return Mono.just(order);
         }
-        return Mono.zip(shopItemRepository.findById(order.getItemId()), authUserGateway.getById(order.getBuyerId()))
+        if (order.getDeliveryStatus() == ShopOrder.DeliveryStatus.PROCESSING) {
+            return Mono.just(order);
+        }
+        return Mono.zip(resolveOrderItem(order), authUserGateway.getById(order.getBuyerId()))
                 .flatMap(tuple -> deliverByMode(order, tuple.getT1(), tuple.getT2()));
     }
 
@@ -541,7 +899,7 @@ public class ShopOrderServiceImpl implements ShopOrderService {
     }
 
     private Mono<ShopOrderVo> toVo(ShopOrder order) {
-        return shopItemRepository.findById(order.getItemId())
+        return resolveOrderItem(order)
                 .flatMap(item -> toVo(order, item))
                 .switchIfEmpty(toVo(order, null));
     }
@@ -550,9 +908,15 @@ public class ShopOrderServiceImpl implements ShopOrderService {
         ShopOrderVo vo = new ShopOrderVo();
         vo.setOrderNo(order.getOrderNo());
         vo.setItemId(order.getItemId());
-        vo.setItemName(item == null ? null : item.getName());
-        vo.setItemType(item == null || item.getType() == null ? null : item.getType().name());
-        vo.setItemTypeName(item == null || item.getType() == null ? null : item.getType().getTitle());
+        vo.setItemName(StringUtils.defaultIfBlank(order.getItemName(), orderItemName(order, item)));
+        ShopItem.Type itemType = item == null || item.getType() == null ? parseItemType(order.getItemType()) : item.getType();
+        vo.setItemType(StringUtils.defaultIfBlank(order.getItemType(),
+                itemType == null ? null : itemType.name()));
+        vo.setItemTypeName(itemType == null ? null : itemType.getTitle());
+        vo.setSkuId(order.getSkuId());
+        vo.setSkuCode(order.getSkuCode());
+        vo.setSkuName(order.getSkuName());
+        vo.setDisplayName(displayName(vo.getItemName(), vo.getSkuName()));
         ShopItem.DeliveryMode deliveryMode = item == null ? ShopItem.DeliveryMode.MANUAL : resolveDeliveryMode(item);
         vo.setDeliveryMode(deliveryMode.name());
         vo.setDeliveryModeName(deliveryMode.getTitle());
@@ -560,9 +924,13 @@ public class ShopOrderServiceImpl implements ShopOrderService {
         vo.setBuyerId(order.getBuyerId());
         vo.setCount(order.getCount());
         vo.setAmount(order.getAmount());
+        vo.setCurrency(StringUtils.defaultIfBlank(order.getCurrency(), CURRENCY_CNY));
         vo.setOriginalAmount(order.getOriginalAmount() == null ? order.getAmount() : order.getOriginalAmount());
         vo.setDiscountAmount(order.getDiscountAmount() == null ? BigDecimal.ZERO : order.getDiscountAmount());
         vo.setCouponCode(order.getCouponCode());
+        vo.setProperties(ShopOrderFormParamValue.readProperties(order));
+        vo.setItemSnapshot(readSnapshot(order.getItemSnapshot()));
+        vo.setSkuSnapshot(readSnapshot(order.getSkuSnapshot()));
         vo.setStatus(order.getStatus());
         vo.setDeliveryStatus(order.getDeliveryStatus());
         vo.setDeliveryMessage(order.getDeliveryMessage());
@@ -571,6 +939,7 @@ public class ShopOrderServiceImpl implements ShopOrderService {
         vo.setDeliveryFailureTask(failureTask == null ? null : failureTask.name());
         vo.setDeliveryFailureTaskName(failureTask == null ? null : failureTask.getTitle());
         vo.setPaymentProvider(order.getPaymentProvider());
+        vo.setOuterNo(order.getOuterNo());
         vo.setTransactionCode(order.getTransactionCode());
         vo.setCreateTime(order.getCreateTime());
         vo.setPaidTime(order.getPaidTime());
@@ -584,6 +953,18 @@ public class ShopOrderServiceImpl implements ShopOrderService {
                 })
                 .thenReturn(vo)
                 .onErrorReturn(vo);
+    }
+
+    private String orderItemName(ShopOrder order, ShopItem item) {
+        if (item == null) {
+            return null;
+        }
+        String itemName = item.getName();
+        String skuName = order.getSkuName();
+        if (StringUtils.isBlank(itemName) || StringUtils.isBlank(skuName)) {
+            return itemName;
+        }
+        return StringUtils.removeEnd(itemName, " - " + skuName);
     }
 
     private void verifyNotify(H5ZhiFuNotifyDto dto) {
@@ -608,6 +989,128 @@ public class ShopOrderServiceImpl implements ShopOrderService {
         if (dto.getAmount() == null || expected != dto.getAmount()) {
             throw new BusinessException("PAY_AMOUNT_INVALID", "支付金额不匹配");
         }
+    }
+
+    private Mono<Void> handleStripePaidSession(StripeCheckoutSessionDto session) {
+        if (!"paid".equalsIgnoreCase(session.getPaymentStatus())) {
+            return Mono.empty();
+        }
+        return shopOrderRepository.findByOrderNo(session.getClientReferenceId())
+                .switchIfEmpty(Mono.error(new BusinessException("ORDER_NOT_FOUND", "订单不存在")))
+                .flatMap(order -> {
+                    verifyStripeSession(order, session);
+                    if (order.getStatus() == ShopOrder.Status.CLOSED) {
+                        return Mono.empty();
+                    }
+                    boolean paidBefore = order.getPaidTime() != null
+                            || order.getStatus() == ShopOrder.Status.PAID
+                            || order.getStatus() == ShopOrder.Status.DELIVERED;
+                    Mono<ShopOrder> paid = paidBefore
+                            ? Mono.just(order)
+                            : shopOrderRepository.save(markStripePaid(order, session))
+                            .flatMap(saved -> saveStripeTransaction(saved, session).thenReturn(saved))
+                            .flatMap(saved -> increaseBuyCount(saved).thenReturn(saved))
+                            .flatMap(saved -> shopCouponService.markUsed(saved.getCouponCode()).thenReturn(saved));
+                    return paid.flatMap(this::deliverIfNeeded).then();
+                });
+    }
+
+    private Mono<Void> closeStripeSessionOrder(StripeCheckoutSessionDto session, String message) {
+        return shopOrderRepository.findByOrderNo(session.getClientReferenceId())
+                .switchIfEmpty(Mono.empty())
+                .flatMap(order -> {
+                    verifyStripeSessionIdentity(order, session);
+                    if (order.getPaidTime() != null
+                            || order.getStatus() == ShopOrder.Status.PAID
+                            || order.getStatus() == ShopOrder.Status.DELIVERED
+                            || order.getStatus() == ShopOrder.Status.FAILED) {
+                        return Mono.empty();
+                    }
+                    if (order.getStatus() != ShopOrder.Status.PENDING && order.getStatus() != ShopOrder.Status.PAYING) {
+                        return Mono.empty();
+                    }
+                    order.setStatus(ShopOrder.Status.CLOSED);
+                    order.setDeliveryStatus(ShopOrder.DeliveryStatus.SKIPPED);
+                    order.setDeliveryMessage(message);
+                    return shopOrderRepository.save(order).then();
+                });
+    }
+
+    private ShopOrder markStripePaid(ShopOrder order, StripeCheckoutSessionDto session) {
+        order.setStatus(ShopOrder.Status.PAID);
+        order.setPaymentProvider(STRIPE_PROVIDER);
+        order.setTransactionCode(session.getId());
+        order.setOuterNo(StringUtils.left(session.getPaymentIntent(), 64));
+        order.setPaidTime(LocalDateTime.now());
+        order.setDeliveryStatus(ShopOrder.DeliveryStatus.WAITING);
+        return order;
+    }
+
+    private Mono<Void> saveStripeTransaction(ShopOrder order, StripeCheckoutSessionDto session) {
+        String code = StringUtils.defaultIfBlank(session.getPaymentIntent(), session.getId());
+        return shopTransactionRepository.findByCode(code)
+                .switchIfEmpty(Mono.defer(() -> {
+                    ShopTransaction transaction = new ShopTransaction();
+                    transaction.setCode(code);
+                    transaction.setOrderNo(order.getOrderNo());
+                    transaction.setShopId(order.getShopId());
+                    transaction.setContent(StringUtils.left("Stripe Checkout " + session.getId(), 512));
+                    transaction.setPayer(StringUtils.defaultIfBlank(session.getCustomerEmail(), order.getOrderNo()));
+                    transaction.setReceiver(STRIPE_PROVIDER);
+                    transaction.setAmount(order.getAmount());
+                    transaction.setCurrency(StringUtils.defaultIfBlank(order.getCurrency(), CURRENCY_CNY));
+                    transaction.setType(ShopTransaction.Type.PAYMENT);
+                    transaction.setCreateBy("stripe-webhook");
+                    transaction.setUpdateBy("stripe-webhook");
+                    return shopTransactionRepository.save(transaction);
+                }))
+                .then();
+    }
+
+    private void verifyStripeSession(ShopOrder order, StripeCheckoutSessionDto session) {
+        verifyStripeSessionIdentity(order, session);
+        String currency = normalizeCurrency(session.getCurrency());
+        if (StringUtils.isBlank(currency)) {
+            throw new BusinessException("STRIPE_CURRENCY_INVALID", "Stripe 支付币种缺失");
+        }
+        String orderCurrency = normalizeCurrency(StringUtils.defaultIfBlank(order.getCurrency(), CURRENCY_CNY));
+        if (!orderCurrency.equals(currency)) {
+            throw new BusinessException("STRIPE_CURRENCY_INVALID", "Stripe 支付币种不匹配");
+        }
+        long expected = toMinor(order.getAmount(), currency);
+        if (session.getAmountTotal() == null || expected != session.getAmountTotal()) {
+            throw new BusinessException("STRIPE_AMOUNT_INVALID", "Stripe 支付金额不匹配");
+        }
+    }
+
+    private void verifyStripeSessionIdentity(ShopOrder order, StripeCheckoutSessionDto session) {
+        if (!STRIPE_PROVIDER.equalsIgnoreCase(StringUtils.defaultString(order.getPaymentProvider()))) {
+            throw new BusinessException("STRIPE_ORDER_PROVIDER_INVALID", "订单支付方式不匹配");
+        }
+        if (StringUtils.isNotBlank(order.getTransactionCode())
+                && !StringUtils.equals(order.getTransactionCode(), session.getId())) {
+            throw new BusinessException("STRIPE_SESSION_MISMATCH", "Stripe Checkout Session 不匹配");
+        }
+    }
+
+    private long toMinor(BigDecimal amount, String currency) {
+        int scale = ZERO_DECIMAL_CURRENCIES.contains(currency) ? 0 : 2;
+        BigDecimal multiplier = scale == 0 ? BigDecimal.ONE : BigDecimal.valueOf(100);
+        return amount.multiply(multiplier).setScale(0, RoundingMode.HALF_UP).longValueExact();
+    }
+
+    private String normalizeCurrency(String currency) {
+        return StringUtils.trimToEmpty(currency).toLowerCase(Locale.ROOT);
+    }
+
+    private String initialPaymentProvider(ShopOrderDto dto) {
+        String provider = StringUtils.trimToEmpty(dto == null ? null : dto.getPaymentProvider())
+                .replace('-', '_')
+                .toLowerCase(Locale.ROOT);
+        String payType = StringUtils.trimToEmpty(dto == null ? null : dto.getPayType())
+                .replace('-', '_')
+                .toLowerCase(Locale.ROOT);
+        return STRIPE_PROVIDER.equals(provider) || STRIPE_PROVIDER.equals(payType) ? STRIPE_PROVIDER : "h5zhifu";
     }
 
     private Long parseItemId(String itemId) {
@@ -657,6 +1160,19 @@ public class ShopOrderServiceImpl implements ShopOrderService {
                 .defaultIfEmpty(new ShopOrderDeliveryExtractVo(delivery));
     }
 
+    private Mono<ShopOrderDeliveryExtractVo> toDeliveryExtractVo(List<ShopOrderDelivery> deliveries,
+                                                                 boolean includeAuditFile) {
+        if (deliveries == null || deliveries.isEmpty()) {
+            return Mono.error(new BusinessException("DELIVERY_NOT_FOUND", "该订单暂无交付快照"));
+        }
+        String orderNo = deliveries.get(0).getOrderNo();
+        return Flux.fromIterable(deliveries)
+                .concatMap(delivery -> toDeliveryExtractVo(delivery, includeAuditFile))
+                .collectList()
+                .map(items -> ShopOrderDeliveryExtractVo.combine(orderNo, items))
+                .switchIfEmpty(Mono.error(new BusinessException("DELIVERY_NOT_FOUND", "该订单暂无交付快照")));
+    }
+
     private Mono<ShopOrderDeliveryDownloadVo> toDeliveryDownload(ShopOrderDelivery delivery, String fileCode,
                                                                 boolean includeAuditFile) {
         if (!isLicenseDelivery(delivery)) {
@@ -676,30 +1192,42 @@ public class ShopOrderServiceImpl implements ShopOrderService {
         if (LICENSE_PAYLOAD_FILE_CODE.equals(normalizedCode) && !includeAuditFile) {
             throw new BusinessException("DELIVERY_FILE_FORBIDDEN", "无权下载该文件");
         }
-        String content = switch (normalizedCode) {
-            case LICENSE_FILE_CODE, LICENSE_JSON_FILE_CODE -> StringUtils.defaultString(license.getSignature());
-            case LICENSE_PAYLOAD_FILE_CODE -> StringUtils.defaultString(license.getCertificate());
-            default -> throw new BusinessException("DELIVERY_FILE_NOT_FOUND", "授权文件不存在");
-        };
+        String content = deliveryFileContent(license, normalizedCode);
         ShopOrderDeliveryDownloadVo file = new ShopOrderDeliveryDownloadVo();
         file.setName(licenseFileName(license, normalizedCode));
-        file.setContentType(LICENSE_FILE_CODE.equals(normalizedCode) ? LICENSE_CONTENT_TYPE : JSON_CONTENT_TYPE);
+        file.setContentType(deliveryFileContentType(license, normalizedCode));
         file.setContent(content.getBytes(StandardCharsets.UTF_8));
         file.setSize((long) file.getContent().length);
         return file;
     }
 
     private List<ShopOrderDeliveryFileVo> licenseFileMetadata(ShopLicenseKeyPair license, boolean includeAuditFile) {
-        ShopOrderDeliveryFileVo licenseFile = licenseFile(license, LICENSE_FILE_CODE, "授权许可文件",
+        boolean brandRemovalStatement = isBrandRemovalStatement(license);
+        ShopOrderDeliveryFileVo licenseFile = licenseFile(license, LICENSE_FILE_CODE,
+                brandRemovalStatement ? "授权声明文件" : "授权许可文件",
                 LICENSE_CONTENT_TYPE, StringUtils.defaultString(license.getSignature()));
-        ShopOrderDeliveryFileVo jsonFile = licenseFile(license, LICENSE_JSON_FILE_CODE, "部署 JSON 文件",
+        ShopOrderDeliveryFileVo jsonFile = licenseFile(license, LICENSE_JSON_FILE_CODE,
+                brandRemovalStatement ? "授权声明 JSON 文件" : "部署 JSON 文件",
                 JSON_CONTENT_TYPE, StringUtils.defaultString(license.getSignature()));
         if (!includeAuditFile) {
             return List.of(licenseFile, jsonFile);
         }
-        ShopOrderDeliveryFileVo payloadFile = licenseFile(license, LICENSE_PAYLOAD_FILE_CODE, "授权审计 Payload",
+        ShopOrderDeliveryFileVo payloadFile = licenseFile(license, LICENSE_PAYLOAD_FILE_CODE,
+                brandRemovalStatement ? "声明审计 Payload" : "授权审计 Payload",
                 JSON_CONTENT_TYPE, StringUtils.defaultString(license.getCertificate()));
         return List.of(licenseFile, jsonFile, payloadFile);
+    }
+
+    private String deliveryFileContent(ShopLicenseKeyPair license, String normalizedCode) {
+        return switch (normalizedCode) {
+            case LICENSE_FILE_CODE, LICENSE_JSON_FILE_CODE -> StringUtils.defaultString(license.getSignature());
+            case LICENSE_PAYLOAD_FILE_CODE -> StringUtils.defaultString(license.getCertificate());
+            default -> throw new BusinessException("DELIVERY_FILE_NOT_FOUND", "授权文件不存在");
+        };
+    }
+
+    private String deliveryFileContentType(ShopLicenseKeyPair license, String normalizedCode) {
+        return LICENSE_FILE_CODE.equals(normalizedCode) ? LICENSE_CONTENT_TYPE : JSON_CONTENT_TYPE;
     }
 
     private ShopOrderDeliveryFileVo licenseFile(ShopLicenseKeyPair license, String code, String description,
@@ -714,17 +1242,26 @@ public class ShopOrderServiceImpl implements ShopOrderService {
     }
 
     private String licenseFileName(ShopLicenseKeyPair license, String fileCode) {
+        String prefix = isBrandRemovalStatement(license)
+                ? "flyfish-viewer-brand-removal-statement"
+                : "license";
         return switch (fileCode) {
-            case LICENSE_FILE_CODE -> "license.lic";
-            case LICENSE_JSON_FILE_CODE -> "license.json";
-            case LICENSE_PAYLOAD_FILE_CODE -> "license-payload.json";
-            default -> "license.dat";
+            case LICENSE_FILE_CODE -> prefix + ".lic";
+            case LICENSE_JSON_FILE_CODE -> prefix + "-license.json";
+            case LICENSE_PAYLOAD_FILE_CODE -> prefix + "-payload.json";
+            default -> prefix + "-license.dat";
         };
     }
 
     private boolean isLicenseDelivery(ShopOrderDelivery delivery) {
         return delivery != null
                 && StringUtils.equalsIgnoreCase(ShopOrderDelivery.DeliveryType.LICENSE.name(), delivery.getDeliveryType());
+    }
+
+    private boolean isBrandRemovalStatement(ShopLicenseKeyPair license) {
+        return license != null
+                && (StringUtils.containsIgnoreCase(license.getSignature(), "flyfish-viewer-brand-removal-statement")
+                || StringUtils.containsIgnoreCase(license.getCertificate(), "brand-removal"));
     }
 
     private boolean isExtractable(ShopItem item, ShopOrder order, ShopItem.DeliveryMode deliveryMode) {
@@ -759,7 +1296,7 @@ public class ShopOrderServiceImpl implements ShopOrderService {
             return null;
         }
         String message = StringUtils.defaultString(order.getDeliveryMessage());
-        if (StringUtils.containsAnyIgnoreCase(message, "授权", "license", "Office 预览授权")) {
+        if (StringUtils.containsAnyIgnoreCase(message, "授权", "license")) {
             return ShopDeliveryAction.LICENSE;
         }
         if (StringUtils.containsAnyIgnoreCase(message, "仓库", "Git", "Github", "Gitea", "Gitee")) {

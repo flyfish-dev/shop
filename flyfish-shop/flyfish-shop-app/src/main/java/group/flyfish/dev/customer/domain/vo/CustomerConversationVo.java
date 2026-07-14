@@ -42,6 +42,22 @@ public class CustomerConversationVo {
     private String status;
 
     /**
+     * 客户当前是否有活跃客服 WebSocket 会话。
+     */
+    private Boolean online;
+
+    /**
+     * 客户在线状态，取值 ONLINE/OFFLINE。
+     */
+    private String onlineStatus;
+
+    /**
+     * 客户最近活跃时间。
+     */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm")
+    private LocalDateTime lastActiveTime;
+
+    /**
      * 最近一条消息摘要。
      */
     private String lastMessage;

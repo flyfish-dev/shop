@@ -37,6 +37,11 @@ public class GitRepositoryAccessParamValue implements ShopItemParamValue {
      */
     private LicenseDeliveryParamValue licenseDelivery;
 
+    /**
+     * 下单时需要买家补充的信息配置，例如授权域名、用途承诺等。
+     */
+    private ShopOrderFormParamValue orderForm;
+
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String owner;
 

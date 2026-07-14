@@ -2,6 +2,12 @@ import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 import { PortalUsers } from '@/modules/auth/api.js';
 import { useLocalStorage } from '@vueuse/core';
+import {
+  clearOAuthLoginIntent as clearStoredOAuthLoginIntent,
+  consumeOAuthLoginIntent as consumeStoredOAuthLoginIntent,
+  hasOAuthLoginIntent as hasStoredOAuthLoginIntent,
+  rememberOAuthLoginIntent as rememberStoredOAuthLoginIntent
+} from '@/modules/auth/utils/oauthLoginIntent.js';
 
 const ACCESS_TOKEN_KEY = 'access_token';
 const AUTH_CHANGED_AT_KEY = 'auth_changed_at';
@@ -172,6 +178,31 @@ const useClientStore = defineStore('client', () => {
     window.localStorage.removeItem(OAUTH_LOGIN_REDIRECT_KEY);
   };
 
+  const rememberOAuthLoginIntent = (provider, path, options = {}) => rememberStoredOAuthLoginIntent(
+    window.sessionStorage,
+    {
+      provider,
+      path,
+      skipProfilePrompt: options.skipProfilePrompt === true
+    },
+    { origin: window.location.origin }
+  );
+
+  const hasOAuthLoginIntent = (provider, path) => hasStoredOAuthLoginIntent(
+    window.sessionStorage,
+    provider,
+    path,
+    { origin: window.location.origin }
+  );
+
+  const consumeOAuthLoginIntent = path => consumeStoredOAuthLoginIntent(
+    window.sessionStorage,
+    path,
+    { origin: window.location.origin }
+  );
+
+  const clearOAuthLoginIntent = () => clearStoredOAuthLoginIntent(window.sessionStorage);
+
   const setProfileReturnPath = path => {
     const target = safeInternalPath(path, '/');
     profileReturnPath.value = target;
@@ -309,6 +340,15 @@ const useClientStore = defineStore('client', () => {
 
     const route = router.route;
     currentPath.value = route.path;
+    if (isAuthenticated.value) {
+      const oauthIntent = consumeOAuthLoginIntent(route.fullPath);
+      if (oauthIntent?.skipProfilePrompt) {
+        markProfilePromptSeen();
+      }
+      if (oauthIntent && pathsEqual(redirection.value, oauthIntent.path)) {
+        consumeRedirect(oauthIntent.path);
+      }
+    }
     if (routeGuestOnly(route) && isAuthenticated.value) {
       redirectAfterAuthentication(router, '/');
       return;
@@ -337,6 +377,7 @@ const useClientStore = defineStore('client', () => {
       clearAuth();
       window.localStorage.removeItem(REDIRECTION_KEY);
       clearOAuthLoginRedirect();
+      clearOAuthLoginIntent();
       clearProfileReturnPath();
       router?.replace?.('/login');
     }
@@ -361,6 +402,9 @@ const useClientStore = defineStore('client', () => {
     rememberRedirect,
     rememberOAuthLoginRedirect,
     clearOAuthLoginRedirect,
+    rememberOAuthLoginIntent,
+    hasOAuthLoginIntent,
+    clearOAuthLoginIntent,
     consumeRedirect,
     peekRedirect,
     setProfileReturnPath,

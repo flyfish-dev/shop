@@ -9,13 +9,16 @@ import group.flyfish.dev.shop.domain.po.ShopItem;
 import group.flyfish.dev.shop.domain.po.ShopItemGroup;
 import group.flyfish.dev.shop.domain.vo.ShopItemDetailVo;
 import group.flyfish.dev.shop.domain.vo.ShopItemGroupListVo;
+import group.flyfish.dev.shop.domain.vo.ShopItemI18nVo;
 import group.flyfish.dev.shop.domain.vo.ShopItemListVo;
 import org.apache.commons.lang3.StringUtils;
 import org.mapstruct.*;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import tools.jackson.core.type.TypeReference;
@@ -93,13 +96,23 @@ public interface ShopConvert {
      * 商品转列表VO
      */
     @Mapping(target = "tags", source = "tags", qualifiedByName = "toListString")
+    @Mapping(target = "i18n", source = "i18n", qualifiedByName = "toItemI18n")
     @Mapping(target = "type", expression = "java(item.getType() == null ? null : item.getType().name())")
     @Mapping(target = "typeName", expression = "java(toItemTypeName(item.getType()))")
     @Mapping(target = "deliveryMode", expression = "java(toDeliveryMode(item).name())")
     @Mapping(target = "deliveryModeName", expression = "java(toDeliveryModeName(toDeliveryMode(item)))")
     @Mapping(target = "deliveryActions", expression = "java(toDeliveryActions(item))")
     @Mapping(target = "defaultCouponPreview", ignore = true)
+    @Mapping(target = "effectiveUsdPrice", ignore = true)
+    @Mapping(target = "cnyPerUsd", ignore = true)
     @Mapping(target = "contractRequired", ignore = true)
+    @Mapping(target = "multiSku", ignore = true)
+    @Mapping(target = "skuCount", ignore = true)
+    @Mapping(target = "minPrice", ignore = true)
+    @Mapping(target = "maxPrice", ignore = true)
+    @Mapping(target = "minEffectiveUsdPrice", ignore = true)
+    @Mapping(target = "maxEffectiveUsdPrice", ignore = true)
+    @Mapping(target = "defaultSku", ignore = true)
     ShopItemListVo toItemList(ShopItem item);
 
     /**
@@ -107,14 +120,21 @@ public interface ShopConvert {
      */
     @Mapping(target = "tags", source = "tags", qualifiedByName = "toListString")
     @Mapping(target = "images", source = "images", qualifiedByName = "toListString")
+    @Mapping(target = "i18n", source = "i18n", qualifiedByName = "toItemI18n")
     @Mapping(target = "type", expression = "java(item.getType() == null ? null : item.getType().name())")
     @Mapping(target = "typeName", expression = "java(toItemTypeName(item.getType()))")
     @Mapping(target = "deliveryMode", expression = "java(toDeliveryMode(item).name())")
     @Mapping(target = "deliveryModeName", expression = "java(toDeliveryModeName(toDeliveryMode(item)))")
     @Mapping(target = "deliveryActions", expression = "java(toDeliveryActions(item))")
     @Mapping(target = "defaultCouponPreview", ignore = true)
+    @Mapping(target = "effectiveUsdPrice", ignore = true)
+    @Mapping(target = "cnyPerUsd", ignore = true)
     @Mapping(target = "contractRequired", ignore = true)
     @Mapping(target = "contractIds", ignore = true)
+    @Mapping(target = "viewCount", ignore = true)
+    @Mapping(target = "multiSku", ignore = true)
+    @Mapping(target = "defaultSku", ignore = true)
+    @Mapping(target = "skus", ignore = true)
     ShopItemDetailVo toItemDetail(ShopItem item);
 
     /**
@@ -130,6 +150,7 @@ public interface ShopConvert {
     @Mapping(target = "delete", ignore = true)
     @Mapping(target = "images", source = "images", qualifiedByName = "fromListString")
     @Mapping(target = "tags", source = "tags", qualifiedByName = "fromListString")
+    @Mapping(target = "i18n", source = "i18n", qualifiedByName = "fromItemI18n")
     ShopItem convert(ShopItemCreateDto dto);
 
     /**
@@ -145,6 +166,7 @@ public interface ShopConvert {
     @Mapping(target = "delete", ignore = true)
     @Mapping(target = "images", source = "images", qualifiedByName = "fromListString")
     @Mapping(target = "tags", source = "tags", qualifiedByName = "fromListString")
+    @Mapping(target = "i18n", source = "i18n", qualifiedByName = "fromItemI18n")
     void update(@MappingTarget ShopItem item, ShopItemUpdateDto dto);
 
     // ===================== 通用转换方法 =====================
@@ -168,13 +190,56 @@ public interface ShopConvert {
                 .orElse(null);
     }
 
+    @Named("toItemI18n")
+    default Map<String, ShopItemI18nVo> toItemI18n(String value) {
+        if (StringUtils.isBlank(value)) {
+            return Collections.emptyMap();
+        }
+        return JacksonUtils.readValue(value, new TypeReference<>() {
+        });
+    }
+
+    @Named("fromItemI18n")
+    default String fromItemI18n(Map<String, ShopItemI18nDto> value) {
+        if (value == null) {
+            return null;
+        }
+        Map<String, ShopItemI18nDto> cleaned = new LinkedHashMap<>();
+        value.forEach((locale, item) -> {
+            ShopItemI18nDto normalized = normalizeItemI18n(item);
+            if (StringUtils.isNotBlank(locale) && normalized != null) {
+                cleaned.put(locale, normalized);
+            }
+        });
+        return cleaned.isEmpty() ? null : JacksonUtils.toJson(cleaned);
+    }
+
+    default ShopItemI18nDto normalizeItemI18n(ShopItemI18nDto item) {
+        if (item == null) {
+            return null;
+        }
+        ShopItemI18nDto normalized = new ShopItemI18nDto();
+        normalized.setName(StringUtils.trimToNull(item.getName()));
+        normalized.setDescription(StringUtils.trimToNull(item.getDescription()));
+        normalized.setTags(Optional.ofNullable(item.getTags())
+                .orElse(Collections.emptyList())
+                .stream()
+                .filter(StringUtils::isNotBlank)
+                .map(StringUtils::trim)
+                .toList());
+        if (normalized.getName() == null && normalized.getDescription() == null && normalized.getTags().isEmpty()) {
+            return null;
+        }
+        return normalized;
+    }
+
     default String toItemTypeName(ShopItem.Type type) {
         if (type == null) {
             return "普通商品";
         }
         return switch (type) {
             case GIT_REPOSITORY_ACCESS, GIT_REPOSITORY_DONATION_ACCESS,
-                    DIGITAL_DOWNLOAD, SERVICE_PACKAGE, LICENSE -> type.getTitle();
+                    DONATION, DIGITAL_DOWNLOAD, SERVICE_PACKAGE, LICENSE -> type.getTitle();
         };
     }
 

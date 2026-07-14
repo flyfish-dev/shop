@@ -23,6 +23,12 @@ class ShopItemDeliveryModeTest {
         assertFalse(ShopItem.Type.GIT_REPOSITORY_DONATION_ACCESS.supportsDeliveryMode(ShopItem.DeliveryMode.MANUAL));
         assertTrue(ShopItem.Type.GIT_REPOSITORY_DONATION_ACCESS.usesGitRepositoryAccessParams());
 
+        assertEquals(ShopItem.DeliveryMode.NONE, ShopItem.Type.DONATION.getDefaultDeliveryMode());
+        assertFalse(ShopItem.Type.DONATION.requiresAutomaticDelivery());
+        assertTrue(ShopItem.Type.DONATION.supportsDeliveryMode(ShopItem.DeliveryMode.NONE));
+        assertFalse(ShopItem.Type.DONATION.supportsDeliveryMode(ShopItem.DeliveryMode.AUTOMATIC));
+        assertFalse(ShopItem.Type.DONATION.usesGitRepositoryAccessParams());
+
         assertEquals(ShopItem.DeliveryMode.AUTOMATIC, ShopItem.Type.DIGITAL_DOWNLOAD.getDefaultDeliveryMode());
         assertTrue(ShopItem.Type.DIGITAL_DOWNLOAD.supportsDeliveryMode(ShopItem.DeliveryMode.AUTOMATIC));
         assertTrue(ShopItem.Type.DIGITAL_DOWNLOAD.supportsDeliveryMode(ShopItem.DeliveryMode.MANUAL));

@@ -3,23 +3,25 @@ import { ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { PictureOutlined } from '@ant-design/icons-vue';
 import { PortalFiles } from '@/modules/auth/api.js';
+import { useI18n } from 'vue-i18n';
 
 defineProps({
   disabled: Boolean
 });
 
 const emit = defineEmits(['uploaded', 'uploading-change']);
+const { t } = useI18n();
 
 const uploading = ref(false);
 const MAX_SIZE = 20 * 1024 * 1024;
 
 const beforeUpload = file => {
   if (!file.type?.startsWith('image/')) {
-    message.error('请选择图片');
+    message.error(t('attachments.selectImage'));
     return false;
   }
   if (file.size > MAX_SIZE) {
-    message.error('图片不能超过 20MB');
+    message.error(t('attachments.imageTooLarge'));
     return false;
   }
   return true;
@@ -38,7 +40,7 @@ const uploadImage = async options => {
     });
     options.onSuccess?.(attachment);
   } catch (e) {
-    message.error(e.message || '图片上传失败');
+    message.error(e.message || t('attachments.imageUploadFailed'));
     options.onError?.(e);
   } finally {
     uploading.value = false;
@@ -55,7 +57,7 @@ const uploadImage = async options => {
     :before-upload='beforeUpload'
     :custom-request='uploadImage'
   >
-    <a-tooltip title='图片'>
+    <a-tooltip :title="t('customerService.image')">
       <a-button size='small' :loading='uploading' :disabled='disabled'>
         <template #icon><picture-outlined /></template>
       </a-button>

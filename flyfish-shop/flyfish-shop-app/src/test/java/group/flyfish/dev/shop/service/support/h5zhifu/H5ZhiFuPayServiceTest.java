@@ -3,6 +3,7 @@ package group.flyfish.dev.shop.service.support.h5zhifu;
 import group.flyfish.dev.shop.domain.dto.ShopOrderDto;
 import group.flyfish.dev.shop.domain.po.ShopItem;
 import group.flyfish.dev.shop.domain.po.ShopOrder;
+import group.flyfish.dev.common.exception.ServiceException;
 import group.flyfish.dev.shop.service.support.h5zhifu.bean.H5ZhiFuPayDto;
 import group.flyfish.dev.shop.service.support.h5zhifu.bean.H5ZhiFuPayResultDto;
 import group.flyfish.dev.shop.service.support.h5zhifu.bean.H5ZhiFuResultDto;
@@ -12,16 +13,33 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.math.BigDecimal;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class H5ZhiFuPayServiceTest {
 
     @Test
+    void rejectsNonCnyOrderBeforeCallingProvider() {
+        H5ZhiFuService client = mock(H5ZhiFuService.class);
+        H5ZhiFuPayService service = new H5ZhiFuPayService(client, properties());
+        ShopOrder order = order();
+        order.setCurrency("USD");
+
+        assertThrows(ServiceException.class, () -> service.pay(order, item(), new ShopOrderDto()));
+        verifyNoInteractions(client);
+    }
+
+    @Test
     void routesMobileH5PaymentThroughHttpInterface() {
         StubH5ZhiFuService client = new StubH5ZhiFuService();
-        H5ZhiFuPayService service = new H5ZhiFuPayService(client, properties());
+        H5ZhiFuProperties properties = properties();
+        properties.setEnabledPayTypes(Set.of("wechat", "alipay"));
+        H5ZhiFuPayService service = new H5ZhiFuPayService(client, properties);
 
         ShopOrderDto request = new ShopOrderDto();
         request.setTradeType("h5");
@@ -38,6 +56,19 @@ class H5ZhiFuPayServiceTest {
         assertEquals("h5", client.invokedRef.get());
         assertEquals(H5ZhiFuPayDto.PayType.alipay, client.dtoRef.get().getPayType());
         assertEquals(1990, client.dtoRef.get().getAmount());
+    }
+
+    @Test
+    void rejectsAlipayWhenMerchantHasNotEnabledIt() {
+        StubH5ZhiFuService client = new StubH5ZhiFuService();
+        H5ZhiFuPayService service = new H5ZhiFuPayService(client, properties());
+        ShopOrderDto request = new ShopOrderDto();
+        request.setTradeType("h5");
+        request.setPayType("alipay");
+
+        ServiceException error = assertThrows(ServiceException.class,
+                () -> service.pay(order(), item(), request));
+        assertEquals("该支付渠道尚未开通", error.getMessage());
     }
 
     @Test
@@ -62,9 +93,9 @@ class H5ZhiFuPayServiceTest {
 
     private H5ZhiFuProperties properties() {
         H5ZhiFuProperties properties = new H5ZhiFuProperties();
-        properties.setAppId(10001L);
+        properties.setAppId(1000000001L);
         properties.setKey("test-secret");
-        properties.setNotifyUrl("https://api.example.com/shops/payments/h5zhifu/notify");
+        properties.setNotifyUrl("https://api.flyfish.group/shops/payments/h5zhifu/notify");
         return properties;
     }
 

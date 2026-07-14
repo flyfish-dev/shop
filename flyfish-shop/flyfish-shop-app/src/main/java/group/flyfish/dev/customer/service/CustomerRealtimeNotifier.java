@@ -21,6 +21,13 @@ public class CustomerRealtimeNotifier {
         sink.tryEmitNext(CustomerRealtimeEvent.conversation(conversation.getId(), conversation.getUserId()));
     }
 
+    public void customerPresenceChanged(Long userId) {
+        if (userId == null || userId <= 0) {
+            return;
+        }
+        sink.tryEmitNext(CustomerRealtimeEvent.conversation(null, userId));
+    }
+
     public void ticketsChanged() {
         sink.tryEmitNext(CustomerRealtimeEvent.allUsers());
     }

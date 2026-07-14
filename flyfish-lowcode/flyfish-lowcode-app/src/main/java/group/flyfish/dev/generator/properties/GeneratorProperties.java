@@ -112,7 +112,7 @@ public class GeneratorProperties {
         /**
          * 父包名
          */
-        private String parent = "com.example.demo";
+        private String parent = "com.example.system";
         /**
          * 父包模块名
          */

@@ -8,9 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WechatProtocolTest {
 
-    private static final String APP_ID = "wx0000000000000000";
-    private static final String TOKEN = "change-me-wechat-token";
-    private static final String AES_KEY = "abcdefghijklmnopqrstuvwxyzABCDEFG1234567890";
+    private static final String APP_ID = "wx-test-app-id";
+    private static final String TOKEN = "test-token";
+    private static final String AES_KEY = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
 
     @Test
     void parsesTextMessageWithSpringDomUtils() {

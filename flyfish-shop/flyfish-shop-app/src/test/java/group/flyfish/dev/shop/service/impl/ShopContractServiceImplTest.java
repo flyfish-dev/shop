@@ -10,6 +10,7 @@ import group.flyfish.dev.shop.repository.ShopContractFileRepository;
 import group.flyfish.dev.shop.repository.ShopContractRepository;
 import group.flyfish.dev.shop.repository.ShopContractSignatureRepository;
 import group.flyfish.dev.shop.repository.ShopItemContractRepository;
+import group.flyfish.dev.shop.repository.ShopItemSkuContractRepository;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -88,6 +89,7 @@ class ShopContractServiceImplTest {
                 contractRepository,
                 fileRepository,
                 itemContractRepository,
+                mock(ShopItemSkuContractRepository.class),
                 signatureRepository,
                 mock(UploadService.class)
         );

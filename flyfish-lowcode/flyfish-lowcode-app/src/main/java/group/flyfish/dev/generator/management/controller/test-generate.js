@@ -29,7 +29,7 @@ async function generate() {
         'mapper': 'mapper',
         'moduleName': '',
         'other': 'other',
-        'parent': 'com.example.demo',
+        'parent': 'com.example.system',
         'pathInfo': {},
         'service': 'service',
         'serviceImpl': 'service.impl',

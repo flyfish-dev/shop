@@ -11,6 +11,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.core.io.buffer.DataBuffer;
 import reactor.core.publisher.Mono;
 
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
@@ -73,10 +74,24 @@ public class CustomHttpActionAdapter extends SpringWebfluxHttpActionAdapter {
         if (StringUtils.isBlank(target)) {
             return action;
         }
-        if (target.contains("authorize")) {
+        if (isAuthorizationRedirect(target)) {
             return action;
         }
         String url = "/oauth/redirect?redirect=" + URLEncoder.encode(target, StandardCharsets.UTF_8);
         return replaceAction(action, url);
+    }
+
+    static boolean isAuthorizationRedirect(String target) {
+        if (target.contains("authorize")) {
+            return true;
+        }
+        try {
+            URI uri = URI.create(target);
+            return "accounts.google.com".equalsIgnoreCase(uri.getHost())
+                    && uri.getPath() != null
+                    && uri.getPath().startsWith("/o/oauth2/");
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
     }
 }

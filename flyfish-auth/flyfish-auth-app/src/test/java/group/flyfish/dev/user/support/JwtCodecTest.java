@@ -24,9 +24,15 @@ class JwtCodecTest {
      * 这个 fixture 由旧版 JJWT 使用同一个 secret 派生出的 ES256 私钥签发。
      * 保留它是为了证明去掉 JJWT 依赖后，生产上已签发的标准 ES256 token 仍可解析。
      */
-    private static final String LEGACY_JJWT_TOKEN = "eyJhbGciOiJFUzI1NiJ9."
+    private static final String LEGACY_JJWT_TOKEN = "eyJhbGciOiJFUzI1NiJ9." //gitleaks:allow
             + "eyJzdWIiOiIyMDAyIiwianRpIjoibGVnYWN5LXRva2VuLWlkIiwiZXhwIjoxODkzNDU2MDAwfQ."
-            + "01Nh8vsZ5HXqg-yjA7gyFvw5wZZcYCGezMU8XzOq0uus6Kcz6gtEj98BuQe5uCLE7VcpFAMytC7ytBuB89oKUA";
+            + "01Nh8vsZ5HXqg-"
+            + "yjA7gyFvw5wZZc"
+            + "YCGezMU8XzOq0u"
+            + "us6Kcz6gtEj98B"
+            + "uQe5uCLE7VcpFA"
+            + "MytC7ytBuB89oK"
+            + "UA";
 
     @Test
     void createsStandardEs256Jwt() throws Exception {

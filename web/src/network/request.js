@@ -1,4 +1,5 @@
 import useClientStore from '@/modules/auth/store/client.js';
+import { getCurrentLocale } from '@/i18n/index.js';
 import { stringify } from 'qs';
 
 /**
@@ -9,6 +10,7 @@ import { stringify } from 'qs';
 function useOptions(options = {}) {
   const { body, credential, headers = {}, urlencoded = false, ...rest } = options;
   const store = useClientStore();
+  headers['Accept-Language'] = headers['Accept-Language'] || getCurrentLocale();
 
   // 处理认证信息
   if (credential && store.token) {

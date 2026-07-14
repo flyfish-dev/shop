@@ -17,6 +17,9 @@ public class ShopCouponApplyDto {
     @Property("商品id")
     private String itemId;
 
+    @Property("SKU id")
+    private String skuId;
+
     @Property("商品数量")
     private Integer count;
 
@@ -26,4 +29,7 @@ public class ShopCouponApplyDto {
 
     @Property("打赏金额")
     private BigDecimal donationAmount;
+
+    @Property(value = "支付币种", description = "纯打赏支持CNY/USD")
+    private String paymentCurrency;
 }

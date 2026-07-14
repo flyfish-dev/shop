@@ -29,7 +29,7 @@ public enum ShopDeliveryAction {
             case GIT_REPOSITORY_ACCESS, GIT_REPOSITORY_DONATION_ACCESS -> List.of(GIT_REPOSITORY_ACCESS);
             case DIGITAL_DOWNLOAD -> List.of(DIGITAL_DOWNLOAD);
             case LICENSE -> List.of(LICENSE);
-            case SERVICE_PACKAGE -> List.of();
+            case DONATION, SERVICE_PACKAGE -> List.of();
         };
     }
 }

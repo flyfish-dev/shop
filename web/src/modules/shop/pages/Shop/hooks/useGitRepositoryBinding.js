@@ -11,14 +11,7 @@ import {
 import { parseGitRepositoryAccessParams, normalizeGitProvider } from '@/modules/shop/utils/gitRepositoryAccess.js';
 import { isGitRepositoryAccessType } from '@/modules/shop/utils/shopCovers.js';
 import { prepareGitBinding } from '../apis/api.js';
-
-const PROVIDER_NAMES = {
-  github: 'GitHub',
-  gitea: '飞鱼开源',
-  gitee: '码云'
-};
-
-const providerName = provider => PROVIDER_NAMES[provider] || 'Git';
+import { useI18n } from 'vue-i18n';
 
 const uniqueProviders = params => {
   const providers = (params.repositories || [])
@@ -52,7 +45,17 @@ const parseItemParams = item => {
 };
 
 export function useGitRepositoryBinding({ item, user, store, router }) {
+  const { t } = useI18n();
   const bindingLoading = ref(false);
+  const providerName = provider => {
+    if (provider === 'gitea') {
+      return t('shop.gitBinding.sourceName');
+    }
+    if (provider === 'gitee') {
+      return t('shop.gitBinding.giteeName');
+    }
+    return provider === 'github' ? 'GitHub' : 'Git';
+  };
 
   const itemParams = computed(() => parseGitRepositoryAccessParams(parseItemParams(item.value)));
   const gitProviders = computed(() => uniqueProviders(itemParams.value));
@@ -81,7 +84,9 @@ export function useGitRepositoryBinding({ item, user, store, router }) {
   const gitBindTitle = computed(() => {
     const count = itemParams.value.repositories?.length || 0;
     const names = gitProviders.value.map(providerName).join(' / ') || gitProviderName.value;
-    return `${names}${count > 1 ? '多仓库' : '仓库'}绑定`;
+    return t(count > 1
+      ? 'shop.gitBinding.multipleRepositories'
+      : 'shop.gitBinding.singleRepository', { providers: names });
   });
   const gitAuthorization = computed(() => gitProviders.value.length > 0
     && gitProviders.value.every(provider => authorizationOf(provider)));
@@ -90,11 +95,11 @@ export function useGitRepositoryBinding({ item, user, store, router }) {
     isGitRepositoryAccessType(item.value?.type) && !gitAuthorization.value
   ));
   const gitBindingReminderTitle = computed(() => {
-    const names = missingProviderNames.value.join('、') || gitProviderName.value;
-    return `请先绑定 ${names} 账号`;
+    const names = missingProviderNames.value.join(' / ') || gitProviderName.value;
+    return t('shop.gitBinding.reminderTitle', { providers: names });
   });
   const gitBindingReminderDescription = computed(() => (
-    '源码开通类商品，必须先绑定对应 Git 平台账号才能购买，请根据下方卡片绑定后完成购买。'
+    t('shop.gitBinding.reminderDescription')
   ));
 
   const authorize = async () => {
@@ -112,7 +117,7 @@ export function useGitRepositoryBinding({ item, user, store, router }) {
       const url = await prepareGitBinding(gitProvider.value);
       location.href = url || `/oauth/${gitProvider.value}`;
     } catch (e) {
-      message.error(e.message || '发起账号绑定失败');
+      message.error(e.message || t('shop.gitBinding.startFailed'));
     } finally {
       bindingLoading.value = false;
     }
@@ -120,8 +125,8 @@ export function useGitRepositoryBinding({ item, user, store, router }) {
 
   const validateGitCheckout = () => {
     if (isGitRepositoryAccessType(item.value?.type) && !gitAuthorization.value) {
-      const names = missingProviders.value.map(providerName).join('、') || gitProviderName.value;
-      message.warning(`请先绑定 ${names} 账号`);
+      const names = missingProviders.value.map(providerName).join(' / ') || gitProviderName.value;
+      message.warning(t('shop.gitBinding.reminderTitle', { providers: names }));
       return false;
     }
     return true;

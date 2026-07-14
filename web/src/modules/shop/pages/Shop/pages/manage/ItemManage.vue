@@ -44,6 +44,31 @@ const formatPrice = price => {
   return amount.toFixed(2);
 };
 
+const isMultiSku = record => record?.multiSku === true || record?.skuMode === 'MULTI';
+
+const formatPriceRange = record => {
+  if (!isMultiSku(record)) {
+    return `¥${formatPrice(record.price)}`;
+  }
+  const min = record.minPrice ?? record.defaultSku?.price ?? record.price;
+  const max = record.maxPrice ?? min;
+  if (Number(min) === Number(max)) {
+    return `¥${formatPrice(min)}`;
+  }
+  return `¥${formatPrice(min)} - ¥${formatPrice(max)}`;
+};
+
+const formatUsdPriceRange = record => {
+  const min = isMultiSku(record)
+    ? (record.minEffectiveUsdPrice ?? record.defaultSku?.effectiveUsdPrice ?? record.effectiveUsdPrice)
+    : record.effectiveUsdPrice;
+  const max = isMultiSku(record) ? (record.maxEffectiveUsdPrice ?? min) : min;
+  if (Number(min) === Number(max)) {
+    return `$${formatPrice(min)}`;
+  }
+  return `$${formatPrice(min)} - $${formatPrice(max)}`;
+};
+
 const hasDeliveryActions = record => Array.isArray(record.deliveryActions) && record.deliveryActions.length > 0;
 
 const itemStatusText = record => (record.enabled ? '上架中' : '已下架');
@@ -249,6 +274,9 @@ onMounted(async () => {
               <a-tag v-if="record.pinned" color="red">置顶</a-tag>
               <a-tag v-if="record.recommended" color="gold">推荐</a-tag>
               <a-tag v-if="record.contractRequired" color="purple">需签署</a-tag>
+              <a-tag v-if="isMultiSku(record)" color="blue">
+                多SKU · {{ record.skuCount || 0 }}
+              </a-tag>
               <a-tag v-if="record.defaultCouponEnabled" color="green">
                 优惠：{{ record.defaultCouponCode || '已启用' }}
               </a-tag>
@@ -257,7 +285,8 @@ onMounted(async () => {
             <div class="item-metrics">
               <div class="metric-block price-block">
                 <span class="metric-label">价格</span>
-                <strong>¥{{ formatPrice(record.price) }}</strong>
+                <strong>{{ formatPriceRange(record) }}</strong>
+                <span class="usd-price">{{ formatUsdPriceRange(record) }}</span>
               </div>
               <div class="metric-block">
                 <span class="metric-label">购买量</span>
@@ -586,6 +615,15 @@ onMounted(async () => {
 .price-block strong {
   color: #f04438;
   font-size: 18px;
+}
+
+.price-block .usd-price {
+  margin-top: 3px;
+  overflow: hidden;
+  color: #1565c0;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sort-input {

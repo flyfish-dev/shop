@@ -5,13 +5,15 @@ import {
   CheckCircleFilled,
   DisconnectOutlined,
   GithubOutlined,
+  GoogleOutlined,
   LinkOutlined,
   LoadingOutlined,
   PlusOutlined,
   ReloadOutlined,
   SaveOutlined,
   UserOutlined,
-  WechatOutlined
+  WechatOutlined,
+  WindowsOutlined
 } from '@ant-design/icons-vue';
 import { storeToRefs } from 'pinia';
 import useClientStore from '@/modules/auth/store/client.js';
@@ -27,12 +29,7 @@ const store = useClientStore();
 const route = useRoute();
 const router = useRouter();
 const { profileReturnPath, user } = storeToRefs(store);
-const {
-  hasShop,
-  shopEntryName,
-  shopEntryPath,
-  loadPortalCapabilities
-} = usePortalCapabilities();
+const { shopEntryName, shopEntryPath, loadPortalCapabilities } = usePortalCapabilities();
 
 const saving = ref(false);
 const formRef = ref(null);
@@ -43,7 +40,9 @@ const oauthProviders = ref({
   wechat: true,
   gitea: true,
   gitee: true,
-  github: true
+  github: true,
+  google: true,
+  microsoft: true
 });
 const formState = reactive({
   username: '',
@@ -116,7 +115,7 @@ const syncForm = () => {
 watch(user, syncForm, { immediate: true });
 
 onMounted(async () => {
-  await Promise.all([store.loadUser(), loadOauthProviders(), loadPortalCapabilities()]);
+  await Promise.all([store.loadUser(), loadOauthProviders(), loadPortalCapabilities().catch(() => {})]);
   syncForm();
 });
 
@@ -128,20 +127,36 @@ const authorizations = computed(() => user.value?.authorizations || {});
 
 const platforms = computed(() => [
   {
+    type: 'google',
+    title: 'Google',
+    color: '#4285f4',
+    icon: GoogleOutlined,
+    enabled: oauthProviders.value.google,
+    auth: authorizations.value.google
+  },
+  {
+    type: 'github',
+    title: 'GitHub',
+    color: '#24292f',
+    icon: GithubOutlined,
+    enabled: oauthProviders.value.github,
+    auth: authorizations.value.github
+  },
+  {
+    type: 'microsoft',
+    title: 'Microsoft',
+    color: '#0078d4',
+    icon: WindowsOutlined,
+    enabled: oauthProviders.value.microsoft,
+    auth: authorizations.value.microsoft
+  },
+  {
     type: 'wechat',
     title: '微信',
     color: '#18a058',
     icon: WechatOutlined,
     enabled: true,
     auth: authorizations.value.wechat
-  },
-  {
-    type: 'gitea',
-    title: '飞鱼开源',
-    color: '#1677ff',
-    logo: giteaLogo,
-    enabled: oauthProviders.value.gitea,
-    auth: authorizations.value.gitea
   },
   {
     type: 'gitee',
@@ -152,28 +167,28 @@ const platforms = computed(() => [
     auth: authorizations.value.gitee
   },
   {
-    type: 'github',
-    title: 'GitHub',
-    color: '#24292f',
-    icon: GithubOutlined,
-    enabled: oauthProviders.value.github,
-    auth: authorizations.value.github
+    type: 'gitea',
+    title: '飞鱼开源',
+    color: '#1677ff',
+    logo: giteaLogo,
+    enabled: oauthProviders.value.gitea,
+    auth: authorizations.value.gitea
   }
 ]);
 
 const hasUser = computed(() => user.value?.id > 0);
 const showLoginWelcome = computed(() => route.query?.welcome === '1' || Boolean(profileReturnPath.value));
-const matchesCapabilityPath = (target, capabilityPath) => {
-  const path = (capabilityPath || '').trim();
-  if (!target || !path || path === '/') {
-    return false;
-  }
-  return target === path || target.startsWith(`${path}/`);
-};
 const profileReturnLabel = computed(() => {
   const target = profileReturnPath.value || '';
-  if (hasShop.value && matchesCapabilityPath(target, shopEntryPath.value)) {
+  const entryPath = shopEntryPath.value;
+  if (entryPath && entryPath !== '/' && target.startsWith(`${entryPath}/detail`)) {
+    return '返回商品详情';
+  }
+  if (entryPath && entryPath !== '/' && target.startsWith(entryPath)) {
     return `返回${shopEntryName.value}`;
+  }
+  if (target.startsWith('/account/orders')) {
+    return '返回我的订单';
   }
   return '返回刚才页面';
 });
@@ -268,7 +283,9 @@ const loadOauthProviders = async () => {
       ...oauthProviders.value,
       gitea: false,
       gitee: false,
-      github: false
+      github: false,
+      google: false,
+      microsoft: false
     };
   }
 };

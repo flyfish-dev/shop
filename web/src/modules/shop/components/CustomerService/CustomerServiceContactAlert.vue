@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { QrcodeOutlined, WechatOutlined } from '@ant-design/icons-vue';
 import { getShopContactImages } from '@/modules/shop/assets/contact.js';
+import { useI18n } from 'vue-i18n';
 
 defineProps({
   compact: Boolean
@@ -9,6 +10,7 @@ defineProps({
 
 const qrOpen = ref(false);
 const { customerWechatQr } = getShopContactImages();
+const { t } = useI18n();
 </script>
 
 <template>
@@ -16,31 +18,31 @@ const { customerWechatQr } = getShopContactImages();
     <a-alert type='info' show-icon>
       <template #message>
         <span class='alert-message'>
-          回复不及时可添加客服微信 <strong>Yous_Gift</strong>
+          {{ t('customerService.delayedReply') }} <strong>Yous_Gift</strong>
         </span>
       </template>
       <template #action>
         <a-button type='link' size='small' class='alert-action' @click='qrOpen = true'>
           <template #icon><qrcode-outlined /></template>
-          查看二维码
+          {{ t('customerService.viewQrCode') }}
         </a-button>
       </template>
     </a-alert>
 
     <a-modal
       v-model:open='qrOpen'
-      title='客服微信'
+      :title="t('customerService.wechatTitle')"
       width='360'
       :footer='null'
       class='service-wechat-modal'
     >
       <div class='qr-panel'>
-        <img :src='customerWechatQr' alt='客服微信二维码'>
-        <strong>添加客服微信 Yous_Gift</strong>
-        <p>可扫码添加，或保存图片后用微信扫一扫识别。</p>
+        <img :src='customerWechatQr' :alt="t('customerService.wechatQrAlt')">
+        <strong>{{ t('customerService.addWechat') }}</strong>
+        <p>{{ t('customerService.wechatQrHint') }}</p>
         <a-button :href='customerWechatQr' target='_blank' download='flyfish-customer-wechat.jpg'>
           <template #icon><wechat-outlined /></template>
-          打开图片
+          {{ t('customerService.openImage') }}
         </a-button>
       </div>
     </a-modal>

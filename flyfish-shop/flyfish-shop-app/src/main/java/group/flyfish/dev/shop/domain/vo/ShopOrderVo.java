@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Data
 public class ShopOrderVo {
@@ -18,6 +19,14 @@ public class ShopOrderVo {
     private String itemType;
 
     private String itemTypeName;
+
+    private Long skuId;
+
+    private String skuCode;
+
+    private String skuName;
+
+    private String displayName;
 
     private Long buyerId;
 
@@ -33,11 +42,19 @@ public class ShopOrderVo {
 
     private BigDecimal amount;
 
+    private String currency;
+
     private BigDecimal originalAmount;
 
     private BigDecimal discountAmount;
 
     private String couponCode;
+
+    private Map<String, Object> properties;
+
+    private Map<String, Object> itemSnapshot;
+
+    private Map<String, Object> skuSnapshot;
 
     private ShopOrder.Status status;
 
@@ -58,6 +75,8 @@ public class ShopOrderVo {
     private Boolean extractable;
 
     private String paymentProvider;
+
+    private String outerNo;
 
     private String transactionCode;
 

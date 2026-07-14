@@ -5,7 +5,7 @@ import lombok.Data;
 @Data
 public class GiteaProperties {
 
-    private String server = "https://gitea.example.com";
+    private String server = "https://git.flyfish.dev";
 
     private String adminToken;
 }

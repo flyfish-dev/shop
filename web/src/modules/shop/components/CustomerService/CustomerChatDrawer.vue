@@ -11,6 +11,7 @@ import CustomerMessageList from './CustomerMessageList.vue';
 import CustomerServiceContactAlert from './CustomerServiceContactAlert.vue';
 import CustomerWechatActivityList from './CustomerWechatActivityList.vue';
 import { customerDisplayName } from './customerDisplay.js';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
   open: Boolean,
@@ -63,33 +64,40 @@ const emit = defineEmits([
   'close'
 ]);
 
-const drawerTitle = computed(() => props.manager ? '客户消息' : '飞鱼小铺客服');
+const { locale, t } = useI18n();
+const drawerTitle = computed(() => props.manager
+  ? t('customerService.customerMessages')
+  : t('customerService.storeSupport'));
 const managerPanel = ref('chat');
-const managerPanelOptions = [
-  { label: '客户会话', value: 'chat' },
-  { label: '公众号动态', value: 'wechat' }
-];
+const managerPanelOptions = computed(() => [
+  { label: t('customerService.customerChats'), value: 'chat' },
+  { label: t('customerService.wechatActivity'), value: 'wechat' }
+]);
 const activeName = computed(() => {
   if (props.manager) {
-    return props.selectedConversation ? customerDisplayName(props.selectedConversation) : '选择客户会话';
+    return props.selectedConversation
+      ? customerDisplayName(props.selectedConversation, locale.value)
+      : t('customerService.chooseConversation');
   }
-  return '飞鱼小铺客服';
+  return t('customerService.storeSupport');
 });
 const activeDescription = computed(() => {
   if (props.manager) {
-    return props.selectedConversation ? '站内客服会话' : '左侧选择客户后即可回复';
+    return props.selectedConversation
+      ? t('customerService.internalChat')
+      : t('customerService.chooseConversationHint');
   }
-  return '客服会话';
+  return t('customerService.supportConversation');
 });
 const loaded = computed(() => props.manager ? props.conversations.length > 0 : props.messages.length > 0);
 const transportStatus = computed(() => {
   if (props.connected) {
-    return { text: '在线', color: 'green' };
+    return { text: t('customerService.online'), color: 'green' };
   }
   if (loaded.value) {
-    return { text: '已加载', color: 'blue' };
+    return { text: t('customerService.loaded'), color: 'blue' };
   }
-  return { text: '连接中', color: 'default' };
+  return { text: t('customerService.connecting'), color: 'default' };
 });
 
 const close = value => {
@@ -196,7 +204,7 @@ watch(() => props.open, open => {
             </template>
 
             <div v-else class='manager-empty'>
-              <a-empty description='暂无选中会话' />
+              <a-empty :description="t('customerService.noConversation')" />
             </div>
           </section>
         </div>

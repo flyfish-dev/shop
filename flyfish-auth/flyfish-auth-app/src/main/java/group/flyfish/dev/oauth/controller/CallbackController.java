@@ -53,6 +53,7 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -74,6 +75,15 @@ public class CallbackController {
     private static final String BIND_COOKIE = "FF_OAUTH_BIND";
     private static final String PENDING_BINDINGS = "oauth_pending_bindings";
     private static final Duration BIND_TTL = Duration.ofMinutes(10);
+    private static final int MAX_ERROR_LOG_LENGTH = 800;
+    private static final Pattern JSON_OAUTH_SECRET = Pattern.compile(
+            "(?i)(\\\"(?:access_token|refresh_token|id_token)\\\"\\s*:\\s*\\\")[^\\\"]+(\\\")");
+    private static final Pattern FORM_OAUTH_SECRET = Pattern.compile(
+            "(?i)((?:access_token|refresh_token|id_token)=)[^&\\s,;'\\\"}]+");
+    private static final Pattern BEARER_SECRET = Pattern.compile(
+            "(?i)(bearer\\s+)[A-Za-z0-9._~+/=-]+");
+    private static final Pattern GITHUB_TOKEN = Pattern.compile(
+            "\\bgh[opusr]_[A-Za-z0-9]+\\b");
 
     private final Config config;
     private final Pac4jProperties properties;
@@ -90,12 +100,16 @@ public class CallbackController {
         OAuthProperties.Gitea gitea = oauthProperties.getGitea();
         OAuthProperties.Gitee gitee = oauthProperties.getGitee();
         OAuthProperties.Github github = oauthProperties.getGithub();
+        OAuthProperties.Google google = oauthProperties.getGoogle();
+        OAuthProperties.Microsoft microsoft = oauthProperties.getMicrosoft();
         Map<String, Boolean> providers = new LinkedHashMap<>();
         providers.put("wechat", true);
         providers.put("email", emailMagicLinkProperties.isEnabled());
         providers.put("gitea", hasClient(gitea.getClientId(), gitea.getClientSecret()));
         providers.put("gitee", hasClient(gitee.getClientId(), gitee.getClientSecret()));
         providers.put("github", hasClient(github.getClientId(), github.getClientSecret()));
+        providers.put("google", hasClient(google.getClientId(), google.getClientSecret()));
+        providers.put("microsoft", hasClient(microsoft.getClientId(), microsoft.getClientSecret()));
         return Result.ok(providers);
     }
 
@@ -215,7 +229,7 @@ public class CallbackController {
 
                 )
                 .onErrorResume(error -> {
-                    log.warn("OAuth callback failed, redirecting to login page: {}", error.getMessage());
+                    log.warn("OAuth callback failed, redirecting to login page: {}", sanitizeOAuthError(error.getMessage()));
                     clearBindingCookie(serverWebExchange);
                     serverWebExchange.getResponse().setStatusCode(HttpStatus.FOUND);
                     serverWebExchange.getResponse().getHeaders().setLocation(URI.create("/login?oauth=failed"));
@@ -226,6 +240,20 @@ public class CallbackController {
     @RequestMapping("${pac4j.callback.path/{cn}:/callback/{cn}}")
     public Mono<Void> callbackWithClientName(final ServerWebExchange serverWebExchange, @PathVariable("cn") final String cn) {
         return callback(serverWebExchange);
+    }
+
+    static String sanitizeOAuthError(String message) {
+        if (StringUtils.isBlank(message)) {
+            return "OAuth provider request failed";
+        }
+        String sanitized = JSON_OAUTH_SECRET.matcher(message).replaceAll("$1[REDACTED]$2");
+        sanitized = FORM_OAUTH_SECRET.matcher(sanitized).replaceAll("$1[REDACTED]");
+        sanitized = BEARER_SECRET.matcher(sanitized).replaceAll("$1[REDACTED]");
+        sanitized = GITHUB_TOKEN.matcher(sanitized).replaceAll("[REDACTED]");
+        if (sanitized.length() > MAX_ERROR_LOG_LENGTH) {
+            return sanitized.substring(0, MAX_ERROR_LOG_LENGTH) + "...";
+        }
+        return sanitized;
     }
 
     private Rendering redirectRendering(String redirect, UserToken token, ServerWebExchange exchange) {
@@ -309,7 +337,8 @@ public class CallbackController {
 
     private String normalizeProvider(String provider) {
         String value = provider == null ? "" : provider.trim().toLowerCase();
-        if ("gitea".equals(value) || "gitee".equals(value) || "github".equals(value)) {
+        if ("gitea".equals(value) || "gitee".equals(value) || "github".equals(value)
+                || "google".equals(value) || "microsoft".equals(value)) {
             return value;
         }
         throw new BusinessException("UNSUPPORTED_OAUTH_PROVIDER", "暂不支持该授权平台");

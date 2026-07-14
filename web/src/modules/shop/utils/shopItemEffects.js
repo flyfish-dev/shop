@@ -23,9 +23,14 @@ export const highlightIconMeta = {
   fire: '热门'
 };
 
-export const getShopItemHighlight = item => {
+export const getShopItemHighlight = (item, t) => {
   const inferredStyle = inferHighlightStyle(item);
-  const style = highlightStyleMeta[item?.highlightStyle || inferredStyle] || null;
+  const styleKey = item?.highlightStyle || inferredStyle;
+  const sourceStyle = highlightStyleMeta[styleKey] || null;
+  const style = sourceStyle ? {
+    ...sourceStyle,
+    label: typeof t === 'function' ? t(`shop.highlights.${styleKey}`) : sourceStyle.label
+  } : null;
   const icon = highlightIconMeta[item?.highlightIcon] ? item.highlightIcon : inferredStyleIcon(inferredStyle);
   return {
     style,

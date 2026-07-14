@@ -23,7 +23,7 @@ import static org.pac4j.core.profile.AttributeLocation.PROFILE_ATTRIBUTE;
  * "login_name": "",
  * "full_name": "",
  * "email": "wybaby168@gmail.com",
- * "avatar_url": "https://gitea.example.com/avatars/71afec53541a0171eaaef5cac218210b",
+ * "avatar_url": "https://git.flyfish.dev/avatars/71afec53541a0171eaaef5cac218210b",
  * "language": "zh-CN",
  * "is_admin": true,
  * "last_login": "2024-02-22T03:20:34Z",
@@ -100,7 +100,7 @@ public class GiteaProfileDefinition extends OAuthProfileDefinition {
         return Optional.ofNullable(OAuthProperties.instance())
                 .map(properties -> properties.getGitea().getServer())
                 .filter(StringUtils::isNotBlank)
-                .orElse("https://gitea.example.com");
+                .orElse("https://git.flyfish.dev");
     }
 
     /**

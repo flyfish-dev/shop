@@ -7,6 +7,7 @@ import defaultLicenseCover from '@/assets/shop/default-license.webp';
 export const SHOP_ITEM_DEFAULT_COVERS = {
   GIT_REPOSITORY_ACCESS: defaultGitAccessCover,
   GIT_REPOSITORY_DONATION_ACCESS: defaultGitAccessCover,
+  DONATION: defaultServicePackageCover,
   DIGITAL_DOWNLOAD: defaultDigitalDownloadCover,
   SERVICE_PACKAGE: defaultServicePackageCover,
   LICENSE: defaultLicenseCover,
@@ -20,6 +21,10 @@ export const GIT_REPOSITORY_ACCESS_TYPES = [
 export const isGitRepositoryAccessType = type => GIT_REPOSITORY_ACCESS_TYPES.includes(type);
 
 export const isGitRepositoryDonationAccessType = type => type === 'GIT_REPOSITORY_DONATION_ACCESS';
+
+export const isPureDonationType = type => type === 'DONATION';
+
+export const isDonationType = type => isGitRepositoryDonationAccessType(type) || isPureDonationType(type);
 
 export const getShopItemDefaultCover = type => SHOP_ITEM_DEFAULT_COVERS[type] || defaultGenericCover;
 

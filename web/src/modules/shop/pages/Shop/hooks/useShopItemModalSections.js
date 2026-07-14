@@ -26,6 +26,16 @@ export function useShopItemModalSections(formData, licenseDeliveryEnabled) {
       fields: ['deliveryMode', 'deliveryActions']
     },
     {
+      key: 'orderForm',
+      label: '下单信息',
+      fields: ['orderForm']
+    },
+    {
+      key: 'skus',
+      label: 'SKU套餐',
+      fields: ['skuMode', 'skus']
+    },
+    {
       key: 'git',
       label: '代码仓库',
       fields: ['repositoryKeys'],
@@ -45,13 +55,19 @@ export function useShopItemModalSections(formData, licenseDeliveryEnabled) {
       key: 'license',
       label: '授权许可',
       fields: [
+        ['licenseDelivery', 'licenseKind'],
         ['licenseDelivery', 'licenseName'],
         ['licenseDelivery', 'scope'],
+        ['licenseDelivery', 'product'],
         ['licenseDelivery', 'edition'],
         ['licenseDelivery', 'holder'],
         ['licenseDelivery', 'allowedOrigins'],
         ['licenseDelivery', 'features'],
         ['licenseDelivery', 'maxDeployments'],
+        ['licenseDelivery', 'maxIssuedLicenses'],
+        ['licenseDelivery', 'maxOriginsPerLicense'],
+        ['licenseDelivery', 'maxDeploymentsPerLicense'],
+        ['licenseDelivery', 'childValidDays'],
         ['licenseDelivery', 'commercialUse'],
         ['licenseDelivery', 'validDays'],
         ['licenseDelivery', 'remark']
@@ -72,6 +88,15 @@ export function useShopItemModalSections(formData, licenseDeliveryEnabled) {
       key: 'content',
       label: '图文详情',
       fields: ['description']
+    },
+    {
+      key: 'i18n',
+      label: '多语言',
+      fields: [
+        ['i18n', 'en-US', 'name'],
+        ['i18n', 'en-US', 'tags'],
+        ['i18n', 'en-US', 'description']
+      ]
     }
   ].filter(section => section.visible !== false)));
 

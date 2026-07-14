@@ -3,14 +3,18 @@
     <template #title>
       <navigator-bar>404 NOT FOUND</navigator-bar>
     </template>
-    <h1>您访问的页面不存在！<router-link>返回首页</router-link></h1>
+    <h1>{{ t('home.notFoundTitle') }}<router-link>{{ t('home.backHome') }}</router-link></h1>
   </a-card>
 </template>
 
-<script>
-export default {
-  name: 'NotFound',
-}
+<script setup>
+import { useI18n } from 'vue-i18n';
+
+defineOptions({
+  name: 'NotFound'
+});
+
+const { t } = useI18n();
 </script>
 
 <style scoped>

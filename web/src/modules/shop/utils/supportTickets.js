@@ -54,14 +54,45 @@ const priorityColorMap = {
 
 const categoryTextMap = Object.fromEntries(TICKET_CATEGORY_OPTIONS.map(item => [item.value, item.label]));
 
-export const ticketStatusText = status => statusTextMap[status] || status || '未知';
+const translate = (t, key, fallback) => typeof t === 'function' ? t(key) : fallback;
+
+export const ticketStatusOptions = t => TICKET_STATUS_OPTIONS.map(option => ({
+  ...option,
+  label: option.value
+    ? translate(t, `tickets.statuses.${option.value}`, option.label)
+    : translate(t, 'tickets.statuses.all', option.label)
+}));
+
+export const ticketPriorityOptions = t => TICKET_PRIORITY_OPTIONS.map(option => ({
+  ...option,
+  label: translate(t, `tickets.priorities.${option.value}`, option.label)
+}));
+
+export const ticketCategoryOptions = t => TICKET_CATEGORY_OPTIONS.map(option => ({
+  ...option,
+  label: translate(t, `tickets.categories.${option.value}`, option.label)
+}));
+
+export const ticketStatusText = (status, t) => translate(
+  t,
+  `tickets.statuses.${status}`,
+  statusTextMap[status] || status || '未知'
+);
 
 export const ticketStatusColor = status => statusColorMap[status] || 'default';
 
-export const ticketPriorityText = priority => priorityTextMap[priority] || priority || '普通';
+export const ticketPriorityText = (priority, t) => translate(
+  t,
+  `tickets.priorities.${priority}`,
+  priorityTextMap[priority] || priority || '普通'
+);
 
 export const ticketPriorityColor = priority => priorityColorMap[priority] || 'default';
 
-export const ticketCategoryText = category => categoryTextMap[category] || category || '常规问题';
+export const ticketCategoryText = (category, t) => translate(
+  t,
+  `tickets.categories.${category}`,
+  categoryTextMap[category] || category || '常规问题'
+);
 
 export const isTicketDone = status => ['RESOLVED', 'CLOSED'].includes(status);

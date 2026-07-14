@@ -49,7 +49,8 @@ public class ShopManageWorkbenchServiceImpl implements ShopManageWorkbenchServic
                 safe("店铺名称", shopName(), "飞鱼小铺"),
                 safe("商品统计", itemStats(), new ItemStats(0, 0, 0, 0)),
                 safe("订单统计", orderStats(todayStart, tomorrowStart),
-                        new OrderStats(0, 0, 0, 0, BigDecimal.ZERO, 0, BigDecimal.ZERO)),
+                        new OrderStats(0, 0, 0, 0, BigDecimal.ZERO, BigDecimal.ZERO,
+                                0, BigDecimal.ZERO, BigDecimal.ZERO)),
                 safe("工单统计", ticketStats(), new TicketStats(0, 0)));
     }
 
@@ -109,7 +110,12 @@ public class ShopManageWorkbenchServiceImpl implements ShopManageWorkbenchServic
                                COALESCE(SUM(CASE WHEN (status IN ('PAID', 'DELIVERED') OR paid_time IS NOT NULL) THEN 1 ELSE 0 END), 0) AS paid_order_count,
                                COALESCE(SUM(CASE WHEN status IN ('PENDING', 'PAYING') THEN 1 ELSE 0 END), 0) AS pending_payment_count,
                                COALESCE(SUM(CASE WHEN status IN ('PAID', 'DELIVERED') AND delivery_status IN ('WAITING', 'PROCESSING') THEN 1 ELSE 0 END), 0) AS waiting_delivery_count,
-                               COALESCE(SUM(CASE WHEN (status IN ('PAID', 'DELIVERED') OR paid_time IS NOT NULL) THEN amount ELSE 0 END), 0) AS revenue_amount,
+                               COALESCE(SUM(CASE WHEN (status IN ('PAID', 'DELIVERED') OR paid_time IS NOT NULL)
+                                                  AND UPPER(COALESCE(currency, 'CNY')) = 'CNY'
+                                             THEN amount ELSE 0 END), 0) AS revenue_amount,
+                               COALESCE(SUM(CASE WHEN (status IN ('PAID', 'DELIVERED') OR paid_time IS NOT NULL)
+                                                  AND UPPER(COALESCE(currency, 'CNY')) = 'USD'
+                                             THEN amount ELSE 0 END), 0) AS revenue_usd_amount,
                                COALESCE(SUM(CASE WHEN (status IN ('PAID', 'DELIVERED') OR paid_time IS NOT NULL)
                                                   AND COALESCE(paid_time, update_time, create_time) >= :startTime
                                                   AND COALESCE(paid_time, update_time, create_time) < :endTime
@@ -117,7 +123,13 @@ public class ShopManageWorkbenchServiceImpl implements ShopManageWorkbenchServic
                                COALESCE(SUM(CASE WHEN (status IN ('PAID', 'DELIVERED') OR paid_time IS NOT NULL)
                                                   AND COALESCE(paid_time, update_time, create_time) >= :startTime
                                                   AND COALESCE(paid_time, update_time, create_time) < :endTime
-                                             THEN amount ELSE 0 END), 0) AS today_revenue_amount
+                                                  AND UPPER(COALESCE(currency, 'CNY')) = 'CNY'
+                                             THEN amount ELSE 0 END), 0) AS today_revenue_amount,
+                               COALESCE(SUM(CASE WHEN (status IN ('PAID', 'DELIVERED') OR paid_time IS NOT NULL)
+                                                  AND COALESCE(paid_time, update_time, create_time) >= :startTime
+                                                  AND COALESCE(paid_time, update_time, create_time) < :endTime
+                                                  AND UPPER(COALESCE(currency, 'CNY')) = 'USD'
+                                             THEN amount ELSE 0 END), 0) AS today_revenue_usd_amount
                         FROM shop_order
                         WHERE is_delete = false
                         """)
@@ -129,10 +141,13 @@ public class ShopManageWorkbenchServiceImpl implements ShopManageWorkbenchServic
                         toLong(row.get(2)),
                         toLong(row.get(3)),
                         toMoney(row.get(4)),
-                        toLong(row.get(5)),
-                        toMoney(row.get(6))))
+                        toMoney(row.get(5)),
+                        toLong(row.get(6)),
+                        toMoney(row.get(7)),
+                        toMoney(row.get(8))))
                 .one()
-                .defaultIfEmpty(new OrderStats(0, 0, 0, 0, BigDecimal.ZERO, 0, BigDecimal.ZERO));
+                .defaultIfEmpty(new OrderStats(0, 0, 0, 0, BigDecimal.ZERO, BigDecimal.ZERO,
+                        0, BigDecimal.ZERO, BigDecimal.ZERO));
     }
 
     private Mono<TicketStats> ticketStats() {
@@ -234,8 +249,10 @@ public class ShopManageWorkbenchServiceImpl implements ShopManageWorkbenchServic
         summary.setPendingPaymentCount(stats.pendingPaymentCount());
         summary.setWaitingDeliveryCount(stats.waitingDeliveryCount());
         summary.setRevenueAmount(stats.revenueAmount());
+        summary.setRevenueUsdAmount(stats.revenueUsdAmount());
         summary.setTodayOrderCount(stats.todayOrderCount());
         summary.setTodayRevenueAmount(stats.todayRevenueAmount());
+        summary.setTodayRevenueUsdAmount(stats.todayRevenueUsdAmount());
     }
 
     private void applyTicketStats(ShopManageWorkbenchSummaryVo summary, TicketStats stats) {
@@ -285,7 +302,8 @@ public class ShopManageWorkbenchServiceImpl implements ShopManageWorkbenchServic
     }
 
     private record OrderStats(long orderTotal, long paidOrderCount, long pendingPaymentCount, long waitingDeliveryCount,
-                              BigDecimal revenueAmount, long todayOrderCount, BigDecimal todayRevenueAmount) {
+                              BigDecimal revenueAmount, BigDecimal revenueUsdAmount, long todayOrderCount,
+                              BigDecimal todayRevenueAmount, BigDecimal todayRevenueUsdAmount) {
     }
 
     private record TicketStats(long ticketTotal, long activeTicketCount) {

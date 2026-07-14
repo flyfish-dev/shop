@@ -28,6 +28,26 @@ public class ShopOrder extends AuditDomain {
     @Column("item_id")
     private Long itemId;
 
+    @Property("SKU id")
+    @Column("sku_id")
+    private Long skuId;
+
+    @Property("SKU编码快照")
+    @Column("sku_code")
+    private String skuCode;
+
+    @Property("SKU名称快照")
+    @Column("sku_name")
+    private String skuName;
+
+    @Property("商品名称快照")
+    @Column("item_name")
+    private String itemName;
+
+    @Property("商品类型快照")
+    @Column("item_type")
+    private String itemType;
+
     @Property("店铺id")
     @Column("shop_id")
     private Long shopId;
@@ -42,8 +62,19 @@ public class ShopOrder extends AuditDomain {
     @Property("商品属性")
     private String properties;
 
+    @Property("商品快照")
+    @Column("item_snapshot")
+    private String itemSnapshot;
+
+    @Property("SKU快照")
+    @Column("sku_snapshot")
+    private String skuSnapshot;
+
     @Property("订单金额")
     private BigDecimal amount;
+
+    @Property("订单币种")
+    private String currency;
 
     @Property("原始金额")
     @Column("original_amount")

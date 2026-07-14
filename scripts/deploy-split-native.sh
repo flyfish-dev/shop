@@ -39,9 +39,9 @@ upload_native_app() {
       cp -a '$BASE_DIR/app/${name}-native/.' '$remote_dir/'
     fi
   "
-  rsync -az --partial --inplace --progress "$binary" "$SERVER:$remote_dir/"
+  rsync -az --partial --progress "$binary" "$SERVER:$remote_dir/"
   if compgen -G "$target/lib*.so" >/dev/null; then
-    rsync -az --partial --inplace --progress "$target"/lib*.so "$SERVER:$remote_dir/"
+    rsync -az --partial --progress "$target"/lib*.so "$SERVER:$remote_dir/"
   fi
 }
 
@@ -92,9 +92,9 @@ switch_services() {
 }
 
 verify_remote() {
-  ssh "$SERVER" "
+  ssh "$SERVER" "PUBLIC_API_URL='$PUBLIC_API_URL' PUBLIC_WEB_URL='$PUBLIC_WEB_URL' bash -s" <<'REMOTE_SCRIPT'
     set -e
-    for i in \$(seq 1 45); do
+    for i in $(seq 1 45); do
       if systemctl is-active --quiet flyfish-lowcode &&
          systemctl is-active --quiet flyfish-auth &&
          systemctl is-active --quiet flyfish-shop &&
@@ -103,7 +103,7 @@ verify_remote() {
          curl -fsS http://127.0.0.1:10082/portal/capabilities >/tmp/flyfish-shop-capabilities.json; then
         break
       fi
-      if [ \"\$i\" -eq 45 ]; then
+      if [ "$i" -eq 45 ]; then
         systemctl --no-pager --full status flyfish-auth flyfish-lowcode flyfish-shop || true
         exit 1
       fi
@@ -114,11 +114,28 @@ verify_remote() {
     curl -fsS http://127.0.0.1:10082/portal/capabilities >/tmp/flyfish-shop-capabilities.json
     curl -fsS 'http://127.0.0.1:10082/shops/items?page=1&size=3' >/tmp/flyfish-shop-items.json
     curl -fsS http://127.0.0.1:10080/portal/users/current >/tmp/flyfish-current-user.json
-    curl -fsS '$PUBLIC_API_URL/__lowcode/portal/capabilities' >/tmp/flyfish-api-lowcode.json
-    curl -fsS '$PUBLIC_API_URL/__shop/portal/capabilities' >/tmp/flyfish-api-shop.json
-    curl -fsS '$PUBLIC_API_URL/shops/items?page=1&size=3' >/tmp/flyfish-api-shop-items.json
-    curl -fsS '$PUBLIC_WEB_URL/shop/item-list' >/tmp/flyfish-dev-shop.html
-  "
+    curl -fsS "$PUBLIC_API_URL/__lowcode/portal/capabilities" >/tmp/flyfish-api-lowcode.json
+    curl -fsS "$PUBLIC_API_URL/__shop/portal/capabilities" >/tmp/flyfish-api-shop.json
+    curl -fsS "$PUBLIC_API_URL/shops/items?page=1&size=3" >/tmp/flyfish-api-shop-items.json
+    curl -fsS "$PUBLIC_WEB_URL/shop/item-list" >/tmp/flyfish-dev-shop.html
+    python3 - <<'PY'
+import json
+
+for path in (
+    "/tmp/flyfish-auth-current-user.json",
+    "/tmp/flyfish-lowcode-capabilities.json",
+    "/tmp/flyfish-shop-capabilities.json",
+    "/tmp/flyfish-shop-items.json",
+    "/tmp/flyfish-api-lowcode.json",
+    "/tmp/flyfish-api-shop.json",
+    "/tmp/flyfish-api-shop-items.json",
+):
+    with open(path, "r", encoding="utf-8") as source:
+        payload = json.load(source)
+    if payload.get("success") is not True:
+        raise SystemExit(f"business smoke failed: {path}: {payload.get('message')}")
+PY
+REMOTE_SCRIPT
 }
 
 echo "Release: $RELEASE"

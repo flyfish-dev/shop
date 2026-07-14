@@ -19,17 +19,22 @@ import java.util.Set;
 public class LicenseDeliveryParamValue implements ShopItemParamValue {
 
     public static final String LICENSE_KIND_RUNTIME = "runtime-license";
+    public static final String LICENSE_KIND_BRAND_REMOVAL = "brand-removal";
+    public static final String PRODUCT_FILE_VIEWER = "file-viewer";
+    public static final String PRODUCT_GENERIC_LICENSE = "license-product";
 
     public static final List<String> DEFAULT_OFFICE_FEATURES = List.of(
             "doc", "docx", "ppt", "pptx", "xls", "xlsx", "xlsb", "virtual-excel");
+    public static final List<String> DEFAULT_VIEWER_BRAND_FEATURES = List.of(
+            "visible-branding-removal", "apache-2.0-attribution-required");
 
     /**
-     * 授权类型。开源版仅保留运行授权业务参数，真实签发语义由私有扩展实现。
+     * 授权类型：runtime-license 为可直接部署的运行授权；brand-removal 为基于 Apache 2.0 边界的品牌标识移除声明。
      */
     private String licenseKind;
 
     /**
-     * 授权名称，例如 Office 预览套件企业授权。
+     * 授权名称，例如某软件企业授权。
      */
     private String licenseName;
 
@@ -39,7 +44,7 @@ public class LicenseDeliveryParamValue implements ShopItemParamValue {
     private String scope;
 
     /**
-     * 授权产品。
+     * 授权产品。通用运行授权为 license-product；Flyfish Viewer 声明授权为 file-viewer。
      */
     private String product;
 
@@ -88,15 +93,23 @@ public class LicenseDeliveryParamValue implements ShopItemParamValue {
      */
     private String remark;
 
+    /**
+     * 下单时需要买家补充的信息配置。
+     */
+    private ShopOrderFormParamValue orderForm;
+
     public void normalize(String fallbackName) {
         licenseKind = normalizeLicenseKind(licenseKind);
+        product = normalizeProduct(product);
         licenseName = StringUtils.defaultIfBlank(StringUtils.trimToNull(licenseName),
-                StringUtils.defaultIfBlank(fallbackName, "飞鱼小铺授权许可"));
-        scope = StringUtils.defaultIfBlank(StringUtils.trimToNull(scope), "product:" + licenseName);
-        product = StringUtils.defaultIfBlank(StringUtils.trimToNull(product), "license-product");
+                StringUtils.defaultIfBlank(fallbackName, isBrandRemoval()
+                        ? "Flyfish Viewer 去品牌标识授权声明" : "飞鱼小铺授权许可"));
+        scope = StringUtils.defaultIfBlank(StringUtils.trimToNull(scope),
+                isBrandRemoval() ? "product:file-viewer:remove-branding" : "product:" + licenseName);
         edition = normalizeEdition(edition);
-        holder = StringUtils.defaultIfBlank(StringUtils.trimToNull(holder), licenseName);
-        allowedOrigins = normalizeOrigins(allowedOrigins);
+        holder = StringUtils.defaultIfBlank(StringUtils.trimToNull(holder),
+                isBrandRemoval() ? "Flyfish Viewer" : licenseName);
+        allowedOrigins = isBrandRemoval() ? List.of() : normalizeOrigins(allowedOrigins);
         features = normalizeFeatures(features);
         maxDeployments = normalizeMaxDeployments(maxDeployments, edition, allowedOrigins);
         commercialUse = commercialUse == null ? !"personal".equals(edition) : commercialUse;
@@ -111,12 +124,36 @@ public class LicenseDeliveryParamValue implements ShopItemParamValue {
         return allowedOrigins != null && !allowedOrigins.isEmpty();
     }
 
+    public boolean requiresAuthorizedOrigin() {
+        return !isBrandRemoval();
+    }
+
     public boolean isEnterprise() {
         return "enterprise".equals(edition);
     }
 
+    public boolean isFileViewer() {
+        return PRODUCT_FILE_VIEWER.equals(product);
+    }
+
+    public boolean isBrandRemoval() {
+        return LICENSE_KIND_BRAND_REMOVAL.equals(licenseKind);
+    }
+
     private String normalizeLicenseKind(String value) {
+        String normalized = StringUtils.lowerCase(StringUtils.trimToNull(value), Locale.ROOT);
+        if (LICENSE_KIND_BRAND_REMOVAL.equals(normalized)) {
+            return LICENSE_KIND_BRAND_REMOVAL;
+        }
         return LICENSE_KIND_RUNTIME;
+    }
+
+    private String normalizeProduct(String value) {
+        String normalized = StringUtils.lowerCase(StringUtils.trimToNull(value), Locale.ROOT);
+        if (StringUtils.isNotBlank(normalized)) {
+            return normalized;
+        }
+        return isBrandRemoval() ? PRODUCT_FILE_VIEWER : PRODUCT_GENERIC_LICENSE;
     }
 
     private String normalizeEdition(String value) {
@@ -149,12 +186,20 @@ public class LicenseDeliveryParamValue implements ShopItemParamValue {
     }
 
     private List<String> normalizeFeatures(List<String> values) {
-        List<String> source = values == null || values.isEmpty() ? DEFAULT_OFFICE_FEATURES : values;
+        List<String> source = values == null || values.isEmpty()
+                ? (isBrandRemoval() ? DEFAULT_VIEWER_BRAND_FEATURES : DEFAULT_OFFICE_FEATURES)
+                : values;
         Set<String> normalized = new LinkedHashSet<>();
         for (String value : source) {
             String feature = StringUtils.lowerCase(StringUtils.trimToNull(value), Locale.ROOT);
             if (feature != null) {
                 normalized.add(feature);
+            }
+        }
+        if (isBrandRemoval()) {
+            normalized.removeIf(feature -> !DEFAULT_VIEWER_BRAND_FEATURES.contains(feature));
+            if (normalized.isEmpty()) {
+                normalized.addAll(DEFAULT_VIEWER_BRAND_FEATURES);
             }
         }
         return new ArrayList<>(normalized);

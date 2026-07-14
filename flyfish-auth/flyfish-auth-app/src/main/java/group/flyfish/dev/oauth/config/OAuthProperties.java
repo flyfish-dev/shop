@@ -15,6 +15,10 @@ public class OAuthProperties {
 
     private Github github = new Github();
 
+    private Google google = new Google();
+
+    private Microsoft microsoft = new Microsoft();
+
     private String callbackUrl = "http://127.0.0.1:9999/oauth/callback";
 
     private static OAuthProperties INSTANCE;
@@ -32,7 +36,7 @@ public class OAuthProperties {
 
         private String appName = "飞鱼";
 
-        private String server = "https://gitea.example.com";
+        private String server = "https://git.flyfish.dev";
 
         private String clientId = "";
 
@@ -66,10 +70,38 @@ public class OAuthProperties {
 
         private String apiBaseUrl = "https://api.github.com";
 
+        private String tokenUrl = "";
+
         private String clientId = "";
 
         private String clientSecret = "";
 
         private String scope = "read:user user:email";
+    }
+
+    @Data
+    public static class Google {
+
+        private String clientId = "";
+
+        private String clientSecret = "";
+
+        private String tokenUrl = "https://oauth2.googleapis.com/token";
+
+        private String profileUrl = "https://www.googleapis.com/oauth2/v3/userinfo";
+    }
+
+    @Data
+    public static class Microsoft {
+
+        private String tenant = "common";
+
+        private String graphBaseUrl = "https://graph.microsoft.com/v1.0";
+
+        private String clientId = "";
+
+        private String clientSecret = "";
+
+        private String scope = "openid profile email User.Read";
     }
 }

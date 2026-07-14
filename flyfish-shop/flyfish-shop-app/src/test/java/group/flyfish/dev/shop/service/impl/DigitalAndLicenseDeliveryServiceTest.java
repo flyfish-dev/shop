@@ -5,6 +5,8 @@ import group.flyfish.dev.shop.domain.po.ShopLicenseKeyPair;
 import group.flyfish.dev.shop.domain.po.ShopLicenseRoot;
 import group.flyfish.dev.shop.domain.po.ShopOrder;
 import group.flyfish.dev.shop.domain.po.ShopOrderDelivery;
+import group.flyfish.dev.common.json.JacksonUtils;
+import group.flyfish.dev.shop.converter.ShopItemParamValue;
 import group.flyfish.dev.shop.converter.impl.LicenseDeliveryParamValue;
 import group.flyfish.dev.shop.license.ExternalLicenseIssuer;
 import group.flyfish.dev.shop.license.IssuedLicenseDocument;
@@ -18,12 +20,17 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -33,7 +40,7 @@ class DigitalAndLicenseDeliveryServiceTest {
     @Test
     void digitalDownloadDeliveryCreatesExtractableSnapshot() {
         ShopOrderDeliveryRepository deliveryRepository = mock(ShopOrderDeliveryRepository.class);
-        when(deliveryRepository.findByOrderNo("FF1001")).thenReturn(Mono.empty());
+        when(deliveryRepository.findByOrderNoAndDeliveryType(eq("FF1001"), anyString())).thenReturn(Mono.empty());
         when(deliveryRepository.save(any())).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
 
         DigitalDownloadDeliveryService service = new DigitalDownloadDeliveryService(deliveryRepository);
@@ -55,7 +62,7 @@ class DigitalAndLicenseDeliveryServiceTest {
     }
 
     @Test
-    void licenseDeliveryCreatesKeyPairFromExternalSigner() {
+    void licenseDeliveryCreatesKeyPairFromExternalIssuer() {
         ShopLicenseRootRepository rootRepository = mock(ShopLicenseRootRepository.class);
         ShopLicenseKeyPairRepository keyPairRepository = mock(ShopLicenseKeyPairRepository.class);
         ShopOrderDeliveryRepository deliveryRepository = mock(ShopOrderDeliveryRepository.class);
@@ -67,7 +74,7 @@ class DigitalAndLicenseDeliveryServiceTest {
             return Mono.just(root);
         });
         when(keyPairRepository.save(any())).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
-        when(deliveryRepository.findByOrderNo("FF1001")).thenReturn(Mono.empty());
+        when(deliveryRepository.findByOrderNoAndDeliveryType(eq("FF1001"), anyString())).thenReturn(Mono.empty());
         when(deliveryRepository.save(any())).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
 
         LicenseDeliveryService service = new LicenseDeliveryService(rootRepository, keyPairRepository,
@@ -99,6 +106,46 @@ class DigitalAndLicenseDeliveryServiceTest {
     }
 
     @Test
+    void brandRemovalStatementIssuesWithoutDeploymentOrigin() {
+        ShopLicenseRootRepository rootRepository = mock(ShopLicenseRootRepository.class);
+        ShopLicenseKeyPairRepository keyPairRepository = mock(ShopLicenseKeyPairRepository.class);
+        ShopOrderDeliveryRepository deliveryRepository = mock(ShopOrderDeliveryRepository.class);
+        when(keyPairRepository.findByOrderNo("FF1001")).thenReturn(Mono.empty());
+        when(rootRepository.findByName("external-license-provider")).thenReturn(Mono.empty());
+        when(rootRepository.save(any())).thenAnswer(invocation -> {
+            ShopLicenseRoot root = invocation.getArgument(0);
+            root.setId(7L);
+            return Mono.just(root);
+        });
+        when(keyPairRepository.save(any())).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
+        when(deliveryRepository.findByOrderNoAndDeliveryType(eq("FF1001"), anyString())).thenReturn(Mono.empty());
+        when(deliveryRepository.save(any())).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
+
+        LicenseDeliveryService service = new LicenseDeliveryService(rootRepository, keyPairRepository,
+                deliveryRepository, testIssuer());
+
+        StepVerifier.create(service.deliver(order(), brandRemovalStatementItem(), buyer()))
+                .assertNext(result -> assertTrue(result.isSuccess()))
+                .verifyComplete();
+
+        ArgumentCaptor<ShopLicenseKeyPair> licenseCaptor = ArgumentCaptor.forClass(ShopLicenseKeyPair.class);
+        verify(keyPairRepository).save(licenseCaptor.capture());
+        ShopLicenseKeyPair license = licenseCaptor.getValue();
+        assertTrue(license.getSignature().contains("\"format\":\"flyfish-viewer-brand-removal-statement-v1\""));
+        assertTrue(license.getCertificate().contains("\"licenseKind\":\"brand-removal\""));
+        assertTrue(license.getCertificate().contains("\"product\":\"file-viewer\""));
+        assertTrue(license.getCertificate().contains("preserve-apache-2.0-license-text"));
+        assertFalse(license.getCertificate().contains("allowedOrigins"));
+
+        ArgumentCaptor<ShopOrderDelivery> deliveryCaptor = ArgumentCaptor.forClass(ShopOrderDelivery.class);
+        verify(deliveryRepository).save(deliveryCaptor.capture());
+        String content = deliveryCaptor.getValue().getContent();
+        assertTrue(content.contains("flyfish-viewer-brand-removal-statement.lic"));
+        assertTrue(content.contains("Apache 2.0"));
+        assertFalse(content.contains("license.lic"));
+    }
+
+    @Test
     void gitRepositoryProductCanIssueNestedLicense() {
         ShopLicenseRootRepository rootRepository = mock(ShopLicenseRootRepository.class);
         ShopLicenseKeyPairRepository keyPairRepository = mock(ShopLicenseKeyPairRepository.class);
@@ -111,7 +158,7 @@ class DigitalAndLicenseDeliveryServiceTest {
             return Mono.just(root);
         });
         when(keyPairRepository.save(any())).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
-        when(deliveryRepository.findByOrderNo("FF1001")).thenReturn(Mono.empty());
+        when(deliveryRepository.findByOrderNoAndDeliveryType(eq("FF1001"), anyString())).thenReturn(Mono.empty());
         when(deliveryRepository.save(any())).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
 
         LicenseDeliveryService service = new LicenseDeliveryService(rootRepository, keyPairRepository,
@@ -136,6 +183,107 @@ class DigitalAndLicenseDeliveryServiceTest {
         assertTrue(deliveryCaptor.getValue().getContent().contains("Document Preview Commercial License"));
     }
 
+    @Test
+    void licenseDeliveryUsesOrderFormOriginWhenConfigured() {
+        ShopLicenseRootRepository rootRepository = mock(ShopLicenseRootRepository.class);
+        ShopLicenseKeyPairRepository keyPairRepository = mock(ShopLicenseKeyPairRepository.class);
+        ShopOrderDeliveryRepository deliveryRepository = mock(ShopOrderDeliveryRepository.class);
+        when(keyPairRepository.findByOrderNo("FF1001")).thenReturn(Mono.empty());
+        when(rootRepository.findByName("external-license-provider")).thenReturn(Mono.empty());
+        when(rootRepository.save(any())).thenAnswer(invocation -> {
+            ShopLicenseRoot root = invocation.getArgument(0);
+            root.setId(4L);
+            return Mono.just(root);
+        });
+        when(keyPairRepository.save(any())).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
+        when(deliveryRepository.findByOrderNoAndDeliveryType(eq("FF1001"), anyString())).thenReturn(Mono.empty());
+        when(deliveryRepository.save(any())).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
+
+        LicenseDeliveryService service = new LicenseDeliveryService(rootRepository, keyPairRepository,
+                deliveryRepository, testIssuer());
+        ShopOrder order = order();
+        order.setProperties("""
+                {"orderForm":{"websiteOrigin":"https://curleyg.xyz","nonCommercialCommitment":true}}
+                """);
+
+        StepVerifier.create(service.deliver(order, genericPersonalItemWithOrderForm(), buyer()))
+                .assertNext(result -> assertTrue(result.isSuccess()))
+                .verifyComplete();
+
+        ArgumentCaptor<ShopLicenseKeyPair> licenseCaptor = ArgumentCaptor.forClass(ShopLicenseKeyPair.class);
+        verify(keyPairRepository).save(licenseCaptor.capture());
+        ShopLicenseKeyPair license = licenseCaptor.getValue();
+        assertTrue(license.getCertificate().contains("\"edition\":\"personal\""));
+        assertTrue(license.getCertificate().contains("\"commercialUse\":false"));
+        assertTrue(license.getCertificate().contains("\"allowedOrigins\":[\"https://curleyg.xyz\"]"));
+        assertFalse(license.getCertificate().contains("127.0.0.1"));
+    }
+
+    @Test
+    void runtimeLicenseUsesMultipleOrderFormOriginsWhenConfigured() {
+        ShopLicenseRootRepository rootRepository = mock(ShopLicenseRootRepository.class);
+        ShopLicenseKeyPairRepository keyPairRepository = mock(ShopLicenseKeyPairRepository.class);
+        ShopOrderDeliveryRepository deliveryRepository = mock(ShopOrderDeliveryRepository.class);
+        when(keyPairRepository.findByOrderNo("FF1001")).thenReturn(Mono.empty());
+        when(rootRepository.findByName("external-license-provider")).thenReturn(Mono.empty());
+        when(rootRepository.save(any())).thenAnswer(invocation -> {
+            ShopLicenseRoot root = invocation.getArgument(0);
+            root.setId(5L);
+            return Mono.just(root);
+        });
+        when(keyPairRepository.save(any())).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
+        when(deliveryRepository.findByOrderNoAndDeliveryType(eq("FF1001"), anyString())).thenReturn(Mono.empty());
+        when(deliveryRepository.save(any())).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
+
+        LicenseDeliveryService service = new LicenseDeliveryService(rootRepository, keyPairRepository,
+                deliveryRepository, testIssuer());
+        ShopOrder order = order();
+        order.setProperties("""
+                {"orderForm":{"origins":"https://docs.example.com/path\\nhttps://editor.example.com"}}
+                """);
+
+        StepVerifier.create(service.deliver(order, enterpriseRuntimeItemWithOrderForm(), buyer()))
+                .assertNext(result -> assertTrue(result.isSuccess()))
+                .verifyComplete();
+
+        ArgumentCaptor<ShopLicenseKeyPair> licenseCaptor = ArgumentCaptor.forClass(ShopLicenseKeyPair.class);
+        verify(keyPairRepository).save(licenseCaptor.capture());
+        ShopLicenseKeyPair license = licenseCaptor.getValue();
+        assertTrue(license.getCertificate().contains("\"scope\":\"root:word-editor\""));
+        assertTrue(license.getCertificate().contains("\"features\":[\"docx\"]"));
+        assertTrue(license.getCertificate().contains("\"allowedOrigins\":[\"https://docs.example.com\",\"https://editor.example.com\"]"));
+        assertTrue(license.getCertificate().contains("\"maxDeployments\":5"));
+    }
+
+    @Test
+    void runtimeLicenseRejectsTooManyOrderFormOrigins() {
+        ShopLicenseRootRepository rootRepository = mock(ShopLicenseRootRepository.class);
+        ShopLicenseKeyPairRepository keyPairRepository = mock(ShopLicenseKeyPairRepository.class);
+        ShopOrderDeliveryRepository deliveryRepository = mock(ShopOrderDeliveryRepository.class);
+        when(keyPairRepository.findByOrderNo("FF1001")).thenReturn(Mono.empty());
+
+        LicenseDeliveryService service = new LicenseDeliveryService(rootRepository, keyPairRepository,
+                deliveryRepository, testIssuer());
+        ShopOrder order = order();
+        order.setProperties("""
+                {"orderForm":{"origins":"https://a.example.com\\nhttps://b.example.com\\nhttps://c.example.com\\nhttps://d.example.com\\nhttps://e.example.com\\nhttps://f.example.com"}}
+                """);
+
+        StepVerifier.create(service.deliver(order, enterpriseRuntimeItemWithOrderForm(), buyer()))
+                .expectErrorMatches(error -> error.getMessage().contains("授权域名数量不能超过 5 个"))
+                .verify();
+    }
+
+    @Test
+    void gitRepositoryParamsKeepOrderFormAfterNormalization() {
+        String normalized = ShopItemParamValue.gitRepositoryAccess(genericPersonalItemWithOrderForm().getParams())
+                .toJSON();
+
+        assertTrue(normalized.contains("\"orderForm\""));
+        assertTrue(normalized.contains("\"websiteOrigin\""));
+        assertTrue(normalized.contains("\"license.allowedOrigins\""));
+    }
+
     private ShopOrder order() {
         ShopOrder order = new ShopOrder();
         order.setOrderNo("FF1001");
@@ -154,7 +302,26 @@ class DigitalAndLicenseDeliveryServiceTest {
     private ShopItem licenseItem() {
         ShopItem item = item(ShopItem.Type.LICENSE);
         item.setParams("""
-                {"licenseName":"Viewer 授权","scope":"product:viewer","edition":"commercial","allowedOrigins":["https://customer.example.com"],"validDays":365}
+                {"licenseName":"Viewer 授权","scope":"product:viewer","product":"license-product","edition":"commercial","allowedOrigins":["https://customer.example.com"],"validDays":365}
+                """);
+        return item;
+    }
+
+    private ShopItem brandRemovalStatementItem() {
+        ShopItem item = item(ShopItem.Type.LICENSE);
+        item.setName("Flyfish Viewer 去品牌标识授权");
+        item.setParams("""
+                {
+                  "licenseKind": "brand-removal",
+                  "licenseName": "Flyfish Viewer 去品牌标识授权声明",
+                  "scope": "product:file-viewer:remove-branding",
+                  "product": "file-viewer",
+                  "edition": "commercial",
+                  "holder": "Flyfish Viewer",
+                  "features": ["visible-branding-removal", "apache-2.0-attribution-required"],
+                  "commercialUse": true,
+                  "remark": "Apache 2.0 已允许修改和移除界面可见品牌标识；本授权声明用于采购与合规留痕。"
+                }
                 """);
         return item;
     }
@@ -190,22 +357,109 @@ class DigitalAndLicenseDeliveryServiceTest {
         return item;
     }
 
+    private ShopItem genericPersonalItemWithOrderForm() {
+        ShopItem item = item(ShopItem.Type.GIT_REPOSITORY_ACCESS);
+        item.setName("Document Preview 开发版");
+        item.setParams("""
+                {
+                  "provider": "github",
+                  "repositories": [
+                    { "provider": "github", "owner": "flyfish-dev", "repo": "document-render-demo", "permission": "read" }
+                  ],
+                  "deliveryActions": ["GIT_REPOSITORY_ACCESS", "LICENSE"],
+                  "licenseDelivery": {
+                    "licenseName": "Document Preview Personal License",
+                    "scope": "repo:flyfish-dev/document-render-demo",
+                    "product": "license-product",
+                    "edition": "personal",
+                    "allowedOrigins": ["https://demo.flyfish.group", "http://127.0.0.1:5178"],
+                    "features": ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "xlsb", "virtual-excel"],
+                    "maxDeployments": 1,
+                    "commercialUse": false
+                  },
+                  "orderForm": {
+                    "enabled": true,
+                    "fields": [
+                      {
+                        "key": "websiteOrigin",
+                        "label": "非盈利性网站地址",
+                        "type": "url",
+                        "required": true,
+                        "target": "license.allowedOrigins",
+                        "normalize": "origin"
+                      },
+                      {
+                        "key": "nonCommercialCommitment",
+                        "label": "承诺非商业化用途",
+                        "type": "checkbox",
+                        "required": true,
+                        "requiredValue": true
+                      }
+                    ]
+                  }
+                }
+                """);
+        return item;
+    }
+
+    private ShopItem enterpriseRuntimeItemWithOrderForm() {
+        ShopItem item = item(ShopItem.Type.LICENSE);
+        item.setName("Flyfish Word Editor 企业版授权");
+        item.setParams("""
+                {
+                  "deliveryActions": ["LICENSE"],
+                  "licenseName": "Flyfish Word Editor 企业版多商业授权",
+                  "scope": "root:word-editor",
+                  "product": "license-product",
+                  "edition": "enterprise",
+                  "holder": "word-editor",
+                  "allowedOrigins": ["https://placeholder.example.com"],
+                  "features": ["docx"],
+                  "maxDeployments": 5,
+                  "commercialUse": true,
+                  "orderForm": {
+                    "enabled": true,
+                    "fields": [
+                      {
+                        "key": "origins",
+                        "label": "授权部署域名",
+                        "type": "textarea",
+                        "required": true,
+                        "target": "license.allowedOrigins",
+                        "normalize": "origin",
+                        "maxLength": 2048
+                      }
+                    ]
+                  }
+                }
+                """);
+        return item;
+    }
+
     private ExternalLicenseIssuer testIssuer() {
         ExternalLicenseIssuer issuer = mock(ExternalLicenseIssuer.class);
         when(issuer.issue(any(), any(), any(), any(), any())).thenAnswer(invocation -> {
             String licenseNo = invocation.getArgument(0, String.class);
             LicenseDeliveryParamValue param = invocation.getArgument(4, LicenseDeliveryParamValue.class);
-            String origins = param.getAllowedOrigins().stream()
-                    .map(value -> "\"" + value + "\"")
-                    .collect(java.util.stream.Collectors.joining(",", "[", "]"));
-            String features = param.getFeatures().stream()
-                    .map(value -> "\"" + value + "\"")
-                    .collect(java.util.stream.Collectors.joining(",", "[", "]"));
-            String payload = """
-                    {"scope":"%s","allowedOrigins":%s,"features":%s}
-                    """.formatted(param.getScope(), origins, features);
-            return new IssuedLicenseDocument(licenseNo, "license.lic", payload,
-                    "demo-license-envelope", "external-license-provider", "EXTERNAL");
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("licenseKind", param.getLicenseKind());
+            payload.put("product", param.getProduct());
+            payload.put("scope", param.getScope());
+            payload.put("edition", param.getEdition());
+            payload.put("features", param.getFeatures());
+            payload.put("maxDeployments", param.getMaxDeployments());
+            payload.put("commercialUse", param.getCommercialUse());
+            if (param.isBrandRemoval()) {
+                payload.put("terms", List.of("preserve-apache-2.0-license-text"));
+            } else {
+                payload.put("allowedOrigins", param.getAllowedOrigins());
+            }
+            String payloadJson = JacksonUtils.toJson(payload);
+            String format = param.isBrandRemoval()
+                    ? "flyfish-viewer-brand-removal-statement-v1"
+                    : "demo-license-envelope";
+            return new IssuedLicenseDocument(licenseNo, "license.lic", payloadJson,
+                    "{\"format\":\"" + format + "\"}", "external-license-provider", "EXTERNAL");
         });
         return issuer;
     }

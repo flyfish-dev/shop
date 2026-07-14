@@ -1,10 +1,12 @@
 <script setup>
 import { useRouter } from '@/router/use.js';
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { getShopItemDetail } from '../apis/api.js';
 import {
   CheckCircleOutlined,
   CrownOutlined,
+  EyeOutlined,
   FireOutlined,
   GithubOutlined,
   QuestionCircleOutlined,
@@ -18,7 +20,7 @@ import { storeToRefs } from 'pinia';
 import useClientStore from '@/modules/auth/store/client.js';
 import {
   isGitRepositoryAccessType,
-  isGitRepositoryDonationAccessType,
+  isPureDonationType,
   resolveShopItemImages,
   setShopImageFallback
 } from '@/modules/shop/utils/shopCovers.js';
@@ -29,7 +31,8 @@ import {
   deliveryStatusText,
   normalizeDeliveryModeForType,
   orderStatusColor,
-  orderStatusText
+  orderStatusText,
+  shopItemTypeText
 } from '@/modules/shop/utils/shopDelivery.js';
 import { getShopItemHighlight } from '@/modules/shop/utils/shopItemEffects.js';
 import { useGitRepositoryBinding } from '../hooks/useGitRepositoryBinding.js';
@@ -42,30 +45,101 @@ import { useShopContractAgreement } from '../hooks/useShopContractAgreement.js';
 import { useShopPurchaseAvailability } from '../hooks/useShopPurchaseAvailability.js';
 import ShopSupportEntry from '../components/ShopSupportEntry.vue';
 import ShopContractAgreementModal from '../components/ShopContractAgreementModal.vue';
+import ShopPaymentMethodSelector from '../components/ShopPaymentMethodSelector.vue';
+import { resolveLocalizedShopItem } from '@/modules/shop/utils/shopI18n.js';
+import {
+  buildOrderFormProperties,
+  defaultOrderFormValues,
+  normalizeOrderFormValues,
+  parseShopOrderFormConfig
+} from '@/modules/shop/utils/shopOrderForm.js';
+import { message } from 'ant-design-vue';
+import { formatShopMoney } from '@/modules/shop/utils/shopMoney.js';
 
 const ShopMarkdownPreview = defineAsyncComponent(() => import('../components/ShopMarkdownPreview.vue'));
 
 const store = useClientStore();
 const { user } = storeToRefs(store);
 const router = useRouter();
+const { locale, t } = useI18n();
 
 const loading = ref(true);
 const data = ref({});
+const selectedSkuId = ref(null);
+const localizedData = computed(() => resolveLocalizedShopItem(data.value, locale.value) || {});
+const enabledSkus = computed(() => (data.value.skus || []).filter(sku => sku.enabled !== false));
+const localizedSkus = computed(() => enabledSkus.value.map(sku => resolveLocalizedShopItem(sku, locale.value)));
+const selectedSku = computed(() => {
+  if (!enabledSkus.value.length) {
+    return null;
+  }
+  return enabledSkus.value.find(sku => String(sku.id) === String(selectedSkuId.value))
+    || enabledSkus.value.find(sku => sku.defaultSelected)
+    || enabledSkus.value[0];
+});
+const selectedLocalizedSku = computed(() => localizedSkus.value.find(sku =>
+  String(sku.id) === String(selectedSku.value?.id)) || null);
+const saleItem = computed(() => {
+  const sku = selectedSku.value;
+  if (!sku) {
+    return data.value;
+  }
+  return {
+    ...data.value,
+    skuId: sku.id,
+    skuCode: sku.code,
+    skuName: sku.name,
+    price: sku.price,
+    usdPrice: sku.usdPrice,
+    effectiveUsdPrice: sku.effectiveUsdPrice,
+    cnyPerUsd: sku.cnyPerUsd || data.value.cnyPerUsd,
+    type: sku.type || data.value.type,
+    typeName: sku.typeName || data.value.typeName,
+    deliveryMode: sku.deliveryMode || data.value.deliveryMode,
+    deliveryModeName: sku.deliveryModeName || data.value.deliveryModeName,
+    deliveryActions: sku.deliveryActions || data.value.deliveryActions,
+    params: sku.params || data.value.params,
+    tags: Array.isArray(sku.tags) && sku.tags.length ? sku.tags : data.value.tags,
+    description: sku.description || data.value.description,
+    i18n: Object.keys(sku.i18n || {}).length ? sku.i18n : data.value.i18n,
+    defaultCouponEnabled: sku.defaultCouponEnabled,
+    defaultCouponCode: sku.defaultCouponCode,
+    defaultCouponPreview: sku.defaultCouponPreview || data.value.defaultCouponPreview,
+    contractRequired: sku.contractRequired
+  };
+});
+const localizedSaleData = computed(() => resolveLocalizedShopItem(saleItem.value, locale.value) || {});
+const orderFormValues = ref({});
+const orderFormConfig = computed(() => parseShopOrderFormConfig(saleItem.value.params, {
+  locale: locale.value,
+  t
+}));
+const orderFormReady = computed(() => normalizeOrderFormValues(orderFormConfig.value, orderFormValues.value, t).ok);
 const detailError = ref('');
 const activeTab = ref('1');
 let detailRequestSeq = 0;
 
-const itemDeliveryMode = computed(() => normalizeDeliveryModeForType(data.value.type, data.value.deliveryMode));
+const itemDeliveryMode = computed(() => normalizeDeliveryModeForType(saleItem.value.type, saleItem.value.deliveryMode));
+const saleItemTypeText = computed(() => shopItemTypeText(saleItem.value.type, t));
+const saleItemDeliveryText = computed(() => deliveryModeText(itemDeliveryMode.value, t));
 const images = computed(() => resolveShopItemImages(data.value));
 const detailPreviewId = computed(() => `shop-item-detail-${data.value.id || 'empty'}`);
-const recordTitle = computed(() => isGitRepositoryAccessType(data.value.type) ? '开通记录' : '购买记录');
+const recordTitle = computed(() => isGitRepositoryAccessType(data.value.type) ? t('shop.activationRecord') : t('shop.purchaseRecord'));
+const viewCountText = computed(() => Number(data.value.viewCount || 0).toLocaleString(locale.value));
+const priceStartBeforeAmount = computed(() => donationEnabled.value
+  && String(locale.value || '').toLowerCase().startsWith('en'));
+const displayCurrencySymbol = computed(() => paymentCurrency.value === 'CNY'
+  && String(locale.value || '').toLowerCase().startsWith('en') ? 'CN¥' : currencySymbol.value);
+const formatSkuPrice = sku => paymentCurrency.value === 'USD'
+  ? formatShopMoney(sku?.effectiveUsdPrice, 'USD')
+  : formatShopMoney(sku?.price, 'CNY');
 const highlightIcons = {
   crown: CrownOutlined,
   badge: SafetyCertificateOutlined,
   spark: ThunderboltOutlined,
   fire: FireOutlined
 };
-const itemHighlight = computed(() => getShopItemHighlight(data.value));
+const itemHighlight = computed(() => getShopItemHighlight(data.value, t));
 const itemHighlightIcon = computed(() => highlightIcons[itemHighlight.value.icon]);
 
 const {
@@ -80,7 +154,7 @@ const {
   gitBindingReminderDescription,
   authorize,
   validateGitCheckout
-} = useGitRepositoryBinding({ item: data, user, store, router });
+} = useGitRepositoryBinding({ item: saleItem, user, store, router });
 
 const {
   orders,
@@ -93,10 +167,12 @@ const {
   donationAmount,
   donationEnabled,
   minimumDonationAmount,
+  paymentCurrency,
+  currencySymbol,
   payableBaseAmount,
   validateDonationAmount,
   orderAmountPayload
-} = useShopDonationAmount({ item: data });
+} = useShopDonationAmount({ item: saleItem });
 
 const {
   availabilityLoading,
@@ -107,7 +183,7 @@ const {
   availabilityNotice,
   loadPurchaseAvailability,
   validatePurchaseAvailability
-} = useShopPurchaseAvailability({ item: data, user, gitAuthorization });
+} = useShopPurchaseAvailability({ item: saleItem, user, gitAuthorization });
 
 const refreshOrderState = async () => {
   await Promise.allSettled([
@@ -116,39 +192,63 @@ const refreshOrderState = async () => {
   ]);
 };
 
-const validateCheckout = () => validateGitCheckout() && validatePurchaseAvailability() && validateDonationAmount();
+const validateOrderForm = () => {
+  const result = normalizeOrderFormValues(orderFormConfig.value, orderFormValues.value, t);
+  if (!result.ok) {
+    message.warning(result.message || t('shop.completeOrderDetails'));
+    return false;
+  }
+  return true;
+};
+
+const validateCheckout = () => validateGitCheckout()
+  && validatePurchaseAvailability()
+  && validateDonationAmount()
+  && validateOrderForm();
 
 const canCheckout = computed(() => {
   if (!user.value?.id) {
     return false;
   }
-  if (isGitRepositoryAccessType(data.value.type) && !gitAuthorization.value) {
+  if (isGitRepositoryAccessType(saleItem.value.type) && !gitAuthorization.value) {
     return false;
   }
   if (purchaseBlocked.value || availabilityLoading.value) {
+    return false;
+  }
+  if (!orderFormReady.value) {
     return false;
   }
   return data.value.enabled !== false;
 });
 const checkoutHint = computed(() => {
   if (availabilityLoading.value) {
-    return '正在确认购买和开通状态';
+    return t('shop.checkingStatus');
   }
   if (purchaseBlocked.value) {
-    return '已购买过，可在我的订单查看开通记录';
+    return t('shop.purchasedHint');
+  }
+  if (orderFormConfig.value.enabled && !orderFormReady.value) {
+    return t('shop.completeOrderDetails');
   }
   return checkoutTip.value;
 });
-const checkoutButtonText = computed(() => donationEnabled.value ? '打赏开通' : '立即购买');
+const checkoutButtonText = computed(() => {
+  if (isPureDonationType(saleItem.value.type)) {
+    return t('shop.immediateDonate');
+  }
+  return donationEnabled.value ? t('shop.donationAccess') : t('shop.immediateBuy');
+});
 
 const coupon = useShopCoupon({
-  item: data,
+  item: saleItem,
   user,
   store,
   router,
   baseAmount: payableBaseAmount,
   orderAmountPayload
 });
+const couponSupported = computed(() => paymentCurrency.value !== 'USD');
 const {
   couponApplying,
   couponCode,
@@ -161,16 +261,25 @@ const {
 } = coupon;
 
 const { defaultPromotion } = useShopDefaultCoupon({
-  item: data,
+  item: saleItem,
   couponCode,
   appliedCoupon,
-  couponError
+  couponError,
+  enabled: couponSupported
+});
+
+watch(couponSupported, supported => {
+  if (!supported) {
+    resetCoupon();
+  }
 });
 
 const {
   payModalVisible,
   payLoading,
   currentOrder,
+  paymentMethod,
+  paymentMethodOptions,
   paymentScene,
   qrCode,
   payLink,
@@ -193,7 +302,7 @@ const {
   restorePendingPayment,
   stopPolling
 } = useShopPayment({
-  item: data,
+  item: saleItem,
   user,
   store,
   router,
@@ -201,11 +310,12 @@ const {
   loadOrders: refreshOrderState,
   validateCheckout,
   coupon,
-  orderAmountPayload
+  orderAmountPayload,
+  paymentCurrency
 });
 
 const contractAgreement = useShopContractAgreement({
-  item: data,
+  item: saleItem,
   user,
   store,
   router
@@ -215,14 +325,25 @@ const handleCheckout = async () => {
   if (!validateCheckout()) {
     return;
   }
+  const orderFormResult = normalizeOrderFormValues(orderFormConfig.value, orderFormValues.value, t);
   const contractPayload = await contractAgreement.ensureContractAgreement();
   if (contractPayload === null) {
     return;
   }
-  await checkout(contractPayload || {});
+  await checkout({
+    ...(contractPayload || {}),
+    ...(orderFormConfig.value.enabled
+      ? { properties: buildOrderFormProperties(orderFormResult.values) }
+      : {})
+  });
 };
 
 const useDefaultCover = event => setShopImageFallback(event, data.value?.type);
+
+const resolveDefaultSkuId = detail => {
+  const skus = (detail?.skus || []).filter(sku => sku.enabled !== false);
+  return (skus.find(sku => sku.defaultSelected) || skus[0])?.id || null;
+};
 
 const loadDetail = async id => {
   if (!id) {
@@ -238,12 +359,18 @@ const loadDetail = async id => {
     const detail = await getShopItemDetail(id);
     if (requestSeq === detailRequestSeq && String(router.route.params.id) === currentId) {
       data.value = detail;
+      selectedSkuId.value = resolveDefaultSkuId(detail);
+      const defaultSku = (detail.skus || []).find(sku => String(sku.id) === String(selectedSkuId.value));
+      orderFormValues.value = defaultOrderFormValues(parseShopOrderFormConfig(
+        defaultSku?.params || detail.params,
+        { locale: locale.value, t }
+      ));
       loaded = true;
     }
   } catch (e) {
     if (requestSeq === detailRequestSeq && String(router.route.params.id) === currentId) {
       data.value = {};
-      detailError.value = e.message || '商品不存在或已下架';
+      detailError.value = e.message || t('shop.productUnavailable');
     }
   } finally {
     if (requestSeq === detailRequestSeq) {
@@ -282,6 +409,12 @@ watch(() => gitAuthorization.value, () => {
   loadPurchaseAvailability();
 });
 
+watch(() => [saleItem.value?.skuId, saleItem.value?.params], () => {
+  orderFormValues.value = defaultOrderFormValues(orderFormConfig.value);
+  resetCoupon();
+  loadPurchaseAvailability();
+});
+
 const handleTabChange = key => {
   if (key === '2') {
     loadOrders();
@@ -292,30 +425,31 @@ const handleTabChange = key => {
 <template>
   <a-spin :spinning='loading'>
     <a-card>
-      <a-page-header title='商品详情' @back='() => router.replace("/shop")'>
+      <a-page-header :title="t('shop.detailTitle')" @back='() => router.replace("/shop")'>
         <template #footer>
           <a-tabs v-model:activeKey='activeTab' @change='handleTabChange'>
-            <a-tab-pane key='1' tab='商品详情'>
+            <a-tab-pane key='1' :tab="t('shop.detailTab')">
               <a-empty v-if='detailError' :description='detailError' />
-              <div v-else-if='data.description' class='detail-content'>
+              <div v-else-if='localizedSaleData.description' class='detail-content'>
                 <section class='detail-showcase'>
                   <img :src='images[0]' alt='' @error='useDefaultCover' />
                   <div class='detail-showcase-text'>
-                    <a-tag v-if='data.typeName' color='blue'>{{ data.typeName }}</a-tag>
-                    <h3>{{ data.name }}</h3>
-                    <p>{{ deliveryModeText(itemDeliveryMode) }}</p>
+                    <a-tag v-if='saleItem.type' color='blue'>{{ saleItemTypeText }}</a-tag>
+                    <h3>{{ localizedData.name }}</h3>
+                    <p v-if='selectedLocalizedSku'>{{ selectedLocalizedSku.name }}</p>
+                    <p>{{ saleItemDeliveryText }}</p>
                   </div>
                 </section>
                 <ShopMarkdownPreview
                   :id='detailPreviewId'
                   class='description'
-                  :model-value='data.description || ""'
-                  language='zh-CN'
+                  :model-value='localizedSaleData.description || ""'
+                  :language='locale'
                   preview-theme='default'
                   code-theme='github'
                 />
               </div>
-              <a-empty v-else description='暂无商品详情' />
+              <a-empty v-else :description="t('shop.emptyDetail')" />
             </a-tab-pane>
             <a-tab-pane key='2' :tab='recordTitle'>
               <a-alert
@@ -325,16 +459,16 @@ const handleTabChange = key => {
                 show-icon
               />
               <a-spin v-else :spinning='ordersLoading'>
-                <a-empty v-if='!user?.id' description='登录后展示你的购买记录' />
-                <a-empty v-else-if='!orders.length' :description='`当前账号暂无${recordTitle}`' />
+                <a-empty v-if='!user?.id' :description="t('shop.loginToViewRecords')" />
+                <a-empty v-else-if='!orders.length' :description="`${t('shop.noRecordPrefix')}${recordTitle}`" />
               <a-list v-else :data-source='orders' size='small' class='order-list'>
                 <template #renderItem='{ item }'>
                   <a-list-item>
-                    <a-list-item-meta :title='item.itemName || data.name' :description='item.orderNo' />
+                    <a-list-item-meta :title='item.itemName || localizedData.name' :description='item.orderNo' />
                     <a-space class='order-meta'>
-                      <a-tag :color='orderStatusColor(item.status)'>{{ orderStatusText(item.status) }}</a-tag>
+                      <a-tag :color='orderStatusColor(item.status)'>{{ orderStatusText(item.status, t) }}</a-tag>
                       <a-tag :color='deliveryStatusColor(item.deliveryStatus)'>
-                        {{ deliveryStatusText(item.deliveryStatus, item.deliveryMode || itemDeliveryMode) }}
+                        {{ deliveryStatusText(item.deliveryStatus, item.deliveryMode || itemDeliveryMode, t) }}
                       </a-tag>
                       <span>{{ item.paidTime || item.createTime }}</span>
                     </a-space>
@@ -359,7 +493,8 @@ const handleTabChange = key => {
 	            </div>
             <div class='content'>
               <h2>
-                <span>{{ data.name }}</span>
+                <span>{{ localizedData.name }}</span>
+                <a-tag v-if='selectedLocalizedSku' color='cyan'>{{ selectedLocalizedSku.name }}</a-tag>
                 <a-tag
                   v-if='itemHighlight.style'
                   class='detail-highlight-tag'
@@ -370,19 +505,41 @@ const handleTabChange = key => {
                 </a-tag>
               </h2>
               <div class='tags'>
-                <a-tag v-if='data.typeName' color='blue'>{{ data.typeName }}</a-tag>
+                <a-tag v-if='saleItem.type' color='blue'>{{ saleItemTypeText }}</a-tag>
                 <a-tag :color='deliveryModeColor(itemDeliveryMode)'>
-                  {{ data.deliveryModeName || deliveryModeText(itemDeliveryMode) }}
+                  {{ saleItemDeliveryText }}
                 </a-tag>
-                <a-tag color='green' v-for='tag in data.tags' :key='tag'>{{ tag }}</a-tag>
+                <a-tag color='green' v-for='tag in localizedSaleData.tags' :key='tag'>{{ tag }}</a-tag>
+              </div>
+              <div v-if='enabledSkus.length' class='sku-selector'>
+                <span>{{ t('shop.package') }}</span>
+                <a-radio-group v-model:value='selectedSkuId' class='sku-options'>
+                  <a-radio-button
+                    v-for='sku in localizedSkus'
+                    :key='sku.id'
+                    :value='sku.id'
+                  >
+                    <strong>{{ sku.name }}</strong>
+                    <em>{{ formatSkuPrice(sku) }}</em>
+                  </a-radio-button>
+                </a-radio-group>
               </div>
               <div class='price-box'>
                 <div class='price-main'>
-                  <span v-if='hasAppliedCoupon' class='original-price'>¥{{ appliedCoupon.originalAmount }}</span>
-                  <span v-else-if='isGitRepositoryDonationAccessType(data.type)' class='price-prefix'>最低</span>
-                  <span class='price'>{{ currentPayableAmount }}</span>
+                  <span v-if='hasAppliedCoupon' class='original-price'>{{ displayCurrencySymbol }}{{ appliedCoupon.originalAmount }}</span>
+                  <span v-if='priceStartBeforeAmount' class='price-suffix'>{{ t('shop.priceStartSuffix') }}</span>
+                  <span class='price'>
+                    <span class='currency-mark'>{{ displayCurrencySymbol }}</span>{{ currentPayableAmount }}
+                  </span>
+                  <span v-if='donationEnabled && !priceStartBeforeAmount' class='price-suffix'>{{ t('shop.priceStartSuffix') }}</span>
                 </div>
-                <span class='count'>{{ data.buyCount ?? 0 }}人购买</span>
+                <div class='item-stats'>
+                  <span class='count'>{{ t('shop.soldCount', { count: data.buyCount ?? 0 }) }}</span>
+                  <span class='view-count'>
+                    <eye-outlined />
+                    {{ t('shop.viewCount', { count: viewCountText }) }}
+                  </span>
+                </div>
               </div>
               <a-alert
                 v-if='gitBindingReminderVisible'
@@ -393,14 +550,14 @@ const handleTabChange = key => {
                 show-icon
               >
                 <template #action>
-                  <a-button size='small' type='link' @click.stop='authorize'>去绑定</a-button>
+                  <a-button size='small' type='link' @click.stop='authorize'>{{ t('shop.bindNow') }}</a-button>
                 </template>
               </a-alert>
-              <a-card v-if='isGitRepositoryAccessType(data.type)' size='small' :title='gitBindTitle' class='account-bind'
+              <a-card v-if='isGitRepositoryAccessType(saleItem.type)' size='small' :title='gitBindTitle' class='account-bind'
                       :class='{loading: bindingLoading}' @click='authorize'>
                 <template #extra>
                   <a-tooltip>
-                    <template #title>先绑定 Git 账号</template>
+                    <template #title>{{ t('shop.bindGitTooltip') }}</template>
                     <question-circle-outlined />
                   </a-tooltip>
                 </template>
@@ -416,14 +573,14 @@ const handleTabChange = key => {
                           <span>{{ gitAccount.name }}</span>
                           <a-space :size='4' class='success'>
                             <check-circle-outlined />
-                            已绑定账号
+                            {{ t('shop.boundAccount') }}
                           </a-space>
                         </div>
                         <div class='bound-meta'>
                           <span v-if='gitAccount.login'>@{{ gitAccount.login }}</span>
                           <span v-if='gitAccount.email'>{{ gitAccount.email }}</span>
                           <span v-if='!gitAccount.login && !gitAccount.email && gitAccount.openid'>
-                            识别码 {{ gitAccount.maskedOpenid }}
+                            {{ t('shop.identifier', { id: gitAccount.maskedOpenid }) }}
                           </span>
                           <span v-if='gitAccount.authTime'>{{ gitAccount.authTime }}</span>
                         </div>
@@ -435,16 +592,16 @@ const handleTabChange = key => {
                           rel='noreferrer'
                           @click.stop
                         >
-                          查看账号主页
+                          {{ t('shop.viewProfile') }}
                         </a>
                       </div>
                     </div>
                   </template>
                   <template v-else>
                     <github-outlined v-if='gitProvider === "github"' class='provider-login-icon' />
-                    <img v-else-if='gitProvider === "gitee"' :src='gitee' alt='码云'>
+                    <img v-else-if='gitProvider === "gitee"' :src='gitee' :alt='gitProviderName'>
                     <img v-else :src='gitea' alt='Gitea'>
-                    {{ bindingLoading ? '绑定中...' : `绑定${gitProviderName}账号` }}
+                    {{ bindingLoading ? t('shop.bindLoading') : t('shop.bindProvider', { provider: gitProviderName }) }}
                   </template>
                 </a>
               </a-card>
@@ -457,7 +614,7 @@ const handleTabChange = key => {
                 show-icon
               >
                 <template #action>
-                  <a-button size='small' type='link' @click.stop='goMyOrders'>查看订单</a-button>
+                  <a-button size='small' type='link' @click.stop='goMyOrders'>{{ t('common.viewOrders') }}</a-button>
                 </template>
               </a-alert>
               <a-alert
@@ -470,35 +627,81 @@ const handleTabChange = key => {
               <a-alert
                 v-else-if='availabilityNotice'
                 class='purchase-guard'
-                message='仓库权限状态'
+                :message="t('shop.repositoryStatus')"
                 :description='availabilityNotice'
                 type='info'
                 show-icon
               />
               <a-alert
-                v-if='data.contractRequired'
+                v-if='saleItem.contractRequired'
                 class='contract-guard'
-                message='购买前需确认合同'
+                :message="t('shop.contractRequired')"
                 type='info'
                 show-icon
               />
+              <div v-if='orderFormConfig.enabled' class='order-form-panel'>
+                <div v-if='orderFormConfig.title || orderFormConfig.description' class='order-form-heading'>
+                  <h3 v-if='orderFormConfig.title'>{{ orderFormConfig.title }}</h3>
+                  <p v-if='orderFormConfig.description'>{{ orderFormConfig.description }}</p>
+                </div>
+                <a-form layout='vertical' class='order-form'>
+                  <a-form-item
+                    v-for='field in orderFormConfig.fields'
+                    :key='field.key'
+                    :label='field.type === "checkbox" ? "" : field.label'
+                    :required='field.required && field.type !== "checkbox"'
+                  >
+                    <a-checkbox
+                      v-if='field.type === "checkbox"'
+                      v-model:checked='orderFormValues[field.key]'
+                    >
+                      {{ field.label }}
+                    </a-checkbox>
+                    <a-textarea
+                      v-else-if='field.type === "textarea"'
+                      v-model:value='orderFormValues[field.key]'
+                      :placeholder='field.placeholder'
+                      :maxlength='field.maxLength'
+                      :auto-size='{ minRows: 3, maxRows: 6 }'
+                    />
+                    <a-select
+                      v-else-if='field.type === "select"'
+                      v-model:value='orderFormValues[field.key]'
+                      :placeholder='field.placeholder'
+                      :options='field.options'
+                      allow-clear
+                    />
+                    <a-input
+                      v-else
+                      v-model:value='orderFormValues[field.key]'
+                      :placeholder='field.placeholder'
+                      :maxlength='field.maxLength'
+                      :type='field.type === "url" ? "url" : "text"'
+                    />
+                    <div v-if='field.help' class='order-form-help'>{{ field.help }}</div>
+                  </a-form-item>
+                </a-form>
+              </div>
               <shop-support-entry variant='inline' />
               <a-divider />
               <div v-if='donationEnabled' class='donation-line'>
-                <span>打赏金额</span>
+                <span>{{ t('shop.donationAmount') }}</span>
                 <div class='donation-main'>
                   <a-input-number
                     v-model:value='donationAmount'
                     :min='minimumDonationAmount'
                     :precision='2'
                     :step='1'
-                    prefix='¥'
+                    :prefix='currencySymbol'
                   />
-                  <a-tag color='green'>最低 ¥{{ Number(minimumDonationAmount || 0).toFixed(2) }}</a-tag>
+                  <a-tag color='green'>{{ t('shop.donationStart', {
+                    symbol: currencySymbol,
+                    amount: Number(minimumDonationAmount || 0).toFixed(2)
+                  }) }}</a-tag>
                 </div>
               </div>
-              <div class='coupon-line'>
-                <span>优惠券</span>
+              <div v-if='couponSupported' class='coupon-line'>
+                <span>{{ t('shop.coupon') }}</span>
                 <div class='coupon-main'>
                   <a-input-group compact class='coupon-control'>
                     <a-input
@@ -512,20 +715,28 @@ const handleTabChange = key => {
                       :disabled='!couponCode?.trim()'
                       @click='applyCouponCode()'
                     >
-                      应用
+                      {{ t('common.apply') }}
                     </a-button>
                   </a-input-group>
                   <div v-if='hasAppliedCoupon' class='coupon-feedback success'>
-                    <a-tag color='green'>已应用</a-tag>
-                    <span>已优惠 ¥{{ appliedCoupon.discountAmount }}，应付 ¥{{ appliedCoupon.payableAmount }}</span>
+                    <a-tag color='green'>{{ t('common.applied') }}</a-tag>
+                    <span>{{ t('shop.discountSaved', { amount: appliedCoupon.discountAmount, payable: appliedCoupon.payableAmount }) }}</span>
                     <a-tag v-if='defaultPromotion.active && appliedCoupon.couponCode === defaultPromotion.couponCode' color='red'>
-                      自动优惠
+                      {{ t('common.automaticDiscount') }}
                     </a-tag>
                   </div>
                   <div v-else-if='couponError' class='coupon-feedback error'>
                     {{ couponError }}
                   </div>
                 </div>
+              </div>
+              <div class='payment-method-line'>
+                <span>{{ t('shop.paymentMethod') }}</span>
+                <ShopPaymentMethodSelector
+                  v-model="paymentMethod"
+                  :options="paymentMethodOptions"
+                  :disabled="payLoading"
+                />
               </div>
               <div class='checkout'>
                 <a-button
@@ -548,7 +759,7 @@ const handleTabChange = key => {
 
     <a-modal
       v-model:open="payModalVisible"
-      title="支付订单"
+      :title="t('shop.paymentTitle')"
       :footer="null"
       :maskClosable="false"
       wrap-class-name="shop-payment-modal"
@@ -558,19 +769,19 @@ const handleTabChange = key => {
         <div class="payment-state">
           <check-circle-outlined v-if="paymentFinished" class="success-icon" />
           <a-tag v-else-if="currentOrder" :color="orderStatusColor(currentOrder.status)">
-            {{ orderStatusText(currentOrder.status) }}
+            {{ orderStatusText(currentOrder.status, t) }}
           </a-tag>
           <h3>{{ paymentModalTitle }}</h3>
           <p>{{ paymentInstruction }}</p>
           <span v-if="paymentFinished && paymentOrderNoText" class="order-no">{{ paymentOrderNoText }}</span>
         </div>
         <div v-if="currentOrder && !paymentFinished" class="pay-amount">
-          <strong>¥{{ currentOrder.amount }}</strong>
+          <strong>{{ currentOrder.currency === 'USD' ? '$' : '¥' }}{{ currentOrder.amount }}</strong>
           <span v-if="Number(currentOrder.discountAmount || 0) > 0">
-            已优惠 ¥{{ currentOrder.discountAmount }}
+            {{ t('shop.payAmountSaved', { amount: currentOrder.discountAmount }) }}
           </span>
         </div>
-        <img v-if="qrCode && !paymentFinished" :src="qrCode" alt="支付二维码" class="qr-image" />
+        <img v-if="qrCode && !paymentFinished" :src="qrCode" :alt="t('shop.paymentQrAlt')" class="qr-image" />
         <a-alert
           v-if="currentOrder?.status === 'FAILED' && currentOrder?.deliveryMessage"
           :message="currentOrder.deliveryMessage"
@@ -583,12 +794,12 @@ const handleTabChange = key => {
           </a-button>
         </div>
         <div class="payment-help">
-          <span>支付或开通遇到问题，优先提交工单；也可以联系页面底部客服。</span>
-          <a-button type="link" size="small" @click="goSubmitTicket">提交工单</a-button>
+          <span>{{ t('shop.paymentHelp') }}</span>
+          <a-button type="link" size="small" @click="goSubmitTicket">{{ t('common.submitTicket') }}</a-button>
         </div>
         <a-space v-if="paymentFinished" class="success-actions">
-          <a-button type="primary" @click="goMyOrders">查看我的订单</a-button>
-          <a-button @click="continueShopping">继续逛小铺</a-button>
+          <a-button type="primary" @click="goMyOrders">{{ t('shop.viewMyOrders') }}</a-button>
+          <a-button @click="continueShopping">{{ t('shop.continueShopping') }}</a-button>
         </a-space>
       </div>
     </a-modal>
@@ -761,6 +972,61 @@ const handleTabChange = key => {
         }
       }
 
+      .sku-selector {
+        display: grid;
+        gap: 8px;
+        margin-top: 16px;
+
+        > span {
+          color: #64766a;
+          font-size: 13px;
+          font-weight: 700;
+        }
+
+        .sku-options {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        :deep(.ant-radio-button-wrapper) {
+          display: inline-flex;
+          height: auto;
+          min-height: 42px;
+          max-width: 220px;
+          align-items: center;
+          gap: 8px;
+          border-inline-start-width: 1px;
+          border-radius: 8px;
+          line-height: 1.2;
+
+          &::before {
+            display: none;
+          }
+
+          .ant-radio-button + span {
+            display: inline-flex;
+            min-width: 0;
+            align-items: center;
+            gap: 8px;
+          }
+
+          strong {
+            overflow: hidden;
+            min-width: 0;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          em {
+            color: #ef4444;
+            font-style: normal;
+            font-weight: 700;
+            white-space: nowrap;
+          }
+        }
+      }
+
       .price-box {
         display: flex;
         margin-top: 18px;
@@ -782,7 +1048,7 @@ const handleTabChange = key => {
           text-decoration: line-through;
         }
 
-        .price-prefix {
+        .price-suffix {
           color: #64766a;
           font-size: 14px;
           font-weight: 700;
@@ -793,14 +1059,30 @@ const handleTabChange = key => {
           color: red;
           text-align: right;
 
-          &::before {
-            content: '¥';
+          .currency-mark {
             font-size: 20px;
           }
         }
 
-        .count {
+        .item-stats {
+          display: inline-flex;
+          flex: 0 0 auto;
+          align-items: center;
+          gap: 10px;
           color: #8d8d8d;
+          font-size: 13px;
+          white-space: nowrap;
+        }
+
+        .view-count {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+
+          :deep(.anticon) {
+            color: #6c8b76;
+            font-size: 14px;
+          }
         }
       }
 
@@ -979,6 +1261,20 @@ const handleTabChange = key => {
         }
       }
 
+      .payment-method-line {
+        display: grid;
+        grid-template-columns: 58px minmax(0, 1fr);
+        align-items: start;
+        gap: 10px;
+        margin: 0 0 16px;
+
+        > span {
+          padding-top: 8px;
+          color: #5f6f66;
+          font-weight: 600;
+        }
+      }
+
       .purchase-guard {
         width: min(100%, 520px);
         margin: 16px 0 0;
@@ -1008,6 +1304,56 @@ const handleTabChange = key => {
         :deep(.ant-alert-message) {
           color: #174a7c;
           font-weight: 700;
+        }
+      }
+
+      .order-form-panel {
+        width: min(100%, 520px);
+        margin: 16px 0 4px;
+        padding: 14px 16px;
+        border: 1px solid #d9e7dd;
+        border-radius: 8px;
+        background: #fbfefd;
+
+        .order-form-heading {
+          margin-bottom: 10px;
+
+          h3 {
+            margin: 0;
+            color: #1f3d2b;
+            font-size: 15px;
+            line-height: 1.5;
+          }
+
+          p {
+            margin: 4px 0 0;
+            color: #5f6f66;
+            font-size: 13px;
+            line-height: 1.6;
+          }
+        }
+
+        .order-form {
+          :deep(.ant-form-item) {
+            margin-bottom: 12px;
+          }
+
+          :deep(.ant-form-item:last-child) {
+            margin-bottom: 0;
+          }
+
+          :deep(.ant-input),
+          :deep(.ant-select-selector),
+          :deep(.ant-input-affix-wrapper) {
+            min-width: 0;
+          }
+        }
+
+        .order-form-help {
+          margin-top: 4px;
+          color: #6c7a71;
+          font-size: 12px;
+          line-height: 1.5;
         }
       }
 
@@ -1253,6 +1599,18 @@ const handleTabChange = key => {
         font-size: 21px;
       }
 
+      .sku-selector {
+        .sku-options {
+          width: 100%;
+          min-width: 0;
+        }
+
+        :deep(.ant-radio-button-wrapper) {
+          width: 100%;
+          max-width: 100%;
+        }
+      }
+
       .price-box {
         flex-direction: column;
         margin-top: 16px;
@@ -1263,7 +1621,13 @@ const handleTabChange = key => {
           font-size: 28px;
         }
 
-        .count {
+        .item-stats {
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .count,
+        .view-count {
           padding-top: 0;
           font-size: 13px;
           white-space: nowrap;
@@ -1332,6 +1696,15 @@ const handleTabChange = key => {
             padding-inline: 0;
             flex: none;
           }
+        }
+      }
+
+      .payment-method-line {
+        grid-template-columns: 1fr;
+        gap: 8px;
+
+        > span {
+          padding-top: 0;
         }
       }
     }

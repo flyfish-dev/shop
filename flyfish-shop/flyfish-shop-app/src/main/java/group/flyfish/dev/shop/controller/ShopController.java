@@ -9,6 +9,7 @@ import group.flyfish.dev.shop.domain.dto.ShopOrderDto;
 import group.flyfish.dev.shop.domain.po.Shop;
 import group.flyfish.dev.shop.domain.qo.ShopItemGroupListQo;
 import group.flyfish.dev.shop.domain.qo.ShopItemListQo;
+import group.flyfish.dev.shop.domain.qo.ShopOrderListQo;
 import group.flyfish.dev.shop.domain.vo.ShopCouponApplyVo;
 import group.flyfish.dev.shop.domain.vo.ShopContractAgreementVo;
 import group.flyfish.dev.shop.domain.vo.ShopContractSignatureProgressVo;
@@ -20,6 +21,8 @@ import group.flyfish.dev.shop.domain.vo.ShopOrderDeliveryDownloadVo;
 import group.flyfish.dev.shop.domain.vo.ShopOrderDeliveryExtractVo;
 import group.flyfish.dev.shop.domain.vo.ShopOrderVo;
 import group.flyfish.dev.shop.domain.vo.ShopPurchaseAvailabilityVo;
+import group.flyfish.dev.shop.domain.vo.ShopPricingVo;
+import group.flyfish.dev.shop.pricing.ShopPricingService;
 import group.flyfish.dev.shop.service.ShopService;
 import group.flyfish.dev.shop.service.ShopOrderService;
 import group.flyfish.dev.shop.service.support.h5zhifu.bean.H5ZhiFuNotifyDto;
@@ -55,6 +58,7 @@ public class ShopController {
     private final ShopService shopService;
     private final ShopOrderService shopOrderService;
     private final ShopContractService shopContractService;
+    private final ShopPricingService shopPricingService;
 
     /**
      * 获取当前店铺
@@ -64,6 +68,11 @@ public class ShopController {
     @GetMapping("current")
     public Mono<Result<Shop>> getCurrentShop() {
         return shopService.getCurrentShop().map(Result::ok);
+    }
+
+    @GetMapping("pricing")
+    public Result<ShopPricingVo> getPricing() {
+        return Result.ok(shopPricingService.pricing());
     }
 
     /**
@@ -103,8 +112,9 @@ public class ShopController {
      * 查询商品购买前需要签署的合同。
      */
     @GetMapping("items/{id}/contracts")
-    public Mono<Result<List<ShopContractAgreementVo>>> getShopItemContracts(@PathVariable("id") Long id) {
-        return shopContractService.getItemAgreements(id).collectList().map(Result::ok);
+    public Mono<Result<List<ShopContractAgreementVo>>> getShopItemContracts(@PathVariable("id") Long id,
+                                                                            @RequestParam(required = false) Long skuId) {
+        return shopContractService.getItemAgreements(id, skuId).collectList().map(Result::ok);
     }
 
     /**
@@ -112,10 +122,11 @@ public class ShopController {
      */
     @PostMapping("items/{id}/contracts/signatures")
     public Mono<Result<ShopContractSignatureProgressVo>> agreeContractFile(@PathVariable("id") Long id,
+                                                                           @RequestParam(required = false) Long skuId,
                                                                            @Valid @RequestBody ShopContractSignDto dto,
                                                                            @CurrentUser PortalUserVo user,
                                                                            ServerWebExchange exchange) {
-        return shopContractService.agreeFile(id, dto, user, exchange).map(Result::ok);
+        return shopContractService.agreeFile(id, skuId, dto, user, exchange).map(Result::ok);
     }
 
     /**
@@ -142,8 +153,9 @@ public class ShopController {
      */
     @GetMapping("items/{id}/purchase-availability")
     public Mono<Result<ShopPurchaseAvailabilityVo>> checkPurchaseAvailability(@PathVariable("id") Long id,
+                                                                              @RequestParam(required = false) Long skuId,
                                                                               @CurrentUser PortalUserVo user) {
-        return shopOrderService.checkPurchaseAvailability(id, user).map(Result::ok);
+        return shopOrderService.checkPurchaseAvailability(id, skuId, user).map(Result::ok);
     }
 
     /**
@@ -159,8 +171,8 @@ public class ShopController {
      * 查询当前用户订单
      */
     @GetMapping("orders")
-    public Mono<Result<List<ShopOrderVo>>> getOrders(@CurrentUser PortalUserVo user, Long itemId) {
-        return shopOrderService.getOrders(user, itemId).collectList().map(Result::ok);
+    public Mono<Result<List<ShopOrderVo>>> getOrders(@CurrentUser PortalUserVo user, ShopOrderListQo qo) {
+        return shopOrderService.getOrders(user, qo).collectList().map(Result::ok);
     }
 
     /**

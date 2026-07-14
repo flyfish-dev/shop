@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS `shop_item`
     `cover`       varchar(256)   NULL COMMENT '商品封面',
     `images`      varchar(1024)  NULL COMMENT '商品图集',
     `price`       decimal(10, 2) NOT NULL COMMENT '商品价格',
+    `usd_price`   decimal(10, 2) NULL COMMENT '手工美元价格，NULL表示按汇率换算',
     `group_id`    bigint         NOT NULL COMMENT '商品分组id',
     `shop_id`     bigint         NOT NULL COMMENT '所属店铺id',
     `type`        varchar(32)    NOT NULL COMMENT '商品类型',
@@ -58,6 +59,7 @@ CREATE TABLE IF NOT EXISTS `shop_item`
     `params`      json           NULL COMMENT '商品参数',
     `buy_count`   int            NOT NULL DEFAULT 0 COMMENT '购买人数',
     `description` text           NOT NULL COMMENT '商品描述',
+    `i18n`        json           NULL COMMENT '商品多语言内容',
     `sort`        int            NOT NULL DEFAULT 0 COMMENT '排序',
     `enabled`     boolean        NOT NULL DEFAULT true COMMENT '上架状态',
     `pinned`      boolean        NOT NULL DEFAULT false COMMENT '置顶状态',
@@ -66,6 +68,7 @@ CREATE TABLE IF NOT EXISTS `shop_item`
     `highlight_icon` varchar(32) NULL COMMENT '醒目图标',
     `default_coupon_enabled` boolean NOT NULL DEFAULT false COMMENT '是否启用默认优惠券',
     `default_coupon_code` varchar(64) NULL COMMENT '默认优惠券编码',
+    `sku_mode`   varchar(12)    NOT NULL DEFAULT 'SINGLE' COMMENT 'SKU模式',
     `avatar`      varchar(256)   NULL COMMENT '商铺头像',
     `create_by`   varchar(32)    NOT NULL COMMENT '创建人',
     `update_by`   varchar(32)    NOT NULL COMMENT '修改人',
@@ -80,6 +83,8 @@ ALTER TABLE `shop_item`
     ADD COLUMN IF NOT EXISTS `cover` varchar(256) NULL;
 ALTER TABLE `shop_item`
     ADD COLUMN IF NOT EXISTS `images` varchar(1024) NULL;
+ALTER TABLE `shop_item`
+    ADD COLUMN IF NOT EXISTS `usd_price` decimal(10, 2) NULL COMMENT '手工美元价格，NULL表示按汇率换算';
 ALTER TABLE `shop_item`
     ADD COLUMN IF NOT EXISTS `shop_id` bigint NOT NULL DEFAULT 1;
 ALTER TABLE `shop_item`
@@ -106,6 +111,80 @@ ALTER TABLE `shop_item`
     ADD COLUMN IF NOT EXISTS `default_coupon_enabled` boolean NOT NULL DEFAULT false COMMENT '是否启用默认优惠券';
 ALTER TABLE `shop_item`
     ADD COLUMN IF NOT EXISTS `default_coupon_code` varchar(64) NULL COMMENT '默认优惠券编码';
+ALTER TABLE `shop_item`
+    ADD COLUMN IF NOT EXISTS `i18n` json NULL COMMENT '商品多语言内容';
+ALTER TABLE `shop_item`
+    ADD COLUMN IF NOT EXISTS `sku_mode` varchar(12) NOT NULL DEFAULT 'SINGLE' COMMENT 'SKU模式';
+
+CREATE TABLE IF NOT EXISTS `shop_item_sku`
+(
+    `id`          bigint         NOT NULL COMMENT '主键' AUTO_INCREMENT,
+    `item_id`     bigint         NOT NULL COMMENT '商品id',
+    `code`        varchar(64)    NOT NULL COMMENT 'SKU编码',
+    `name`        varchar(128)   NOT NULL COMMENT 'SKU名称',
+    `description` text           NULL COMMENT 'SKU描述',
+    `price`       decimal(10, 2) NOT NULL COMMENT 'SKU价格',
+    `usd_price`   decimal(10, 2) NULL COMMENT '手工美元价格，NULL表示按汇率换算',
+    `type`        varchar(32)    NOT NULL COMMENT 'SKU商品类型',
+    `delivery_mode` varchar(16)  NOT NULL DEFAULT 'MANUAL' COMMENT '交付方式',
+    `params`      json           NULL COMMENT 'SKU参数',
+    `i18n`        json           NULL COMMENT 'SKU多语言内容',
+    `tags`        varchar(256)   NULL COMMENT 'SKU标签',
+    `sort`        int            NOT NULL DEFAULT 0 COMMENT '排序',
+    `enabled`     boolean        NOT NULL DEFAULT true COMMENT '启用状态',
+    `default_selected` boolean   NOT NULL DEFAULT false COMMENT '默认选中',
+    `buy_count`   int            NOT NULL DEFAULT 0 COMMENT '购买人数',
+    `default_coupon_enabled` boolean NULL COMMENT '是否启用默认优惠券，NULL表示继承商品',
+    `default_coupon_code` varchar(64) NULL COMMENT '默认优惠券编码',
+    `create_by`   varchar(32)    NOT NULL COMMENT '创建人',
+    `update_by`   varchar(32)    NOT NULL COMMENT '修改人',
+    `create_time` datetime       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time` datetime       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
+    `is_delete`   boolean        NOT NULL DEFAULT false COMMENT '删除标记',
+    PRIMARY KEY (`id`),
+    UNIQUE (`item_id`, `code`)
+);
+
+CREATE INDEX IF NOT EXISTS `idx_shop_item_sku_item`
+    ON `shop_item_sku` (`item_id`, `enabled`, `sort`, `id`);
+
+ALTER TABLE `shop_item_sku`
+    ADD COLUMN IF NOT EXISTS `usd_price` decimal(10, 2) NULL COMMENT '手工美元价格，NULL表示按汇率换算';
+
+CREATE TABLE IF NOT EXISTS `shop_item_sku_contract`
+(
+    `id`          bigint      NOT NULL COMMENT '主键' AUTO_INCREMENT,
+    `item_id`     bigint      NOT NULL COMMENT '商品id',
+    `sku_id`      bigint      NOT NULL COMMENT 'SKU id',
+    `contract_id` bigint      NOT NULL COMMENT '合同id',
+    `required`    boolean     NOT NULL DEFAULT true COMMENT '是否必签',
+    `enabled`     boolean     NOT NULL DEFAULT true COMMENT '启用状态',
+    `sort`        int         NOT NULL DEFAULT 0 COMMENT '排序',
+    `create_by`   varchar(32) NOT NULL COMMENT '创建人',
+    `update_by`   varchar(32) NOT NULL COMMENT '修改人',
+    `create_time` datetime    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time` datetime    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
+    `is_delete`   boolean     NOT NULL DEFAULT false COMMENT '删除标记',
+    PRIMARY KEY (`id`)
+);
+
+CREATE INDEX IF NOT EXISTS `idx_shop_item_sku_contract_sku`
+    ON `shop_item_sku_contract` (`sku_id`, `enabled`, `sort`, `id`);
+
+CREATE TABLE IF NOT EXISTS `shop_item_view_stat`
+(
+    `id`             bigint      NOT NULL COMMENT '主键' AUTO_INCREMENT,
+    `item_id`        bigint      NOT NULL COMMENT '商品id',
+    `view_count`     bigint      NOT NULL DEFAULT 0 COMMENT '累计查看次数',
+    `last_view_time` datetime    NULL COMMENT '最近查看时间',
+    `create_by`      varchar(32) NOT NULL DEFAULT 'system' COMMENT '创建人',
+    `update_by`      varchar(32) NOT NULL DEFAULT 'system' COMMENT '修改人',
+    `create_time`    datetime    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time`    datetime    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
+    `is_delete`      boolean     NOT NULL DEFAULT false COMMENT '删除标记',
+    PRIMARY KEY (`id`),
+    UNIQUE (`item_id`)
+);
 
 CREATE TABLE IF NOT EXISTS `shop_contract`
 (
@@ -173,6 +252,7 @@ CREATE TABLE IF NOT EXISTS `shop_contract_signature`
     `sign_token`      varchar(64)  NOT NULL COMMENT '签署令牌',
     `order_no`        varchar(64)  NULL COMMENT '订单号',
     `item_id`         bigint       NOT NULL COMMENT '商品id',
+    `sku_id`          bigint       NULL COMMENT 'SKU id',
     `buyer_id`        bigint       NOT NULL COMMENT '购买用户id',
     `contract_id`     bigint       NOT NULL COMMENT '合同id',
     `contract_file_id` bigint      NOT NULL COMMENT '合同文件id',
@@ -195,6 +275,8 @@ CREATE TABLE IF NOT EXISTS `shop_contract_signature`
 
 CREATE INDEX IF NOT EXISTS `idx_shop_contract_signature_token`
     ON `shop_contract_signature` (`sign_token`, `buyer_id`, `item_id`, `contract_file_id`);
+ALTER TABLE `shop_contract_signature`
+    ADD COLUMN IF NOT EXISTS `sku_id` bigint NULL COMMENT 'SKU id';
 
 CREATE INDEX IF NOT EXISTS `idx_shop_contract_signature_order`
     ON `shop_contract_signature` (`order_no`, `create_time`);
@@ -204,17 +286,25 @@ CREATE TABLE IF NOT EXISTS `shop_order`
     `id`             bigint         NOT NULL COMMENT '主键' AUTO_INCREMENT,
     `order_no`       varchar(64)    NOT NULL COMMENT '订单号',
     `item_id`        bigint         NOT NULL COMMENT '商品id',
+    `sku_id`         bigint         NULL COMMENT 'SKU id',
+    `sku_code`       varchar(64)    NULL COMMENT 'SKU编码快照',
+    `sku_name`       varchar(128)   NULL COMMENT 'SKU名称快照',
+    `item_name`      varchar(128)   NULL COMMENT '商品名称快照',
+    `item_type`      varchar(32)    NULL COMMENT '商品类型快照',
     `shop_id`        bigint         NOT NULL COMMENT '所属店铺id',
     `buyer_id`       bigint         NOT NULL COMMENT '购买用户id',
     `count`          int            NOT NULL DEFAULT 1 COMMENT '购买数量',
     `properties`     json           NULL COMMENT '商品属性',
+    `item_snapshot`  json           NULL COMMENT '商品快照',
+    `sku_snapshot`   json           NULL COMMENT 'SKU快照',
     `amount`         decimal(10, 2) NOT NULL COMMENT '订单金额',
+    `currency`       varchar(3)     NOT NULL DEFAULT 'CNY' COMMENT '订单币种',
     `original_amount` decimal(10, 2) NULL COMMENT '原始金额',
     `discount_amount` decimal(10, 2) NOT NULL DEFAULT 0 COMMENT '优惠金额',
     `coupon_code`    varchar(64)    NULL COMMENT '优惠券编码',
     `outer_no`       varchar(64)    NULL COMMENT '外部订单号',
     `payment_provider` varchar(32)  NULL COMMENT '支付提供方',
-    `transaction_code` varchar(64)  NULL COMMENT '支付流水号',
+    `transaction_code` varchar(128) NULL COMMENT '支付流水号',
     `paid_time`      datetime       NULL COMMENT '支付时间',
     `expire_time`    datetime       NULL COMMENT '过期时间',
     `status`         varchar(14)    NOT NULL COMMENT '订单状态',
@@ -232,11 +322,27 @@ CREATE TABLE IF NOT EXISTS `shop_order`
 ALTER TABLE `shop_order`
     ADD COLUMN IF NOT EXISTS `shop_id` bigint NOT NULL DEFAULT 1;
 ALTER TABLE `shop_order`
+    ADD COLUMN IF NOT EXISTS `sku_id` bigint NULL COMMENT 'SKU id';
+ALTER TABLE `shop_order`
+    ADD COLUMN IF NOT EXISTS `sku_code` varchar(64) NULL COMMENT 'SKU编码快照';
+ALTER TABLE `shop_order`
+    ADD COLUMN IF NOT EXISTS `sku_name` varchar(128) NULL COMMENT 'SKU名称快照';
+ALTER TABLE `shop_order`
+    ADD COLUMN IF NOT EXISTS `item_name` varchar(128) NULL COMMENT '商品名称快照';
+ALTER TABLE `shop_order`
+    ADD COLUMN IF NOT EXISTS `item_type` varchar(32) NULL COMMENT '商品类型快照';
+ALTER TABLE `shop_order`
     ADD COLUMN IF NOT EXISTS `buyer_id` bigint NOT NULL DEFAULT 0;
 ALTER TABLE `shop_order`
     ADD COLUMN IF NOT EXISTS `count` int NOT NULL DEFAULT 1;
 ALTER TABLE `shop_order`
     ADD COLUMN IF NOT EXISTS `properties` json NULL;
+ALTER TABLE `shop_order`
+    ADD COLUMN IF NOT EXISTS `item_snapshot` json NULL COMMENT '商品快照';
+ALTER TABLE `shop_order`
+    ADD COLUMN IF NOT EXISTS `sku_snapshot` json NULL COMMENT 'SKU快照';
+ALTER TABLE `shop_order`
+    ADD COLUMN IF NOT EXISTS `currency` varchar(3) NOT NULL DEFAULT 'CNY' COMMENT '订单币种';
 ALTER TABLE `shop_order`
     ADD COLUMN IF NOT EXISTS `original_amount` decimal(10, 2) NULL;
 ALTER TABLE `shop_order`
@@ -248,7 +354,7 @@ ALTER TABLE `shop_order`
 ALTER TABLE `shop_order`
     ADD COLUMN IF NOT EXISTS `payment_provider` varchar(32) NULL;
 ALTER TABLE `shop_order`
-    ADD COLUMN IF NOT EXISTS `transaction_code` varchar(64) NULL;
+    ADD COLUMN IF NOT EXISTS `transaction_code` varchar(128) NULL;
 ALTER TABLE `shop_order`
     ADD COLUMN IF NOT EXISTS `paid_time` datetime NULL;
 ALTER TABLE `shop_order`
@@ -277,7 +383,7 @@ CREATE TABLE IF NOT EXISTS `shop_order_delivery`
     `update_time`    datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
     `is_delete`      boolean      NOT NULL DEFAULT false COMMENT '删除标记',
     PRIMARY KEY (`id`),
-    UNIQUE (`order_no`)
+    UNIQUE (`order_no`, `delivery_type`)
 );
 
 CREATE INDEX IF NOT EXISTS `idx_shop_order_delivery_buyer`
@@ -354,13 +460,14 @@ ALTER TABLE `shop_coupon`
 CREATE TABLE IF NOT EXISTS `shop_transaction`
 (
     `id`          bigint         NOT NULL COMMENT '主键' AUTO_INCREMENT,
-    `code`        varchar(64)    NOT NULL COMMENT '交易流水号',
+    `code`        varchar(128)   NOT NULL COMMENT '交易流水号',
     `order_no`    varchar(64)    NOT NULL COMMENT '关联订单号',
     `shop_id`     bigint         NOT NULL COMMENT '所属店铺id',
     `content`     varchar(512)   NOT NULL COMMENT '交易内容',
     `payer`       varchar(256)   NOT NULL COMMENT '付款人信息',
     `receiver`    varchar(256)   NOT NULL COMMENT '收款人信息',
     `amount`      decimal(10, 2) NOT NULL COMMENT '交易金额',
+    `currency`    varchar(3)     NOT NULL DEFAULT 'CNY' COMMENT '交易币种',
     `type`        varchar(10)    NOT NULL COMMENT '交易类型',
     `create_by`   varchar(32)    NOT NULL COMMENT '创建人',
     `update_by`   varchar(32)    NOT NULL COMMENT '修改人',
@@ -370,6 +477,9 @@ CREATE TABLE IF NOT EXISTS `shop_transaction`
     PRIMARY KEY (`id`),
     UNIQUE (`code`)
 );
+
+ALTER TABLE `shop_transaction`
+    ADD COLUMN IF NOT EXISTS `currency` varchar(3) NOT NULL DEFAULT 'CNY' COMMENT '交易币种';
 
 CREATE TABLE IF NOT EXISTS `support_ticket`
 (

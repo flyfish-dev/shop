@@ -4,6 +4,14 @@ export const getCurrentShop = async () => {
   return get('/shops/current')
 }
 
+export const getPaymentMethods = async () => {
+  return get('/shops/payment-methods');
+};
+
+export const getShopPricing = async () => {
+  return get('/shops/pricing');
+};
+
 export const getShopItemGroups = async (params) => {
   return get('/shops/item-groups', { params });
 };
@@ -12,20 +20,45 @@ export const getShopItems = async params => {
   return get('/shops/items', { params });
 };
 
+export const getDonationItems = async params => {
+  return getShopItems({
+    type: 'DONATION',
+    ...params
+  });
+};
+
+export const getShopItemPage = async params => {
+  const records = await getShopItems(params);
+  const items = Array.isArray(records) ? records : [];
+  return {
+    records: items,
+    page: items.page || null
+  };
+};
+
 export const getShopItemDetail = async id => {
   return get(`/shops/items/${id}`);
 };
 
-export const checkPurchaseAvailability = async id => {
-  return get(`/shops/items/${id}/purchase-availability`, { credential: true });
+export const checkPurchaseAvailability = async (id, skuId) => {
+  return get(`/shops/items/${id}/purchase-availability`, {
+    params: skuId ? { skuId } : undefined,
+    credential: true
+  });
 };
 
-export const getItemContracts = async id => {
-  return get(`/shops/items/${id}/contracts`);
+export const getItemContracts = async (id, skuId) => {
+  return get(`/shops/items/${id}/contracts`, {
+    params: skuId ? { skuId } : undefined
+  });
 };
 
-export const signItemContractFile = async (id, data) => {
-  return post(`/shops/items/${id}/contracts/signatures`, { body: data, credential: true });
+export const signItemContractFile = async (id, data, skuId) => {
+  return post(`/shops/items/${id}/contracts/signatures`, {
+    params: skuId ? { skuId } : undefined,
+    body: data,
+    credential: true
+  });
 };
 
 export const prepareGitBinding = async (provider = 'gitea', redirect = `${location.pathname}${location.search}`) => {

@@ -46,7 +46,8 @@ public class DigitalDownloadDeliveryService implements ShopDeliveryHandler {
 
     private Mono<ShopOrderDelivery> upsertDelivery(ShopOrder order, ShopItem item,
                                                    DigitalDeliveryParamValue param) {
-        return deliveryRepository.findByOrderNo(order.getOrderNo())
+        return deliveryRepository.findByOrderNoAndDeliveryType(order.getOrderNo(),
+                        ShopOrderDelivery.DeliveryType.DIGITAL.name())
                 .defaultIfEmpty(new ShopOrderDelivery())
                 .map(delivery -> {
                     applyDelivery(delivery, order, item, param);

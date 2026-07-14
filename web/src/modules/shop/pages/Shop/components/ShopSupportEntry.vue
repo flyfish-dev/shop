@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { BellOutlined, FileTextOutlined, RightOutlined } from '@ant-design/icons-vue';
 import { useRouter } from '@/router/use.js';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
   variant: {
@@ -11,6 +12,7 @@ const props = defineProps({
 });
 
 const router = useRouter();
+const { t } = useI18n();
 
 const isBanner = computed(() => props.variant === 'banner');
 const isInline = computed(() => props.variant === 'inline');
@@ -25,11 +27,11 @@ const goTicket = () => {
     v-if='!isBanner && !isInline'
     type='button'
     class='support-entry support-entry-button'
-    aria-label='提交工单'
+    :aria-label="t('shop.support.submitTicket')"
     @click='goTicket'
   >
     <file-text-outlined />
-    <span class='support-entry-label'>提交工单</span>
+    <span class='support-entry-label'>{{ t('shop.support.submitTicket') }}</span>
   </button>
 
   <section v-else-if='isBanner' class='support-entry support-entry-banner'>
@@ -37,11 +39,11 @@ const goTicket = () => {
       <bell-outlined />
     </span>
     <div class='support-entry-copy'>
-      <strong>遇到支付、开通或使用问题，都可以提交工单</strong>
-      <span>工单进度会通过邮件和公众号消息同步，方便随时追踪处理结果。</span>
+      <strong>{{ t('shop.support.bannerTitle') }}</strong>
+      <span>{{ t('shop.support.bannerDescription') }}</span>
     </div>
     <a-button type='primary' class='support-entry-action' @click='goTicket'>
-      提交工单
+      {{ t('shop.support.submitTicket') }}
       <right-outlined />
     </a-button>
   </section>
@@ -51,10 +53,10 @@ const goTicket = () => {
       <file-text-outlined />
     </span>
     <span class='support-entry-inline-copy'>
-      <strong>售后与开通问题</strong>
-      <small>提交工单后会收到处理通知</small>
+      <strong>{{ t('shop.support.afterSalesTitle') }}</strong>
+      <small>{{ t('shop.support.inlineDescription') }}</small>
     </span>
-    <button type='button' class='support-entry-inline-action' @click='goTicket'>提交</button>
+    <button type='button' class='support-entry-inline-action' @click='goTicket'>{{ t('shop.support.shortSubmit') }}</button>
   </section>
 </template>
 

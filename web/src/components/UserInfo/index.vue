@@ -2,6 +2,7 @@
 import useClientStore from '@/modules/auth/store/client.js';
 import { storeToRefs } from 'pinia';
 import { computed, h, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   DownOutlined,
   FileTextOutlined,
@@ -25,6 +26,7 @@ const store = useClientStore();
 const { user, initialized } = storeToRefs(store);
 const router = useRouter();
 const { hasShop, loadPortalCapabilities } = usePortalCapabilities();
+const { t } = useI18n();
 
 onMounted(async () => {
   if (!initialized.value) {
@@ -34,7 +36,7 @@ onMounted(async () => {
 });
 
 const avatar = computed(() => user.value?.avatar || '');
-const username = computed(() => user.value?.username || '未登录');
+const username = computed(() => user.value?.username || t('user.notLoggedIn'));
 const showName = computed(() => !props.compact);
 
 const login = () => {
@@ -57,19 +59,19 @@ const goTickets = () => {
 const menuItems = computed(() => [
   {
     key: 'tickets',
-    label: '提交工单',
+    label: t('user.submitTicket'),
     capability: 'shop',
     icon: () => h(FileTextOutlined)
   },
   {
     key: 'orders',
-    label: '我的订单',
+    label: t('user.myOrders'),
     capability: 'shop',
     icon: () => h(ShoppingCartOutlined)
   },
   {
     key: 'profile',
-    label: '个人信息维护',
+    label: t('user.profile'),
     icon: () => h(SettingOutlined)
   },
   {
@@ -77,7 +79,7 @@ const menuItems = computed(() => [
   },
   {
     key: 'logout',
-    label: '退出登录',
+    label: t('user.logout'),
     danger: true,
     icon: () => h(LogoutOutlined)
   }
@@ -104,7 +106,12 @@ const handleMenuClick = ({ key }) => {
 
 <template>
   <div class='user-container' :class='{ compact }'>
-    <a-dropdown v-if='user?.id' trigger='click' placement='bottomRight'>
+    <a-dropdown
+      v-if='user?.id'
+      trigger='click'
+      placement='bottomRight'
+      overlay-class-name='flyfish-command-dropdown user-command-dropdown'
+    >
       <button class='user-trigger' type='button'>
         <a-avatar v-if='avatar' class='user-avatar' :src='avatar' :size='compact ? 38 : 42' />
         <a-avatar v-else class='user-avatar fallback-avatar' :size='compact ? 38 : 42'>
@@ -124,7 +131,7 @@ const handleMenuClick = ({ key }) => {
       :icon='h(LoginOutlined)'
       @click='login'
     >
-      <span class='login-button-text'>去登录</span>
+      <span class='login-button-text'>{{ t('common.login') }}</span>
     </a-button>
   </div>
 </template>

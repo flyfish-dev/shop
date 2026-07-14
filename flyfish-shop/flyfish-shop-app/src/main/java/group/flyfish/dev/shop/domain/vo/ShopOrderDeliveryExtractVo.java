@@ -8,7 +8,9 @@ import org.apache.commons.lang3.StringUtils;
 import tools.jackson.core.type.TypeReference;
 
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 @Data
 public class ShopOrderDeliveryExtractVo {
@@ -36,6 +38,11 @@ public class ShopOrderDeliveryExtractVo {
 
     private LocalDateTime extractedTime;
 
+    private List<ShopOrderDeliveryExtractVo> deliveries;
+
+    public ShopOrderDeliveryExtractVo() {
+    }
+
     public ShopOrderDeliveryExtractVo(ShopOrderDelivery delivery) {
         this(delivery, List.of());
     }
@@ -51,6 +58,61 @@ public class ShopOrderDeliveryExtractVo {
         this.files = files == null ? List.of() : files;
         this.licenseNo = delivery.getLicenseNo();
         this.extractedTime = delivery.getExtractedTime();
+    }
+
+    public static ShopOrderDeliveryExtractVo combine(String orderNo, List<ShopOrderDeliveryExtractVo> items) {
+        List<ShopOrderDeliveryExtractVo> deliveries = items == null ? List.of() : items.stream()
+                .filter(Objects::nonNull)
+                .toList();
+        if (deliveries.isEmpty()) {
+            return null;
+        }
+        ShopOrderDeliveryExtractVo first = deliveries.get(0);
+        ShopOrderDeliveryExtractVo vo = new ShopOrderDeliveryExtractVo();
+        vo.orderNo = StringUtils.defaultIfBlank(orderNo, first.getOrderNo());
+        vo.deliveryType = deliveries.size() == 1 ? first.getDeliveryType() : "MIXED";
+        vo.title = deliveries.size() == 1 ? first.getTitle() : "交付内容";
+        vo.attachments = deliveries.stream()
+                .flatMap(delivery -> delivery.getAttachments() == null
+                        ? java.util.stream.Stream.<FileAttachmentVo>empty()
+                        : delivery.getAttachments().stream())
+                .filter(Objects::nonNull)
+                .toList();
+        vo.files = deliveries.stream()
+                .flatMap(delivery -> delivery.getFiles() == null
+                        ? java.util.stream.Stream.<ShopOrderDeliveryFileVo>empty()
+                        : delivery.getFiles().stream())
+                .filter(Objects::nonNull)
+                .toList();
+        vo.sensitive = deliveries.stream().anyMatch(delivery -> Boolean.TRUE.equals(delivery.getSensitive()));
+        vo.securityMessage = Boolean.TRUE.equals(vo.sensitive) ? LICENSE_SECURITY_MESSAGE : null;
+        vo.content = combineContent(deliveries, vo.sensitive);
+        vo.licenseNo = deliveries.stream()
+                .map(ShopOrderDeliveryExtractVo::getLicenseNo)
+                .filter(StringUtils::isNotBlank)
+                .distinct()
+                .reduce((left, right) -> left + "、" + right)
+                .orElse(null);
+        vo.extractedTime = deliveries.stream()
+                .map(ShopOrderDeliveryExtractVo::getExtractedTime)
+                .filter(Objects::nonNull)
+                .min(Comparator.naturalOrder())
+                .orElse(null);
+        vo.deliveries = deliveries;
+        return vo;
+    }
+
+    private static String combineContent(List<ShopOrderDeliveryExtractVo> deliveries, boolean hasSensitiveDelivery) {
+        String content = deliveries.stream()
+                .filter(delivery -> !Boolean.TRUE.equals(delivery.getSensitive()))
+                .map(ShopOrderDeliveryExtractVo::getContent)
+                .filter(StringUtils::isNotBlank)
+                .reduce((left, right) -> left + "\n\n" + right)
+                .orElse(null);
+        if (StringUtils.isNotBlank(content)) {
+            return content;
+        }
+        return hasSensitiveDelivery ? LICENSE_SECURITY_MESSAGE : null;
     }
 
     private boolean isLicenseDelivery(ShopOrderDelivery delivery) {

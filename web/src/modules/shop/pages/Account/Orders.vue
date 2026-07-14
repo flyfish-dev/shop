@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { message } from 'ant-design-vue';
 import {
   CopyOutlined,
@@ -15,6 +16,7 @@ import { openCustomerService } from '@/modules/shop/components/CustomerService/c
 import { extractOrderDelivery, getMyOrders } from '@/modules/shop/pages/Shop/apis/api.js';
 import { useDeliveryFiles } from '@/modules/shop/pages/Shop/hooks/useDeliveryFiles.js';
 import { sortOrdersByNewest } from '@/modules/shop/utils/orderSort.js';
+import { formatRevenueBreakdown, formatShopMoney, normalizeShopCurrency } from '@/modules/shop/utils/shopMoney.js';
 import {
   deliveryModeColor,
   deliveryModeText,
@@ -25,13 +27,20 @@ import {
 } from '@/modules/shop/utils/shopDelivery.js';
 
 const loading = ref(false);
+const { t } = useI18n();
 const orders = ref([]);
 const extracting = ref(false);
 const deliveryOpen = ref(false);
 const extractedDelivery = ref(null);
 const { downloadingFileCode, downloadDeliveryFile, fileKey } = useDeliveryFiles();
 
-const totalAmount = computed(() => orders.value.reduce((sum, order) => sum + Number(order.amount || 0), 0).toFixed(2));
+const totalAmount = computed(() => {
+  const totals = orders.value.reduce((sum, order) => {
+    sum[normalizeShopCurrency(order.currency)] += Number(order.amount || 0);
+    return sum;
+  }, { CNY: 0, USD: 0 });
+  return formatRevenueBreakdown(totals.CNY, totals.USD);
+});
 const deliveredCount = computed(() => orders.value.filter(order => order.status === 'DELIVERED').length);
 const hasDeliveryFiles = delivery => Boolean((delivery?.files || []).length);
 const isSensitiveDelivery = delivery => delivery?.sensitive === true;
@@ -42,7 +51,7 @@ const loadOrders = async () => {
     orders.value = sortOrdersByNewest(await getMyOrders());
   } catch (e) {
     orders.value = [];
-    message.error(e.message || '订单加载失败');
+    message.error(e.message || t('orders.loadFailed'));
   } finally {
     loading.value = false;
   }
@@ -54,9 +63,9 @@ const copyText = async value => {
   }
   try {
     await navigator.clipboard.writeText(value);
-    message.success('已复制');
+    message.success(t('common.copied'));
   } catch (e) {
-    message.warning('当前浏览器不支持自动复制');
+    message.warning(t('orders.copyUnavailable'));
   }
 };
 
@@ -78,7 +87,7 @@ const extractDelivery = async order => {
     extractedDelivery.value = await extractOrderDelivery(order.orderNo);
     deliveryOpen.value = true;
   } catch (e) {
-    message.error(e.message || '提货失败');
+    message.error(e.message || t('orders.extractFailed'));
   } finally {
     extracting.value = false;
   }
@@ -91,30 +100,30 @@ onMounted(loadOrders);
   <div class='orders-page'>
     <header class='orders-header'>
       <div>
-        <p class='eyebrow'>Order Center</p>
-        <h2>我的订单</h2>
+        <p class='eyebrow'>{{ t('orders.eyebrow') }}</p>
+        <h2>{{ t('orders.title') }}</h2>
       </div>
       <a-button @click='loadOrders'>
         <template #icon><reload-outlined /></template>
-        刷新
+        {{ t('common.refresh') }}
       </a-button>
     </header>
 
     <div class='orders-summary'>
       <a-card :bordered='false'>
-        <a-statistic title='订单数' :value='orders.length' />
+        <a-statistic :title="t('orders.orderCount')" :value='orders.length' />
       </a-card>
       <a-card :bordered='false'>
-        <a-statistic title='已交付' :value='deliveredCount' />
+        <a-statistic :title="t('orders.deliveredCount')" :value='deliveredCount' />
       </a-card>
       <a-card :bordered='false'>
-        <a-statistic title='累计金额' :value='totalAmount' prefix='¥' />
+        <a-statistic :title="t('orders.totalAmount')" :value='totalAmount' />
       </a-card>
     </div>
 
     <a-card class='orders-panel' :bordered='false'>
       <a-spin :spinning='loading'>
-        <a-empty v-if='!orders.length && !loading' description='暂无订单记录' />
+        <a-empty v-if='!orders.length && !loading' :description="t('orders.empty')" />
         <a-list v-else class='orders-list' :data-source='orders' item-layout='vertical'>
           <template #renderItem='{ item }'>
             <a-list-item>
@@ -125,27 +134,28 @@ onMounted(loadOrders);
                 <div class='order-main'>
                   <div class='order-title'>
                     <router-link :href='`/shop/detail/${item.itemId}`'>
-                      {{ item.itemName || `商品 ${item.itemId}` }}
+                      {{ item.displayName || item.itemName || t('orders.productFallback', { id: item.itemId }) }}
                     </router-link>
                     <a-space wrap>
-                      <a-tag :color='orderStatusColor(item.status)'>{{ orderStatusText(item.status) }}</a-tag>
+                      <a-tag v-if='item.skuName' color='cyan'>{{ item.skuName }}</a-tag>
+                      <a-tag :color='orderStatusColor(item.status)'>{{ orderStatusText(item.status, t) }}</a-tag>
                       <a-tag :color='deliveryModeColor(item.deliveryMode)'>
-                        {{ item.deliveryModeName || deliveryModeText(item.deliveryMode) }}
+                        {{ deliveryModeText(item.deliveryMode, t) }}
                       </a-tag>
                       <a-tag :color='deliveryStatusColor(item.deliveryStatus)'>
-                        {{ deliveryStatusText(item.deliveryStatus, item.deliveryMode) }}
+                        {{ deliveryStatusText(item.deliveryStatus, item.deliveryMode, t) }}
                       </a-tag>
                     </a-space>
                   </div>
                   <div class='order-meta'>
-                    <span>订单号 {{ item.orderNo }}</span>
+                    <span>{{ t('orders.orderNumber', { orderNo: item.orderNo }) }}</span>
                     <a-button type='link' size='small' @click='copyText(item.orderNo)'>
                       <template #icon><copy-outlined /></template>
-                      复制
+                      {{ t('common.copy') }}
                     </a-button>
                     <a-button type='link' size='small' @click='contactService(item)'>
                       <template #icon><message-outlined /></template>
-                      联系客服
+                      {{ t('common.contactSupport') }}
                     </a-button>
                     <a-button
                       v-if='canExtract(item)'
@@ -154,13 +164,14 @@ onMounted(loadOrders);
                       :loading='extracting'
                       @click='extractDelivery(item)'
                     >
-                      提取
+                      {{ t('orders.extract') }}
                     </a-button>
-                    <span v-if='item.transactionCode'>流水号 {{ item.transactionCode }}</span>
-                    <span>数量 {{ item.count || 1 }}</span>
-                    <span>金额 ¥{{ item.amount }}</span>
-                    <span v-if='Number(item.discountAmount || 0) > 0'>优惠 ¥{{ item.discountAmount }}</span>
-                    <span v-if='item.couponCode'>券码 {{ item.couponCode }}</span>
+                    <span v-if='item.transactionCode'>{{ t('orders.transactionNumber', { code: item.transactionCode }) }}</span>
+                    <span>{{ t('orders.quantity', { count: item.count || 1 }) }}</span>
+                    <span v-if='item.skuCode'>SKU {{ item.skuCode }}</span>
+                    <span>{{ t('orders.amount', { amount: formatShopMoney(item.amount, item.currency) }) }}</span>
+                    <span v-if='Number(item.discountAmount || 0) > 0'>{{ t('orders.discount', { amount: formatShopMoney(item.discountAmount, item.currency) }) }}</span>
+                    <span v-if='item.couponCode'>{{ t('orders.couponCode', { code: item.couponCode }) }}</span>
                     <span>{{ item.paidTime || item.createTime }}</span>
                   </div>
                   <p v-if='item.deliveryMessage' class='delivery-message'>{{ item.deliveryMessage }}</p>
@@ -174,14 +185,14 @@ onMounted(loadOrders);
 
     <a-modal
       v-model:open='deliveryOpen'
-      :title='extractedDelivery?.title || "提货内容"'
+      :title='extractedDelivery?.title || t("orders.deliveryContent")'
       width='720px'
       wrap-class-name='delivery-extract-modal'
       :footer='null'
     >
       <div class='delivery-extract'>
         <a-tag v-if='extractedDelivery?.deliveryType' color='blue'>
-          {{ extractedDelivery.deliveryType === 'LICENSE' ? '授权许可' : '数字商品' }}
+          {{ extractedDelivery.deliveryType === 'LICENSE' ? t('orders.license') : t('orders.digitalProduct') }}
         </a-tag>
         <a-tag v-if='extractedDelivery?.licenseNo' color='green'>
           {{ extractedDelivery.licenseNo }}
@@ -213,7 +224,7 @@ onMounted(loadOrders);
               @click='downloadDeliveryFile(extractedDelivery, file)'
             >
               <template #icon><download-outlined /></template>
-              下载
+              {{ t('common.download') }}
             </a-button>
           </article>
         </section>
@@ -224,7 +235,7 @@ onMounted(loadOrders);
           type='primary'
           @click='copyText(extractedDelivery.content)'
         >
-          复制内容
+          {{ t('orders.copyContent') }}
         </a-button>
       </div>
     </a-modal>
