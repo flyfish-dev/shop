@@ -1,7 +1,5 @@
 package group.flyfish.dev.ddl.parser;
 
-import dev.flyfish.framework.beans.meta.parser.BeanPropertyAnnotations;
-import dev.flyfish.framework.relational.mapping.Association;
 import group.flyfish.dev.annotations.data.Property;
 import group.flyfish.dev.bean.DbRelation;
 import group.flyfish.dev.bean.DbTable;
@@ -21,6 +19,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.core.ResolvableType;
 import org.springframework.core.annotation.MergedAnnotation;
+import org.springframework.core.annotation.MergedAnnotations;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.Transient;
 import org.springframework.data.relational.core.mapping.Column;
@@ -56,6 +55,8 @@ public final class ModelParser {
     private static final String FLYFISH_PROPERTY = "dev.flyfish.framework.annotations.Property";
 
     private static final String FLYFISH_ENTITY = "dev.flyfish.framework.annotations.Entity";
+
+    private static final String FLYFISH_ASSOCIATION = "dev.flyfish.framework.relational.mapping.Association";
 
     private ModelParser(Class<?> modelClass) {
         this.instance = BeanUtils.instantiateClass(modelClass);
@@ -102,18 +103,17 @@ public final class ModelParser {
             handlers.poll().run();
         }
         // 获取注解信息
-        BeanPropertyAnnotations annotations = BeanPropertyAnnotations.from(modelClass);
+        MergedAnnotations annotations = MergedAnnotations.from(modelClass);
         // 构建表基本信息
-        annotations.as(Table.class)
-                .map(annotation -> annotation.synthesize().name())
-                .filter(StringUtils::isNotBlank)
-                .then(table::setName)
-                .empty(() -> table.setName(StringUtils.lowerCase(modelClass.getSimpleName())))
-                .and()
-                .as(FLYFISH_ENTITY)
-                .map(property -> property.getString("title"))
-                .then(table::setComment)
-                .end();
+        MergedAnnotation<Table> tableAnnotation = annotations.get(Table.class);
+        String tableName = tableAnnotation.isPresent() ? tableAnnotation.synthesize().name() : null;
+        table.setName(StringUtils.isNotBlank(tableName)
+                ? tableName
+                : StringUtils.lowerCase(modelClass.getSimpleName()));
+        MergedAnnotation<?> entityAnnotation = annotations.get(FLYFISH_ENTITY);
+        if (entityAnnotation.isPresent()) {
+            table.setComment(entityAnnotation.getString("title"));
+        }
         table.setIndexes(Collections.emptyList());
     }
 
@@ -125,16 +125,19 @@ public final class ModelParser {
      */
     private DbColumn build(Field field, Class<?> resolvedType) {
         DbColumn column = new DbColumn();
-        BeanPropertyAnnotations annotations = BeanPropertyAnnotations.from(field);
+        MergedAnnotations annotations = MergedAnnotations.from(field);
         // 如果是关联属性，跳过，如果是关系表，构建关系表
-        boolean present = annotations.as(Association.class)
-                .map(MergedAnnotation::synthesize)
-                .filter(association -> StringUtils.isNotBlank(association.relationTable()))
-                .then(association -> handlers.offer(() -> buildRelation(association)))
-                .or()
-                // 判断属性是否被排除，存在该注解则不向下执行
-                .as(Transient.class)
-                .end();
+        MergedAnnotation<?> association = annotations.get(FLYFISH_ASSOCIATION);
+        boolean present = false;
+        if (association.isPresent() && StringUtils.isNotBlank(association.getString("relationTable"))) {
+            String relationTable = association.getString("relationTable");
+            String relationField = association.getString("field");
+            String foreignField = association.getString("foreignField");
+            handlers.offer(() -> buildRelation(relationTable, relationField, foreignField));
+            present = true;
+        }
+        // 判断属性是否被排除，存在该注解则不向下执行
+        present = present || annotations.isPresent(Transient.class);
         // 如果调用链存在，则返回
         if (present) {
             return null;
@@ -167,24 +170,18 @@ public final class ModelParser {
      * @param field       字段信息
      * @param annotations 注解
      */
-    private void setName(DbColumn column, Field field, BeanPropertyAnnotations annotations) {
-        annotations
-                .as(Column.class)
-                .map(annotation -> annotation.synthesize().value())
-                .filter(StringUtils::isNotBlank)
-                .then(column::setName)
-                .or()
-                .as(FLYFISH_PROPERTY)
-                .map(annotation -> annotation.getString("key"))
-                .filter(StringUtils::isNotBlank)
-                .then(column::setName)
-                .or()
-                .as(Property.class)
-                .map(annotation -> annotation.synthesize().key())
-                .filter(StringUtils::isNotBlank)
-                .then(column::setName)
-                .empty(() -> column.setName(field.getName()))
-                .end();
+    private void setName(DbColumn column, Field field, MergedAnnotations annotations) {
+        MergedAnnotation<Column> columnAnnotation = annotations.get(Column.class);
+        String name = columnAnnotation.isPresent() ? columnAnnotation.synthesize().value() : null;
+        if (StringUtils.isBlank(name)) {
+            MergedAnnotation<?> flyfishProperty = annotations.get(FLYFISH_PROPERTY);
+            name = flyfishProperty.isPresent() ? flyfishProperty.getString("key") : null;
+        }
+        if (StringUtils.isBlank(name)) {
+            MergedAnnotation<Property> property = annotations.get(Property.class);
+            name = property.isPresent() ? property.synthesize().key() : null;
+        }
+        column.setName(StringUtils.isNotBlank(name) ? name : field.getName());
     }
 
     /**
@@ -194,19 +191,14 @@ public final class ModelParser {
      * @param field       字段
      * @param annotations 注解集合
      */
-    private void setComment(DbColumn column, Field field, BeanPropertyAnnotations annotations) {
-        annotations
-                .as(FLYFISH_PROPERTY)
-                .map(annotation -> annotation.getString("title"))
-                .filter(StringUtils::isNotBlank)
-                .then(column::setComment)
-                .or()
-                .as(Property.class)
-                .map(annotation -> annotation.synthesize().title())
-                .filter(StringUtils::isNotBlank)
-                .then(column::setComment)
-                .empty(() -> column.setComment(field.getName()))
-                .end();
+    private void setComment(DbColumn column, Field field, MergedAnnotations annotations) {
+        MergedAnnotation<?> flyfishProperty = annotations.get(FLYFISH_PROPERTY);
+        String comment = flyfishProperty.isPresent() ? flyfishProperty.getString("title") : null;
+        if (StringUtils.isBlank(comment)) {
+            MergedAnnotation<Property> property = annotations.get(Property.class);
+            comment = property.isPresent() ? property.synthesize().title() : null;
+        }
+        column.setComment(StringUtils.isNotBlank(comment) ? comment : field.getName());
     }
 
     /**
@@ -215,17 +207,15 @@ public final class ModelParser {
      *
      * @param annotations 注解集合
      */
-    private void setLength(DbColumn column, DbType type, BeanPropertyAnnotations annotations) {
+    private void setLength(DbColumn column, DbType type, MergedAnnotations annotations) {
         if (type.getGroup() != DbTypeGroup.STRING) return;
         // 根据注解直接设置
-        annotations.as(Id.class)
-                .exists(() -> column.setLength(DEFAULT_ID_LENGTH))
-                .or()
-                .as(Size.class)
-                .map(annotation -> annotation.synthesize().max())
-                .then(column::setLength)
-                .empty(() -> column.setLength(DEFAULT_VARCHAR_LENGTH))
-                .end();
+        if (annotations.isPresent(Id.class)) {
+            column.setLength(DEFAULT_ID_LENGTH);
+            return;
+        }
+        MergedAnnotation<Size> size = annotations.get(Size.class);
+        column.setLength(size.isPresent() ? size.synthesize().max() : DEFAULT_VARCHAR_LENGTH);
 
     }
 
@@ -236,7 +226,7 @@ public final class ModelParser {
      * @param type        类型
      * @param annotations 注解
      */
-    private void setExtra(DbColumn column, DbType type, BeanPropertyAnnotations annotations) {
+    private void setExtra(DbColumn column, DbType type, MergedAnnotations annotations) {
         switch (type) {
             case VARCHAR:
                 column.setCharacterSet("utf8mb4");
@@ -265,7 +255,7 @@ public final class ModelParser {
      * @param annotations 注解集合
      * @return 结果
      */
-    private boolean isNullable(BeanPropertyAnnotations annotations) {
+    private boolean isNullable(MergedAnnotations annotations) {
         boolean notNull = Stream.of(NotNull.class, NonNull.class, NotBlank.class, NotEmpty.class, Id.class)
                 .anyMatch(annotations::isPresent);
         return !notNull;
@@ -277,7 +267,7 @@ public final class ModelParser {
      * @param type 类型
      * @return 结果
      */
-    private DbType getType(Class<?> type, BeanPropertyAnnotations annotations) {
+    private DbType getType(Class<?> type, MergedAnnotations annotations) {
         // 处理枚举的情况
         if (type.isEnum()) {
             // 基本枚举
@@ -295,16 +285,16 @@ public final class ModelParser {
     /**
      * 构建关系表
      */
-    private void buildRelation(Association association) {
+    private void buildRelation(String relationTable, String field, String foreignField) {
         // 首先确认当前表有主键
         Optional<DbColumn> primary = table.firstPrimaryColumn();
         if (primary.isPresent()) {
             DbTable relation = new DbTable();
-            relation.setName(association.relationTable());
+            relation.setName(relationTable);
             relation.setComment("关系表");
-            relation.setColumns(Stream.of(association.field(), association.foreignField()).map(field -> {
+            relation.setColumns(Stream.of(field, foreignField).map(relationField -> {
                 DbColumn column = new DbColumn();
-                column.setName(field);
+                column.setName(relationField);
                 column.setPrimary(true);
                 column.setType(primary.get().getType());
                 column.setLength(primary.get().getLength());

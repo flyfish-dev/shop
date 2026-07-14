@@ -23,14 +23,8 @@
             <artifactId>spring-webflux</artifactId>
         </dependency>
         <dependency>
-            <groupId>dev.flyfish.framework</groupId>
-            <artifactId>flyfish-data-relational</artifactId>
-            <version>${flyfish.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>dev.flyfish.framework</groupId>
-            <artifactId>flyfish-bean</artifactId>
-            <version>${flyfish.version}</version>
+            <groupId>org.springframework.data</groupId>
+            <artifactId>spring-data-relational</artifactId>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

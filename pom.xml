@@ -36,7 +36,6 @@
         <native.maven.plugin.version>0.11.5</native.maven.plugin.version>
         <commons-collections4.version>4.5.0</commons-collections4.version>
         <swagger-annotations.version>1.6.16</swagger-annotations.version>
-        <flyfish.version>2.0.2</flyfish.version>
         <native.march>x86-64-v3</native.march>
         <native.optimization.level>-O3</native.optimization.level>
         <native.build.parallelism>2</native.build.parallelism>
@@ -60,14 +59,6 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <repositories>
-        <repository>
-            <id>sonatype-oss-snapshots</id>
-            <name>Sonatype OSS Snapshots Repository</name>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-        </repository>
-    </repositories>
 
     <build>
         <plugins>
