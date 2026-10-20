@@ -61,6 +61,7 @@ public class CustomerServiceCenterServiceImpl implements CustomerServiceCenterSe
     private final SupportTicketService supportTicketService;
     private final CustomerRealtimeNotifier realtimeNotifier;
     private final CustomerPresenceRegistry presenceRegistry;
+    private final CustomerOfflineAutoReplyService offlineAutoReplyService;
 
     @Override
     public Mono<CustomerServiceSummaryVo> summary(PortalUserVo user) {
@@ -107,7 +108,8 @@ public class CustomerServiceCenterServiceImpl implements CustomerServiceCenterSe
         String content = requiredContent(dto == null ? null : dto.getContent(), attachments);
         return findOrCreateConversation(user)
                 .flatMap(conversation -> saveUserWebMessage(conversation, user, content, dto)
-                        .then(toDetail(conversation, false)));
+                        .flatMap(customerMessage -> offlineAutoReplyService.replyIfNeeded(conversation, customerMessage))
+                        .flatMap(updated -> toDetail(updated, false)));
     }
 
     @Override
@@ -183,6 +185,7 @@ public class CustomerServiceCenterServiceImpl implements CustomerServiceCenterSe
         String messageType = normalizeMessageType(dto, attachments);
         conversation.setLastMessage(messageSummary(content, attachments, messageType));
         conversation.setLastMessageTime(now);
+        conversation.setLastInboundTime(now);
         conversation.setAdminUnreadCount(safe(conversation.getAdminUnreadCount()) + 1);
         return saveConversation(conversation)
                 .flatMap(saved -> saveCustomerMessage(webUserMessage(saved, userId, content, dto))

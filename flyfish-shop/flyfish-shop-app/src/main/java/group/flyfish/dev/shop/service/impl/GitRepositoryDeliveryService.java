@@ -28,8 +28,10 @@ import reactor.core.publisher.Mono;
 import java.util.List;
 import java.util.Map;
 
-@RequiredArgsConstructor
 public class GitRepositoryDeliveryService implements ShopDeliveryHandler {
+
+    @Override
+    public boolean recoverySafe() { return true; }
 
     private static final int DELIVERY_MESSAGE_LIMIT = 500;
     private static final int PROVIDER_ERROR_LIMIT = 160;
@@ -39,6 +41,20 @@ public class GitRepositoryDeliveryService implements ShopDeliveryHandler {
     private final GiteeRepositoryClient giteeClient;
     private final GitAccessTokenService tokenService;
     private final GitRepositoryAccessResolver repositoryAccessResolver;
+    private final group.flyfish.dev.shop.xianyu.DeliveryTaskLedger ledger;
+
+    public GitRepositoryDeliveryService(GiteaRepositoryClient giteaClient, GithubRepositoryClient githubClient,
+                                       GiteeRepositoryClient giteeClient, GitAccessTokenService tokenService,
+                                       GitRepositoryAccessResolver repositoryAccessResolver) {
+        this(giteaClient, githubClient, giteeClient, tokenService, repositoryAccessResolver, null);
+    }
+    public GitRepositoryDeliveryService(GiteaRepositoryClient giteaClient, GithubRepositoryClient githubClient,
+                                       GiteeRepositoryClient giteeClient, GitAccessTokenService tokenService,
+                                       GitRepositoryAccessResolver repositoryAccessResolver,
+                                       group.flyfish.dev.shop.xianyu.DeliveryTaskLedger ledger) {
+        this.giteaClient=giteaClient; this.githubClient=githubClient; this.giteeClient=giteeClient;
+        this.tokenService=tokenService; this.repositoryAccessResolver=repositoryAccessResolver; this.ledger=ledger;
+    }
 
     @Override
     public boolean supports(ShopItem item) {
@@ -53,16 +69,24 @@ public class GitRepositoryDeliveryService implements ShopDeliveryHandler {
         }
         return repositoryAccessResolver.resolve(param)
                 .collectList()
-                .flatMap(repositories -> deliverRepositories(repositories, buyer))
+                .flatMap(repositories -> deliverRepositories(order, repositories, buyer))
                 .onErrorResume(e -> Mono.just(DeliveryResult.failed(describeProviderError(e))));
     }
 
-    private Mono<DeliveryResult> deliverRepositories(List<ResolvedGitRepository> repositories, PortalUserVo buyer) {
+    private Mono<DeliveryResult> deliverRepositories(ShopOrder order, List<ResolvedGitRepository> repositories, PortalUserVo buyer) {
         if (repositories.isEmpty()) {
             return Mono.just(DeliveryResult.failed("商品未配置代码仓库"));
         }
         return Flux.fromIterable(repositories)
-                .concatMap(repository -> deliverRepository(repository, buyer))
+                .concatMap(repository -> {
+                    if (ledger == null) return deliverRepository(repository, buyer);
+                    return ledger.run(order, "repository:" + repository.provider() + ":" + repository.fullName(),
+                            () -> deliverRepository(repository, buyer).map(result -> result.success()
+                                    ? DeliveryResult.ok(result.repository()) : DeliveryResult.failed(result.message())))
+                            .map(result -> result.isSuccess()
+                                    ? RepositoryDeliveryResult.ok(repository.fullName(), resolveBoundUsername(repository.provider(), buyer), repository.provider())
+                                    : RepositoryDeliveryResult.failed(repository.fullName(), result.getMessage()));
+                })
                 .collectList()
                 .map(this::mergeDeliveryResults);
     }

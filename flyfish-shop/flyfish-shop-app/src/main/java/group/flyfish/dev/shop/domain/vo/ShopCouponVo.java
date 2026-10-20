@@ -18,6 +18,12 @@ public class ShopCouponVo {
 
     private String name;
 
+    private ShopCoupon.Source source;
+
+    private Long itemId;
+
+    private Long skuId;
+
     private ShopCoupon.Type type;
 
     private String typeName;
@@ -52,6 +58,9 @@ public class ShopCouponVo {
         this.id = coupon.getId();
         this.code = coupon.getCode();
         this.name = coupon.getName();
+        this.source = coupon.getSource();
+        this.itemId = coupon.getItemId();
+        this.skuId = coupon.getSkuId();
         this.type = coupon.getType();
         this.typeName = resolveTypeName(coupon.getType());
         this.discountValue = coupon.getDiscountValue();

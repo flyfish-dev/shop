@@ -18,6 +18,14 @@ public interface ShopOrderDeliveryRepository extends DefaultReactiveRepository<S
                 orderByCreateTimeAsc()).next();
     }
 
+    default Mono<ShopOrderDelivery> findByOrderNoAndDeliveryTypeAndComponentKey(
+            String orderNo, String deliveryType, String componentKey) {
+        return findAllBy(Criteria.where("order_no").is(orderNo)
+                        .and("delivery_type").is(deliveryType)
+                        .and("component_key").is(componentKey),
+                orderByCreateTimeAsc()).next();
+    }
+
     default Flux<ShopOrderDelivery> findAllByOrderNoOrderByCreateTimeAsc(String orderNo) {
         return findAllBy(Criteria.where("order_no").is(orderNo), orderByCreateTimeAsc());
     }

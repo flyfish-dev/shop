@@ -11,7 +11,23 @@ import reactor.core.publisher.Mono;
  */
 public interface ShopDeliveryHandler {
 
+    /**
+     * 交付阶段。核心交付全部成功后，才会执行体验指引等收尾动作。
+     */
+    enum Stage {
+        CORE,
+        AFTER_SUCCESS
+    }
+
     boolean supports(ShopItem item);
+
+    default Stage stage() {
+        return Stage.CORE;
+    }
+
+    default boolean recoverySafe() {
+        return false;
+    }
 
     Mono<DeliveryResult> deliver(ShopOrder order, ShopItem item, PortalUserVo buyer);
 }

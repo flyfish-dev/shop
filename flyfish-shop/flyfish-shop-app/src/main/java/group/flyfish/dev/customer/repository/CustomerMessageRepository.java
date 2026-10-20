@@ -16,6 +16,17 @@ public interface CustomerMessageRepository extends DefaultReactiveRepository<Cus
                 Sort.by(Sort.Order.asc("createTime"), Sort.Order.asc("id")));
     }
 
+    @Query("""
+            SELECT *
+            FROM customer_message
+            WHERE is_delete = false
+              AND conversation_id = :conversationId
+              AND related_type = :relatedType
+            ORDER BY create_time DESC, id DESC
+            LIMIT 1
+            """)
+    Mono<CustomerMessage> findLatestByRelatedType(Long conversationId, String relatedType);
+
     @Modifying
     @Query("""
             UPDATE customer_message

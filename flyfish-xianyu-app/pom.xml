@@ -1,0 +1,17 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>group.flyfish</groupId><artifactId>flyfish-dev</artifactId><version>0.0.2-SNAPSHOT</version></parent>
+  <artifactId>flyfish-xianyu-app</artifactId>
+  <dependencies>
+    <dependency><groupId>group.flyfish</groupId><artifactId>flyfish-xianyu-api</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>group.flyfish</groupId><artifactId>flyfish-common</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>io.r2dbc</groupId><artifactId>r2dbc-h2</artifactId><scope>runtime</scope></dependency>
+    <dependency><groupId>io.asyncer</groupId><artifactId>r2dbc-mysql</artifactId><scope>runtime</scope></dependency>
+  </dependencies>
+  <build><finalName>flyfish-xianyu</finalName><plugins>
+    <plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId>
+      <configuration><mainClass>group.flyfish.dev.xianyu.XianyuApplication</mainClass></configuration>
+      <executions><execution><goals><goal>repackage</goal></goals></execution></executions>
+    </plugin>
+  </plugins></build>
+</project>

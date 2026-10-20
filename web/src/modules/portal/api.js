@@ -1,11 +1,12 @@
 import { get } from '@/network/request.js';
+import { isLowcodeApp } from '@/runtime/application.js';
 
 const SPLIT_CAPABILITY_ENDPOINTS = [
-  '/__lowcode/portal/capabilities',
-  '/__shop/portal/capabilities'
+  isLowcodeApp ? '/__lowcode/portal/capabilities' : '/__shop/portal/capabilities'
 ];
 
-const normalizeCapabilities = result => Array.isArray(result) ? result.filter(Boolean) : [];
+const normalizeCapabilities = result => Array.isArray(result)
+  ? result.filter(item => item?.code === (isLowcodeApp ? 'lowcode' : 'shop')) : [];
 
 const mergeCapabilities = results => {
   const merged = new Map();

@@ -16,7 +16,8 @@ public enum OAuthType {
     GITEE("gitee", "码云"),
     GITHUB("github", "GitHub"),
     GOOGLE("google", "Google"),
-    MICROSOFT("microsoft", "Microsoft");
+    MICROSOFT("microsoft", "Microsoft"),
+    XIANYU("xianyu", "闲鱼");
 
     private final String code;
 

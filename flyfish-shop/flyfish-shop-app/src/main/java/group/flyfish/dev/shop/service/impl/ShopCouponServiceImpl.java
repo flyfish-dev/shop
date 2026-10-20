@@ -7,7 +7,9 @@ import group.flyfish.dev.shop.domain.po.ShopCoupon;
 import group.flyfish.dev.shop.domain.vo.ShopCouponVo;
 import group.flyfish.dev.shop.repository.ShopCouponRepository;
 import group.flyfish.dev.shop.service.CouponDiscount;
+import group.flyfish.dev.shop.service.OfferLinkDiscount;
 import group.flyfish.dev.shop.service.ShopCouponService;
+import group.flyfish.dev.shop.service.ShopOfferLinkService;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -24,9 +26,8 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class ShopCouponServiceImpl implements ShopCouponService {
 
-    private static final BigDecimal MIN_PAYABLE_AMOUNT = new BigDecimal("0.01");
-
     private final ShopCouponRepository shopCouponRepository;
+    private final ShopOfferLinkService shopOfferLinkService;
 
     @Override
     public Flux<ShopCouponVo> listCoupons() {
@@ -41,6 +42,9 @@ public class ShopCouponServiceImpl implements ShopCouponService {
                     ShopCoupon coupon = new ShopCoupon();
                     coupon.setCode(code);
                     coupon.setName(StringUtils.trim(dto.getName()));
+                    coupon.setSource(ShopCoupon.Source.MANUAL);
+                    coupon.setItemId(dto.getItemId());
+                    coupon.setSkuId(dto.getSkuId());
                     coupon.setType(dto.getType());
                     coupon.setDiscountValue(money(dto.getDiscountValue()));
                     coupon.setThresholdAmount(money(defaultMoney(dto.getThresholdAmount())));
@@ -64,6 +68,7 @@ public class ShopCouponServiceImpl implements ShopCouponService {
     public Mono<ShopCouponVo> updateCoupon(Long id, ShopCouponUpdateDto dto) {
         return shopCouponRepository.findById(id)
                 .switchIfEmpty(Mono.error(new BusinessException("COUPON_NOT_FOUND", "优惠券不存在")))
+                .map(this::requireManualCoupon)
                 .flatMap(coupon -> resolveCodeForUpdate(dto.getCode(), coupon)
                         .map(code -> applyUpdate(coupon, dto, code)))
                 .flatMap(coupon -> {
@@ -75,11 +80,20 @@ public class ShopCouponServiceImpl implements ShopCouponService {
 
     @Override
     public Mono<Void> deleteCoupon(Long id) {
-        return shopCouponRepository.deleteById(id);
+        return shopCouponRepository.findById(id)
+                .switchIfEmpty(Mono.error(new BusinessException("COUPON_NOT_FOUND", "优惠券不存在")))
+                .map(this::requireManualCoupon)
+                .flatMap(shopCouponRepository::delete)
+                .then();
     }
 
     @Override
     public Mono<CouponDiscount> applyCoupon(String code, BigDecimal originalAmount) {
+        return applyCoupon(code, originalAmount, null, null);
+    }
+
+    @Override
+    public Mono<CouponDiscount> applyCoupon(String code, BigDecimal originalAmount, Long itemId, Long skuId) {
         BigDecimal normalizedOriginal = money(originalAmount);
         String normalizedCode = normalizeCode(code);
         if (StringUtils.isBlank(normalizedCode)) {
@@ -87,7 +101,19 @@ public class ShopCouponServiceImpl implements ShopCouponService {
         }
         return shopCouponRepository.findByCode(normalizedCode)
                 .switchIfEmpty(Mono.error(new BusinessException("COUPON_NOT_FOUND", "优惠券不存在")))
-                .map(coupon -> calculateDiscount(coupon, normalizedOriginal));
+                .map(this::requireManualCoupon)
+                .map(coupon -> calculateDiscount(coupon, normalizedOriginal, itemId, skuId));
+    }
+
+    /**
+     * 专享链接背后的优惠券只是核销凭据，必须通过高强度链接令牌使用。
+     * 管理员普通维护、删除和客户输入优惠码都不能绕过这个边界。
+     */
+    private ShopCoupon requireManualCoupon(ShopCoupon coupon) {
+        if (coupon.getSource() == ShopCoupon.Source.OFFER_LINK) {
+            throw new BusinessException("COUPON_NOT_FOUND", "优惠券不存在");
+        }
+        return coupon;
     }
 
     @Override
@@ -99,8 +125,48 @@ public class ShopCouponServiceImpl implements ShopCouponService {
         return shopCouponRepository.increaseUsedCount(normalizedCode).then();
     }
 
+    @Override
+    public Mono<Void> claimForZeroAmountOrder(String code) {
+        String normalizedCode = normalizeCode(code);
+        if (StringUtils.isBlank(normalizedCode)) {
+            return Mono.error(new BusinessException("COUPON_CODE_REQUIRED", "零元订单必须使用有效优惠券"));
+        }
+        return shopCouponRepository.claimAvailableUse(normalizedCode)
+                .flatMap(updated -> updated == 1
+                        ? Mono.empty()
+                        : Mono.error(new BusinessException("COUPON_UNAVAILABLE", "优惠券状态已变化，请重新确认")));
+    }
+
+    @Override
+    public Mono<OfferLinkDiscount> applyOfferLink(String token, BigDecimal originalAmount, Long itemId, Long skuId,
+                                                  String currency, Long buyerId) {
+        return shopOfferLinkService.apply(token, originalAmount, itemId, skuId, currency, buyerId);
+    }
+
+    @Override
+    public Mono<Void> reserveOfferLink(Long offerLinkId, String orderNo, Long buyerId) {
+        return shopOfferLinkService.reserve(offerLinkId, orderNo, buyerId);
+    }
+
+    @Override
+    public Mono<Void> consumeOfferLink(Long offerLinkId, String orderNo, Long buyerId) {
+        return shopOfferLinkService.consume(offerLinkId, orderNo, buyerId);
+    }
+
+    @Override
+    public Mono<Void> releaseOfferLink(String orderNo) {
+        return shopOfferLinkService.release(orderNo);
+    }
+
+    @Override
+    public Mono<Void> releaseClosedOfferLinkReservations() {
+        return shopOfferLinkService.releaseClosedOrderReservations();
+    }
+
     private ShopCoupon applyUpdate(ShopCoupon coupon, ShopCouponUpdateDto dto, String code) {
         coupon.setCode(code);
+        coupon.setItemId(dto.getItemId());
+        coupon.setSkuId(dto.getSkuId());
         if (StringUtils.isNotBlank(dto.getName())) {
             coupon.setName(StringUtils.trim(dto.getName()));
         }
@@ -130,8 +196,8 @@ public class ShopCouponServiceImpl implements ShopCouponService {
         return coupon;
     }
 
-    private CouponDiscount calculateDiscount(ShopCoupon coupon, BigDecimal originalAmount) {
-        ensureCouponUsable(coupon, originalAmount);
+    private CouponDiscount calculateDiscount(ShopCoupon coupon, BigDecimal originalAmount, Long itemId, Long skuId) {
+        ensureCouponUsable(coupon, originalAmount, itemId, skuId);
         BigDecimal discountAmount;
         if (coupon.getType() == ShopCoupon.Type.DISCOUNT) {
             BigDecimal rate = coupon.getDiscountValue().divide(BigDecimal.TEN, 4, RoundingMode.HALF_UP);
@@ -151,8 +217,14 @@ public class ShopCouponServiceImpl implements ShopCouponService {
                 money(originalAmount));
     }
 
-    private void ensureCouponUsable(ShopCoupon coupon, BigDecimal originalAmount) {
+    private void ensureCouponUsable(ShopCoupon coupon, BigDecimal originalAmount, Long itemId, Long skuId) {
         validateCoupon(coupon);
+        if (coupon.getItemId() != null && !coupon.getItemId().equals(itemId)) {
+            throw new BusinessException("COUPON_ITEM_MISMATCH", "优惠券不适用于当前商品");
+        }
+        if (coupon.getSkuId() != null && !coupon.getSkuId().equals(skuId)) {
+            throw new BusinessException("COUPON_SKU_MISMATCH", "优惠券不适用于当前商品规格");
+        }
         LocalDateTime now = LocalDateTime.now();
         if (!Boolean.TRUE.equals(coupon.getEnabled())) {
             throw new BusinessException("COUPON_DISABLED", "优惠券不可用");
@@ -181,6 +253,9 @@ public class ShopCouponServiceImpl implements ShopCouponService {
         }
         if (coupon.getType() == null) {
             throw new BusinessException("COUPON_TYPE_REQUIRED", "优惠类型不能为空");
+        }
+        if (coupon.getSkuId() != null && coupon.getItemId() == null) {
+            throw new BusinessException("COUPON_SCOPE_INVALID", "限定商品规格时必须同时限定商品");
         }
         if (coupon.getDiscountValue() == null || coupon.getDiscountValue().signum() <= 0) {
             throw new BusinessException("COUPON_VALUE_INVALID", "优惠值必须大于0");
@@ -233,11 +308,10 @@ public class ShopCouponServiceImpl implements ShopCouponService {
     }
 
     private BigDecimal capDiscount(BigDecimal originalAmount, BigDecimal discountAmount) {
-        BigDecimal maxDiscount = originalAmount.subtract(MIN_PAYABLE_AMOUNT);
-        if (maxDiscount.signum() <= 0) {
+        if (originalAmount.signum() <= 0) {
             return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
-        return discountAmount.min(maxDiscount).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        return discountAmount.min(originalAmount).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal applyDiscountCouponCap(ShopCoupon coupon, BigDecimal discountAmount) {

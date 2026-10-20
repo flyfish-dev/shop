@@ -2,6 +2,8 @@ import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 import { PortalUsers } from '@/modules/auth/api.js';
 import { useLocalStorage } from '@vueuse/core';
+import { isXianyuRuntime, storageKey, authorizeXianyu } from '@/modules/xianyu/runtime.js';
+import { applicationPath } from '@/runtime/application.js';
 import {
   clearOAuthLoginIntent as clearStoredOAuthLoginIntent,
   consumeOAuthLoginIntent as consumeStoredOAuthLoginIntent,
@@ -9,9 +11,9 @@ import {
   rememberOAuthLoginIntent as rememberStoredOAuthLoginIntent
 } from '@/modules/auth/utils/oauthLoginIntent.js';
 
-const ACCESS_TOKEN_KEY = 'access_token';
-const AUTH_CHANGED_AT_KEY = 'auth_changed_at';
-const REDIRECTION_KEY = 'redirection';
+const ACCESS_TOKEN_KEY = storageKey('access_token');
+const AUTH_CHANGED_AT_KEY = storageKey('auth_changed_at');
+const REDIRECTION_KEY = storageKey('redirection');
 const OAUTH_LOGIN_REDIRECT_KEY = 'flyfish_oauth_login_redirect';
 const PROFILE_RETURN_KEY = 'flyfish_profile_return';
 const PROFILE_PROMPT_ACK_PREFIX = 'flyfish_profile_prompt_ack:';
@@ -144,8 +146,9 @@ const useClientStore = defineStore('client', () => {
   const rememberRedirect = (path = `${window.location.pathname}${window.location.search}${window.location.hash}`) => {
     const target = safeInternalPath(path, '');
     if (shouldRememberRedirect(target)) {
-      redirection.value = target;
-      window.localStorage.setItem(REDIRECTION_KEY, target);
+      const browserTarget = target.includes('#/') ? target : applicationPath(target);
+      redirection.value = browserTarget;
+      window.localStorage.setItem(REDIRECTION_KEY, browserTarget);
     }
   };
 
@@ -159,7 +162,7 @@ const useClientStore = defineStore('client', () => {
   };
 
   const clearRedirectIfMatches = path => {
-    if (redirection.value && pathsEqual(redirection.value, path)) {
+    if (redirection.value && pathsEqual(redirection.value, applicationPath(path))) {
       consumeRedirect('/');
     }
   };
@@ -341,7 +344,7 @@ const useClientStore = defineStore('client', () => {
     const route = router.route;
     currentPath.value = route.path;
     if (isAuthenticated.value) {
-      const oauthIntent = consumeOAuthLoginIntent(route.fullPath);
+      const oauthIntent = consumeOAuthLoginIntent(applicationPath(route.fullPath));
       if (oauthIntent?.skipProfilePrompt) {
         markProfilePromptSeen();
       }
@@ -353,12 +356,24 @@ const useClientStore = defineStore('client', () => {
       redirectAfterAuthentication(router, '/');
       return;
     }
+    if (route.path === '/' && isAuthenticated.value && redirection.value && !isXianyuRuntime) {
+      const target = resolvePostLoginTarget(user.value, '/');
+      if (target !== '/') {
+        router.replace(target);
+        return;
+      }
+    }
     if (routeRequiresAuth(route) && !isAuthenticated.value) {
       rememberRedirect(route.fullPath);
+      if (isXianyuRuntime) {
+        await authorizeXianyu(token => setToken(token));
+        await refreshUser();
+        return;
+      }
       router.replace('/login');
       return;
     }
-    if (isAuthenticated.value && route.path !== '/account/profile') {
+    if (isAuthenticated.value && route.path !== '/account/profile' && !isXianyuRuntime) {
       const target = peekRedirect(route.fullPath);
       if (shouldPromptProfileCompletion()) {
         router.replace(profileTarget(target));

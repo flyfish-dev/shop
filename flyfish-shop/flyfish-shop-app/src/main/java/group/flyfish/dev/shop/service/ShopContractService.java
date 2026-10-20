@@ -32,7 +32,11 @@ public interface ShopContractService {
 
     Mono<Void> deleteContract(Long id);
 
-    Mono<ShopContractFileVo> uploadContractFile(Long contractId, FilePart file);
+    default Mono<ShopContractFileVo> uploadContractFile(Long contractId, FilePart file) {
+        return uploadContractFile(contractId, null, null, file);
+    }
+
+    Mono<ShopContractFileVo> uploadContractFile(Long contractId, String locale, String documentKey, FilePart file);
 
     Mono<ShopContractFileVo> updateContractFile(Long contractId, Long fileId, ShopContractFileUpdateDto dto);
 
@@ -54,15 +58,27 @@ public interface ShopContractService {
 
     Flux<ShopContractAgreementVo> getItemAgreements(Long itemId, Long skuId);
 
+    Flux<ShopContractAgreementVo> getItemAgreements(Long itemId, Long skuId, List<Long> additionalContractIds);
+
+    Flux<ShopContractAgreementVo> getItemAgreements(Long itemId, Long skuId, List<Long> additionalContractIds,
+                                                    String locale);
+
     Mono<ShopContractSignatureProgressVo> agreeFile(Long itemId, ShopContractSignDto dto,
                                                     PortalUserVo buyer, ServerWebExchange exchange);
 
     Mono<ShopContractSignatureProgressVo> agreeFile(Long itemId, Long skuId, ShopContractSignDto dto,
                                                     PortalUserVo buyer, ServerWebExchange exchange);
 
+    Mono<ShopContractSignatureProgressVo> agreeFile(Long itemId, Long skuId, List<Long> additionalContractIds,
+                                                    ShopContractSignDto dto, PortalUserVo buyer,
+                                                    ServerWebExchange exchange);
+
     Mono<Void> requireSigned(Long itemId, PortalUserVo buyer, String signToken);
 
     Mono<Void> requireSigned(Long itemId, Long skuId, PortalUserVo buyer, String signToken);
+
+    Mono<Void> requireSigned(Long itemId, Long skuId, List<Long> additionalContractIds,
+                            PortalUserVo buyer, String signToken);
 
     Mono<Void> bindOrder(String signToken, String orderNo, Long itemId, Long buyerId);
 

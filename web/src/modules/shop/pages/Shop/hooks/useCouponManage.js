@@ -6,6 +6,8 @@ import { createCoupon, deleteCoupon, getCoupons, updateCoupon } from '../apis/ma
 const DEFAULT_FORM = {
   code: '',
   name: '',
+  itemId: null,
+  skuId: null,
   type: 'REDUCTION',
   discountValue: 1,
   thresholdAmount: 0,
@@ -59,6 +61,8 @@ export const useCouponManage = () => {
     Object.assign(formState, {
       code: record.code,
       name: record.name,
+      itemId: record.itemId || null,
+      skuId: record.skuId || null,
       type: record.type,
       discountValue: Number(record.discountValue || 0),
       thresholdAmount: Number(record.thresholdAmount || 0),
@@ -81,6 +85,8 @@ export const useCouponManage = () => {
     return {
       code: formState.code?.trim() || undefined,
       name: formState.name?.trim(),
+      itemId: formState.itemId || null,
+      skuId: formState.skuId || null,
       type: formState.type,
       discountValue: formState.discountValue,
       thresholdAmount: formState.thresholdAmount || 0,

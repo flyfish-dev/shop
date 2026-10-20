@@ -19,7 +19,8 @@
 首次启动会构建 linux/amd64 native 镜像，耗时较长，取决于机器性能和 Docker 构建缓存。构建完成后访问：
 
 ```text
-http://127.0.0.1:9999
+飞鱼小铺：http://127.0.0.1:9999/
+低代码平台：http://127.0.0.1:9999/lowcode/
 ```
 
 停止服务：
@@ -118,6 +119,7 @@ Apple Silicon 机器会通过 Docker 运行 linux/amd64 构建，首次构建会
 
 ```bash
 curl -fsS http://127.0.0.1:9999/shop/item-list >/dev/null
+curl -fsS http://127.0.0.1:9999/lowcode/ >/dev/null
 ```
 
 后端匿名用户接口：

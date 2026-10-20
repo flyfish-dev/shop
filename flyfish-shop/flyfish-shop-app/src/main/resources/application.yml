@@ -2,6 +2,14 @@ server:
   port: ${FLYFISH_SHOP_PORT:10082}
 
 spring:
+  mail:
+    properties:
+      mail.smtp.connectiontimeout: 10000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
+      mail.smtps.connectiontimeout: 10000
+      mail.smtps.timeout: 10000
+      mail.smtps.writetimeout: 10000
   config:
     import:
       - classpath:/config/flyfish-common.yml

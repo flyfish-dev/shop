@@ -1,4 +1,4 @@
-const DEFAULT_ICON = '/favicon.ico';
+const DEFAULT_ICON = '/favicon.ico?v=flyfish-brand-20260805';
 const AUTO_CLOSE_MS = 8000;
 
 export const browserNotificationSupported = () => {

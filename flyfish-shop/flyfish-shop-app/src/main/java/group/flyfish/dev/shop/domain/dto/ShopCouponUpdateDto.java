@@ -18,6 +18,12 @@ public class ShopCouponUpdateDto {
 
     private String name;
 
+    /** 为空表示全店可用。 */
+    private Long itemId;
+
+    /** 为空表示商品下全部SKU可用；设置时必须同时设置商品。 */
+    private Long skuId;
+
     private ShopCoupon.Type type;
 
     @DecimalMin(value = "0.01", message = "优惠值必须大于0")

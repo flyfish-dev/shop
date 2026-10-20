@@ -92,6 +92,11 @@ export const shopRoutes = {
             component: ShopManageWorkbench,
             meta: shopMeta()
           },
+          '/xianyu': {
+            name: '闲鱼渠道',
+            component: lazy(() => import('@/modules/xianyu/XianyuManage.vue')),
+            meta: shopMeta()
+          },
           '/shops': {
             name: '店铺管理',
             component: ShopManage,

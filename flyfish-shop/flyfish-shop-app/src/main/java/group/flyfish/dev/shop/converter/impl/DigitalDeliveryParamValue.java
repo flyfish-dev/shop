@@ -34,6 +34,9 @@ public class DigitalDeliveryParamValue implements ShopItemParamValue {
      */
     private ShopOrderFormParamValue orderForm;
 
+    /** 交付完成后的运行与验证入口。 */
+    private DeliveryExperienceParamValue deliveryExperience;
+
     public void normalize() {
         title = StringUtils.defaultIfBlank(StringUtils.trimToNull(title), "数字商品提货内容");
         content = StringUtils.trimToNull(content);
@@ -41,6 +44,9 @@ public class DigitalDeliveryParamValue implements ShopItemParamValue {
                 .filter(attachment -> attachment != null && StringUtils.isNotBlank(attachment.getUrl()))
                 .limit(8)
                 .toList();
+        if (deliveryExperience != null) {
+            deliveryExperience.normalize();
+        }
     }
 
     public boolean hasDeliveryContent() {

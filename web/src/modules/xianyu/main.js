@@ -1,0 +1,12 @@
+import { createApp } from 'vue';
+import { createPinia } from 'pinia';
+import Antd, { message } from 'ant-design-vue';
+import 'ant-design-vue/dist/reset.css';
+import router from '@/router';
+import { installI18n } from '@/i18n/index.js';
+import { get, post } from '@/network/request.js';
+import App from './MiniApp.vue';
+const app = createApp(App).use(createPinia()).use(Antd).use(router);
+installI18n(app);
+Object.assign(app.config.globalProperties, { $message: message, $get: get, $post: post });
+app.mount('#app');

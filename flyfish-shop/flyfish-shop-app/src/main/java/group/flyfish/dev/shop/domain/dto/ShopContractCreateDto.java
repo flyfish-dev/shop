@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 合同创建参数。
@@ -23,6 +24,8 @@ public class ShopContractCreateDto {
     private String description;
 
     private List<String> tags;
+
+    private Map<String, ShopContractI18nDto> i18n;
 
     private Boolean enabled = true;
 

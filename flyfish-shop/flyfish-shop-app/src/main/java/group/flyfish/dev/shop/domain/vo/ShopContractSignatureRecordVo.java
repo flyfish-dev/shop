@@ -30,9 +30,17 @@ public class ShopContractSignatureRecordVo {
 
     private String contractType;
 
+    private String contractLocale;
+
+    private String documentKey;
+
     private String fileName;
 
     private String fileUrl;
+
+    private String fileHash;
+
+    private Integer fileVersion;
 
     private Integer readPercent;
 

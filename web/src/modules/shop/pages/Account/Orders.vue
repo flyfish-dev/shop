@@ -15,6 +15,7 @@ import AttachmentList from '@/components/Attachments/AttachmentList.vue';
 import { openCustomerService } from '@/modules/shop/components/CustomerService/customerServiceBus.js';
 import { extractOrderDelivery, getMyOrders } from '@/modules/shop/pages/Shop/apis/api.js';
 import { useDeliveryFiles } from '@/modules/shop/pages/Shop/hooks/useDeliveryFiles.js';
+import OrderDeliveryExperience from '@/modules/shop/pages/Shop/components/OrderDeliveryExperience.vue';
 import { sortOrdersByNewest } from '@/modules/shop/utils/orderSort.js';
 import { formatRevenueBreakdown, formatShopMoney, normalizeShopCurrency } from '@/modules/shop/utils/shopMoney.js';
 import {
@@ -22,8 +23,10 @@ import {
   deliveryModeText,
   deliveryStatusColor,
   deliveryStatusText,
+  isOrderRefundFrozen,
   orderStatusColor,
-  orderStatusText
+  orderStatusText,
+  refundStatusText
 } from '@/modules/shop/utils/shopDelivery.js';
 
 const loading = ref(false);
@@ -44,6 +47,12 @@ const totalAmount = computed(() => {
 const deliveredCount = computed(() => orders.value.filter(order => order.status === 'DELIVERED').length);
 const hasDeliveryFiles = delivery => Boolean((delivery?.files || []).length);
 const isSensitiveDelivery = delivery => delivery?.sensitive === true;
+const deliveryTypeText = type => ({
+  LICENSE: t('orders.license'),
+  DIGITAL: t('orders.digitalProduct'),
+  EXPERIENCE: t('orders.deliveryExperienceTitle'),
+  MIXED: t('orders.combinedDelivery')
+})[type] || t('orders.deliveryContent');
 
 const loadOrders = async () => {
   loading.value = true;
@@ -76,7 +85,7 @@ const contactService = order => {
   });
 };
 
-const canExtract = order => Boolean(order?.extractable);
+const canExtract = order => Boolean(order?.extractable) && !isOrderRefundFrozen(order);
 
 const extractDelivery = async order => {
   if (!order?.orderNo || extracting.value) {
@@ -145,6 +154,13 @@ onMounted(loadOrders);
                       <a-tag :color='deliveryStatusColor(item.deliveryStatus)'>
                         {{ deliveryStatusText(item.deliveryStatus, item.deliveryMode, t) }}
                       </a-tag>
+                      <a-tag v-if='item.refundState && item.refundState !== "NONE"'
+                        :color='isOrderRefundFrozen(item) ? "orange" : "default"'>
+                        {{ refundStatusText(item.refundState, t) }}
+                      </a-tag>
+                      <a-tag v-if='item.settlementSource === "EXTERNAL_CONFIRMED"' color='purple'>
+                        {{ t('orders.externalConfirmed') }}
+                      </a-tag>
                     </a-space>
                   </div>
                   <div class='order-meta'>
@@ -170,6 +186,7 @@ onMounted(loadOrders);
                     <span>{{ t('orders.quantity', { count: item.count || 1 }) }}</span>
                     <span v-if='item.skuCode'>SKU {{ item.skuCode }}</span>
                     <span>{{ t('orders.amount', { amount: formatShopMoney(item.amount, item.currency) }) }}</span>
+                    <span v-if='Number(item.refundAmount || 0) > 0'>{{ t('orders.refundAmount', { amount: formatShopMoney(item.refundAmount, item.currency) }) }}</span>
                     <span v-if='Number(item.discountAmount || 0) > 0'>{{ t('orders.discount', { amount: formatShopMoney(item.discountAmount, item.currency) }) }}</span>
                     <span v-if='item.couponCode'>{{ t('orders.couponCode', { code: item.couponCode }) }}</span>
                     <span>{{ item.paidTime || item.createTime }}</span>
@@ -192,7 +209,7 @@ onMounted(loadOrders);
     >
       <div class='delivery-extract'>
         <a-tag v-if='extractedDelivery?.deliveryType' color='blue'>
-          {{ extractedDelivery.deliveryType === 'LICENSE' ? t('orders.license') : t('orders.digitalProduct') }}
+          {{ deliveryTypeText(extractedDelivery.deliveryType) }}
         </a-tag>
         <a-tag v-if='extractedDelivery?.licenseNo' color='green'>
           {{ extractedDelivery.licenseNo }}
@@ -206,7 +223,7 @@ onMounted(loadOrders);
         <section v-if='hasDeliveryFiles(extractedDelivery)' class='delivery-files'>
           <article
             v-for='file in extractedDelivery.files'
-            :key='file.code'
+            :key='fileKey(extractedDelivery, file)'
             class='delivery-file-card'
           >
             <div class='delivery-file-card__icon'>
@@ -215,6 +232,7 @@ onMounted(loadOrders);
             <div>
               <strong>{{ file.name }}</strong>
               <span>{{ file.description }}</span>
+              <a-tag v-if='file.licenseNo' color='green'>{{ file.licenseNo }}</a-tag>
             </div>
             <a-button
               class='delivery-file-card__download'
@@ -230,6 +248,7 @@ onMounted(loadOrders);
         </section>
         <pre v-if='extractedDelivery?.content && !isSensitiveDelivery(extractedDelivery)'>{{ extractedDelivery.content }}</pre>
         <attachment-list :attachments='extractedDelivery?.attachments || []' />
+        <order-delivery-experience :experience='extractedDelivery?.experience' />
         <a-button
           v-if='extractedDelivery?.content && !isSensitiveDelivery(extractedDelivery)'
           type='primary'

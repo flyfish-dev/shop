@@ -29,6 +29,11 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class LicenseDeliveryService implements ShopDeliveryHandler {
 
+    @Override
+    public boolean recoverySafe() {
+        return true;
+    }
+
     private static final String ACTOR = "auto-delivery";
     private static final String ROOT_NAME = "external-license-provider";
     private static final String ALGORITHM = "EXTERNAL";
@@ -57,6 +62,14 @@ public class LicenseDeliveryService implements ShopDeliveryHandler {
                             .flatMap(license -> upsertDelivery(order, item, param, license)
                                     .thenReturn(DeliveryResult.ok("授权许可已签发，可在我的订单中提取授权文件")))));
         });
+    }
+
+    /**
+     * 永久许可证补发由外部签发服务实现，公开版不会在本地复制专有签发逻辑。
+     */
+    public Mono<ShopLicenseKeyPair> reissuePermanent(ShopOrder order, ShopItem item, PortalUserVo buyer,
+                                                     String reason, String actor) {
+        return Mono.error(new ServiceException("开源版不包含商业授权补发器，请接入私有签发服务后启用该能力"));
     }
 
     private Mono<ShopLicenseRoot> defaultRoot() {

@@ -3,6 +3,7 @@ import {
   AlipayCircleOutlined,
   CheckCircleFilled,
   CreditCardOutlined,
+  WalletOutlined,
   WechatOutlined
 } from '@ant-design/icons-vue';
 
@@ -26,7 +27,8 @@ const emit = defineEmits(['update:modelValue']);
 const icons = {
   'h5zhifu-wechat': WechatOutlined,
   'h5zhifu-alipay': AlipayCircleOutlined,
-  stripe: CreditCardOutlined
+  stripe: CreditCardOutlined,
+  xianyu: WalletOutlined
 };
 </script>
 

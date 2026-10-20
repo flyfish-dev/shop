@@ -19,8 +19,14 @@ import AttachmentList from '@/components/Attachments/AttachmentList.vue';
 import AttachmentUpload from '@/components/Attachments/AttachmentUpload.vue';
 import { openCustomerService } from '@/modules/shop/components/CustomerService/customerServiceBus.js';
 import { getOrders, getShopItems } from '../../apis/api.js';
-import { getOrderDelivery, retryOrderDelivery, updateOrderDelivery } from '../../apis/manage.js';
+import {
+  getOrderDelivery,
+  reissuePermanentLicense,
+  retryOrderDelivery,
+  updateOrderDelivery
+} from '../../apis/manage.js';
 import { useDeliveryFiles } from '../../hooks/useDeliveryFiles.js';
+import OrderDeliveryExperience from '../../components/OrderDeliveryExperience.vue';
 import useClientStore from '@/modules/auth/store/client.js';
 import { sortOrdersByNewest } from '@/modules/shop/utils/orderSort.js';
 import { formatRevenueBreakdown, formatShopMoney, normalizeShopCurrency } from '@/modules/shop/utils/shopMoney.js';
@@ -38,6 +44,10 @@ const saving = ref(false);
 const deliveryLoading = ref(false);
 const deliveryUploading = ref(false);
 const retryingOrderNo = ref('');
+const reissueOpen = ref(false);
+const reissuing = ref(false);
+const reissueReason = ref('');
+const reissueOrder = ref(null);
 const dataSource = ref([]);
 const orderItemOptions = ref([]);
 const detailOpen = ref(false);
@@ -139,9 +149,17 @@ const orderMerchantNo = record => normalizedText(record?.transactionCode)
   || normalizedText(record?.properties?.h5zhifuTradeNo)
   || normalizedText(record?.properties?.tradeNo);
 
+const paymentProviderText = provider => ({
+  coupon: '优惠券全额抵扣',
+  h5zhifu: 'H5支付',
+  stripe: 'Stripe',
+  'external-confirmed': '线下签约付款确认'
+})[normalizedText(provider).toLowerCase()] || normalizedText(provider) || '-';
+
 const deliveryTypeText = type => {
   if (type === 'LICENSE') return '授权许可';
   if (type === 'DIGITAL') return '数字内容';
+  if (type === 'EXPERIENCE') return '使用指引';
   if (type === 'MIXED') return '组合交付';
   return type || '交付内容';
 };
@@ -319,6 +337,31 @@ const retryDelivery = async record => {
   }
 };
 
+const openPermanentReissue = record => {
+  reissueOrder.value = record;
+  reissueReason.value = '';
+  reissueOpen.value = true;
+};
+
+const submitPermanentReissue = async () => {
+  const reason = reissueReason.value.trim();
+  if (!reason) {
+    message.warning('请填写永久许可证补发原因');
+    return;
+  }
+  reissuing.value = true;
+  try {
+    await reissuePermanentLicense(reissueOrder.value.orderNo, { reason });
+    message.success('永久许可证已补发，客户可在我的订单下载最新文件');
+    reissueOpen.value = false;
+    await loadData();
+  } catch (e) {
+    message.error(e.message || '永久许可证补发失败');
+  } finally {
+    reissuing.value = false;
+  }
+};
+
 onMounted(async () => {
   await Promise.all([
     loadOrderItems(),
@@ -435,10 +478,13 @@ onMounted(async () => {
                       {{ deliveryStatusText(item.deliveryStatus, item.deliveryMode) }}
                     </a-tag>
                     <a-tag v-if="item.couponCode" color="green">优惠：{{ item.couponCode }}</a-tag>
+                    <a-tag v-if="item.settlementSource === 'EXTERNAL_CONFIRMED'" color="purple">
+                      已签约已付款
+                    </a-tag>
                   </a-space>
 
                   <div class="order-meta">
-                    <span v-if="item.paymentProvider">支付 {{ item.paymentProvider }}</span>
+                    <span v-if="item.paymentProvider">支付 {{ paymentProviderText(item.paymentProvider) }}</span>
                     <span>创建 {{ item.createTime }}</span>
                     <span v-if="item.paidTime">支付 {{ item.paidTime }}</span>
                     <span v-if="item.expireTime && ['PENDING', 'PAYING'].includes(item.status)">过期 {{ item.expireTime }}</span>
@@ -504,6 +550,14 @@ onMounted(async () => {
                   >
                     {{ retryButtonText(item) }}
                   </a-button>
+                  <a-button
+                    v-if="item.permanentLicenseReissueable"
+                    size="small"
+                    @click="openPermanentReissue(item)"
+                  >
+                    <template #icon><safety-certificate-outlined /></template>
+                    补发永久许可证
+                  </a-button>
                 </div>
               </article>
             </a-list-item>
@@ -524,6 +578,32 @@ onMounted(async () => {
         @showSizeChange="handlePageChange"
       />
     </a-card>
+
+    <a-modal
+      v-model:open="reissueOpen"
+      title="补发永久商业许可证"
+      :confirm-loading="reissuing"
+      ok-text="确认补发"
+      @ok="submitPermanentReissue"
+    >
+      <a-alert
+        type="warning"
+        show-icon
+        message="补发后，我的订单将下载最新许可证；原许可证保留在审计历史中。"
+      />
+      <a-form layout="vertical" class="reissue-form">
+        <a-form-item label="订单号">
+          <a-input :value="reissueOrder?.orderNo" disabled />
+        </a-form-item>
+        <a-form-item label="补发原因" required>
+          <a-textarea
+            v-model:value="reissueReason"
+            :maxlength="512"
+            :auto-size="{ minRows: 3, maxRows: 6 }"
+          />
+        </a-form-item>
+      </a-form>
+    </a-modal>
 
     <a-drawer v-model:open="detailOpen" class="order-manage-drawer" title="订单详情" :width="detailDrawerWidth">
       <div v-if="selectedOrder" class="detail-drawer">
@@ -593,7 +673,7 @@ onMounted(async () => {
             </div>
             <div class="detail-field">
               <span class="detail-label">支付渠道</span>
-              <strong>{{ selectedOrder.paymentProvider || '-' }}</strong>
+              <strong>{{ paymentProviderText(selectedOrder.paymentProvider) }}</strong>
             </div>
             <div class="detail-field">
               <span class="detail-label">订单状态</span>
@@ -617,6 +697,24 @@ onMounted(async () => {
               <span class="detail-label">数量</span>
               <strong>{{ selectedOrder.count || 1 }}</strong>
             </div>
+            <template v-if="selectedOrder.settlementSource === 'EXTERNAL_CONFIRMED'">
+              <div class="detail-field">
+                <span class="detail-label">合同确认编号</span>
+                <strong class="mono-value">{{ selectedOrder.externalContractReference || '-' }}</strong>
+              </div>
+              <div class="detail-field">
+                <span class="detail-label">付款确认编号</span>
+                <strong class="mono-value">{{ selectedOrder.externalPaymentReference || '-' }}</strong>
+              </div>
+              <div class="detail-field">
+                <span class="detail-label">确认操作人</span>
+                <strong>{{ selectedOrder.externalConfirmedBy || '-' }}</strong>
+              </div>
+              <div class="detail-field detail-field--full">
+                <span class="detail-label">确认备注</span>
+                <strong>{{ selectedOrder.externalConfirmationNote || '-' }}</strong>
+              </div>
+            </template>
           </div>
         </section>
 
@@ -753,7 +851,7 @@ onMounted(async () => {
             </div>
             <article
               v-for="file in deliveryDetail.files"
-              :key="file.code"
+              :key="fileKey(deliveryDetail, file)"
               class="delivery-file-card"
             >
               <div class="delivery-file-card__icon">
@@ -762,6 +860,7 @@ onMounted(async () => {
               <div>
                 <strong>{{ file.name }}</strong>
                 <span>{{ file.description }}</span>
+                <a-tag v-if="file.licenseNo" color="green">{{ file.licenseNo }}</a-tag>
               </div>
               <a-button
                 class="delivery-file-card__download"
@@ -786,6 +885,8 @@ onMounted(async () => {
             </div>
             <pre>{{ deliveryDetail.content }}</pre>
           </section>
+
+          <order-delivery-experience :experience="deliveryDetail.experience" />
 
           <section class="delivery-files">
             <div class="section-title">

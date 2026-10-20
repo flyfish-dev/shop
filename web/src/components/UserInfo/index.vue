@@ -16,6 +16,10 @@ import { useRouter } from '@/router/index.js';
 import { usePortalCapabilities } from '@/modules/portal/usePortalCapabilities.js';
 
 const props = defineProps({
+  appearance: {
+    type: String,
+    default: 'default'
+  },
   compact: {
     type: Boolean,
     default: false
@@ -38,6 +42,8 @@ onMounted(async () => {
 const avatar = computed(() => user.value?.avatar || '');
 const username = computed(() => user.value?.username || t('user.notLoggedIn'));
 const showName = computed(() => !props.compact);
+const storefront = computed(() => props.appearance === 'storefront');
+const loginLabel = computed(() => t(storefront.value ? 'storefront.login' : 'common.login'));
 
 const login = () => {
   store.rememberRedirect(router.route.fullPath);
@@ -105,7 +111,7 @@ const handleMenuClick = ({ key }) => {
 </script>
 
 <template>
-  <div class='user-container' :class='{ compact }'>
+  <div class='user-container' :class='{ compact, "user-container-storefront": storefront }'>
     <a-dropdown
       v-if='user?.id'
       trigger='click'
@@ -126,12 +132,13 @@ const handleMenuClick = ({ key }) => {
     </a-dropdown>
     <a-button
       v-else
-      type='link'
+      :type='storefront ? "default" : "link"'
       class='login-button'
-      :icon='h(LoginOutlined)'
+      :icon='h(storefront ? UserOutlined : LoginOutlined)'
+      :aria-label='loginLabel'
       @click='login'
     >
-      <span class='login-button-text'>{{ t('common.login') }}</span>
+      <span class='login-button-text'>{{ loginLabel }}</span>
     </a-button>
   </div>
 </template>
@@ -241,6 +248,42 @@ const handleMenuClick = ({ key }) => {
 
   .login-button-text {
     display: none;
+  }
+}
+
+.user-container-storefront {
+  .login-button {
+    width: auto;
+    min-width: 78px;
+    height: 36px;
+    gap: 7px;
+    padding: 0 14px;
+    border: 1px solid #17825c;
+    border-radius: 6px;
+    background: #17825c;
+    color: #fff;
+    box-shadow: none;
+    font-size: 13px;
+    line-height: 1;
+    transition: background .18s, border-color .18s;
+
+    &:hover, &:active { background: #126846; border-color: #126846; color: #fff; }
+    &:focus-visible { outline: 2px solid #17825c; outline-offset: 3px; }
+    :deep(.anticon) { color: inherit; font-size: 14px; margin: 0; }
+    :deep(.ant-btn-icon) { margin: 0; }
+    .login-button-text { display: inline; margin-inline-start: 0; }
+  }
+
+  .user-trigger:hover { color: #157753; background: #f0f7f3; }
+
+  @media (max-width: 480px) {
+    .login-button { min-width: 0; padding-inline: 10px; gap: 5px; font-size: 12px; }
+  }
+  @media (max-width: 360px) {
+    .login-button :deep(.anticon) { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .login-button { transition: none; }
   }
 }
 </style>

@@ -9,14 +9,16 @@ import group.flyfish.dev.git.client.GiteeRepositoryClient;
 import group.flyfish.dev.git.client.GithubRepositoryClient;
 import group.flyfish.dev.git.domain.GitProvider;
 import group.flyfish.dev.git.service.GitAccessTokenService;
-import group.flyfish.dev.shop.git.GitRepositoryAccessResolver;
-import group.flyfish.dev.shop.git.ResolvedGitRepository;
+import group.flyfish.dev.shop.converter.ShopItemDeliveryPlan;
 import group.flyfish.dev.shop.converter.ShopItemParamValue;
 import group.flyfish.dev.shop.converter.impl.GitRepositoryAccessParamValue;
 import group.flyfish.dev.shop.domain.dto.ShopOrderDto;
+import group.flyfish.dev.shop.domain.po.ShopDeliveryAction;
 import group.flyfish.dev.shop.domain.po.ShopItem;
 import group.flyfish.dev.shop.domain.po.ShopOrder;
 import group.flyfish.dev.shop.domain.vo.ShopPurchaseAvailabilityVo;
+import group.flyfish.dev.shop.git.GitRepositoryAccessResolver;
+import group.flyfish.dev.shop.git.ResolvedGitRepository;
 import group.flyfish.dev.shop.repository.ShopOrderRepository;
 import group.flyfish.dev.auth.api.user.UserAuthorizationUtils;
 import group.flyfish.dev.auth.api.user.PortalUserVo;
@@ -105,7 +107,8 @@ public class GitRepositoryAccessOrderChecker {
         }
         return repositoryAccessResolver.resolve(param)
                 .collectList()
-                .flatMap(repositories -> checkResolvedRepositories(repositories, buyer))
+                .flatMap(repositories -> checkResolvedRepositories(repositories, buyer,
+                        blocksWhenRepositoriesFulfilled(item)))
                 .onErrorResume(BusinessException.class, e -> Mono.just(
                         unavailable(null, List.of(), e.getCode(), e.getMessage())));
     }
@@ -145,26 +148,39 @@ public class GitRepositoryAccessOrderChecker {
     }
 
     private Mono<ShopPurchaseAvailabilityVo> checkResolvedRepositories(List<ResolvedGitRepository> repositories,
-                                                                       PortalUserVo buyer) {
+                                                                       PortalUserVo buyer,
+                                                                       boolean blockWhenRepositoriesFulfilled) {
         if (repositories.isEmpty()) {
             return Mono.just(unavailable(null, List.of(), "GIT_REPOSITORY_REQUIRED", "商品仓库参数未配置完整"));
         }
         List<String> visibleRepositories = repositoryFullNames(repositories);
-        return findGitPurchaseConflict(buyer.getId(), repositories)
+        Mono<GitPurchaseConflict> purchaseConflict = blockWhenRepositoriesFulfilled
+                ? findGitPurchaseConflict(buyer.getId(), repositories)
+                : Mono.empty();
+        return purchaseConflict
                 .map(conflict -> unavailable(primaryProvider(repositories), visibleRepositories,
                         "GIT_REPOSITORY_ALREADY_PURCHASED",
                         duplicatePurchaseMessage(primaryProvider(repositories), conflict.repositories()), conflict))
                 .switchIfEmpty(checkRemoteAccess(repositories, buyer)
-                        .map(summary -> toAvailability(repositories, visibleRepositories, summary)));
+                        .map(summary -> toAvailability(repositories, visibleRepositories, summary,
+                                blockWhenRepositoriesFulfilled)));
     }
 
     private ShopPurchaseAvailabilityVo toAvailability(List<ResolvedGitRepository> repositories,
                                                       List<String> visibleRepositories,
-                                                      RemoteAccessSummary summary) {
+                                                      RemoteAccessSummary summary,
+                                                      boolean blockWhenRepositoriesFulfilled) {
         List<String> opened = summary.openedRepositories();
         List<String> pending = summary.pendingRepositories();
         List<String> insufficient = summary.insufficientRepositories();
         if (!opened.isEmpty() && opened.size() == repositories.size()) {
+            if (!blockWhenRepositoriesFulfilled) {
+                ShopPurchaseAvailabilityVo vo = ShopPurchaseAvailabilityVo.available(
+                        primaryProvider(repositories), visibleRepositories);
+                fillRemoteStatus(vo, summary, opened, pending, insufficient);
+                vo.setMessage(compositeDeliveryMessage(opened));
+                return vo;
+            }
             ShopPurchaseAvailabilityVo vo = unavailable(primaryProvider(repositories), visibleRepositories,
                     "GIT_REPOSITORY_ALREADY_OPENED", remoteOpenedMessage(summary.firstUsername(), opened));
             fillRemoteStatus(vo, summary, opened, pending, insufficient);
@@ -175,6 +191,15 @@ public class GitRepositoryAccessOrderChecker {
         fillRemoteStatus(vo, summary, opened, pending, insufficient);
         vo.setMessage(remoteStatusMessage(summary));
         return vo;
+    }
+
+    /**
+     * 纯仓库商品在目标权限全部满足后禁止重复购买；同时包含许可证等交付动作的组合商品仍可购买。
+     * 仓库交付处理器会幂等跳过已有权限，后续处理器继续完成新的许可证或其他交付内容。
+     */
+    private boolean blocksWhenRepositoriesFulfilled(ShopItem item) {
+        List<ShopDeliveryAction> actions = ShopItemDeliveryPlan.actions(item);
+        return actions.size() == 1 && actions.contains(ShopDeliveryAction.GIT_REPOSITORY_ACCESS);
     }
 
     private void fillRemoteStatus(ShopPurchaseAvailabilityVo vo, RemoteAccessSummary summary, List<String> opened,
@@ -644,6 +669,11 @@ public class GitRepositoryAccessOrderChecker {
 
     private String remoteOpenedMessage(String username, List<String> repositories) {
         return "当前绑定账号 " + username + " 已拥有仓库 " + repositoryText(repositories) + " 的所需权限，无需重复购买。";
+    }
+
+    private String compositeDeliveryMessage(List<String> repositories) {
+        return "当前绑定账号已拥有仓库 " + repositoryText(repositories)
+                + " 的所需权限；仓库权限将保持不变，付款后会继续完成本商品的其他交付内容。";
     }
 
     private String remoteStatusMessage(RemoteAccessSummary summary) {

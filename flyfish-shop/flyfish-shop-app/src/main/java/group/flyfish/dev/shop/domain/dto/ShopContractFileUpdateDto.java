@@ -9,6 +9,10 @@ import lombok.Data;
 @Data
 public class ShopContractFileUpdateDto {
 
+    private String documentKey;
+
+    private String locale;
+
     private String fileName;
 
     private Boolean enabled;

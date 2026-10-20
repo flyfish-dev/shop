@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { applicationPath, isLowcodeApp } from '@/runtime/application.js';
 import { message } from 'ant-design-vue';
 import {
   CheckCircleFilled,
@@ -306,7 +307,7 @@ const bindPlatform = async platform => {
   bindingProvider.value = platform.type;
   try {
     store.clearOAuthLoginRedirect();
-    const url = await PortalUsers.prepareBinding(platform.type, '/account/profile');
+    const url = await PortalUsers.prepareBinding(platform.type, applicationPath('/account/profile'));
     location.href = url || `/oauth/${platform.type}`;
   } catch (e) {
     message.error(e.message || '发起账号绑定失败');
@@ -424,6 +425,7 @@ const wechatOverlayVisible = computed(() => ['LOADING', 'ERROR', 'EXPIRED'].incl
         <h2>个人信息维护</h2>
       </div>
       <div class='profile-header-actions'>
+        <router-link v-if='!isLowcodeApp' href='/account/channel-link'><a-button>小铺账号关联</a-button></router-link>
         <a-button
           v-if='profileReturnPath'
           type='primary'

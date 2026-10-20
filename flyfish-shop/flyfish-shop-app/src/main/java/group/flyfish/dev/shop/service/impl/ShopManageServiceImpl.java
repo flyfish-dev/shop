@@ -502,7 +502,9 @@ public class ShopManageServiceImpl implements ShopManageService {
         if (usdPrice.signum() <= 0) {
             throw new BusinessException("USD_PRICE_INVALID", "美元价格必须大于0");
         }
-        return usdPrice.setScale(2, RoundingMode.HALF_UP);
+        return usdPrice.setScale(0, RoundingMode.HALF_UP)
+                .max(java.math.BigDecimal.ONE)
+                .setScale(2, RoundingMode.UNNECESSARY);
     }
 
     private void ensureDonationUsdMinimum(ShopItem.Type type, java.math.BigDecimal usdPrice) {

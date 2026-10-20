@@ -34,12 +34,14 @@ export function useShopDefaultCoupon({ item, couponCode, appliedCoupon, couponEr
   watch(
     () => [
       item.value?.id,
+      item.value?.price,
       item.value?.defaultCouponPreview?.couponCode,
       item.value?.defaultCouponPreview?.payableAmount,
       enabled?.value
     ],
     () => applyDefaultCoupon({ force: true }),
-    { immediate: true }
+    // 金额变化会先让通用优惠券钩子清理旧试算，默认优惠应在同一轮更新末尾重新落值。
+    { immediate: true, flush: 'post' }
   );
 
   return {

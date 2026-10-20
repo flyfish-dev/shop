@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 /**
  * 优惠券试算数据。
@@ -32,4 +33,16 @@ public class ShopCouponApplyDto {
 
     @Property(value = "支付币种", description = "纯打赏支持CNY/USD")
     private String paymentCurrency;
+
+    @Property("是否确认年度维护协议")
+    private Boolean maintenanceAgreement;
+
+    @Property("续费来源许可证号")
+    private String sourceLicenseNo;
+
+    @Property("续费生效日期")
+    private LocalDate renewalStartDate;
+
+    @Property("续费年数")
+    private Integer renewalYears;
 }

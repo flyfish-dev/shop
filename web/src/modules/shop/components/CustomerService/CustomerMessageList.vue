@@ -2,6 +2,7 @@
 import { CustomerServiceOutlined, UserOutlined } from '@ant-design/icons-vue';
 import { defineAsyncComponent, nextTick, ref, watch } from 'vue';
 import AttachmentList from '@/components/Attachments/AttachmentList.vue';
+import CustomerOfflineReplyContact from './CustomerOfflineReplyContact.vue';
 import { customerSenderName } from './customerDisplay.js';
 import { useI18n } from 'vue-i18n';
 
@@ -21,11 +22,15 @@ const { locale, t } = useI18n();
 
 const isAdminMessage = item => item?.senderRole === 'ADMIN' || item?.direction === 'OUTBOUND';
 const isMineMessage = item => props.manager ? item?.direction === 'OUTBOUND' : item?.direction === 'INBOUND';
-const senderName = item => isAdminMessage(item)
-  ? item?.senderName || t('customerService.storeSupport')
-  : customerSenderName(item, props.conversation, locale.value);
+const senderName = item => {
+  if (item?.senderRole === 'SYSTEM') return t('customerService.systemMessage');
+  return isAdminMessage(item)
+    ? item?.senderName || t('customerService.storeSupport')
+    : customerSenderName(item, props.conversation, locale.value);
+};
 const senderAvatar = item => item?.senderAvatar || (!isAdminMessage(item) ? props.conversation?.avatar : '');
 const isMarkdown = item => item?.messageType === 'markdown';
+const isOfflineAutoReply = item => item?.relatedType === 'SUPPORT_OFFLINE_AUTO_REPLY';
 
 const scrollToBottom = async () => {
   await nextTick();
@@ -70,7 +75,8 @@ watch(() => props.messages, scrollToBottom, { deep: true, immediate: true });
             preview-theme='default'
             code-theme='github'
           />
-          <p v-else>{{ item.content }}</p>
+          <p v-else>{{ isOfflineAutoReply(item) ? t('customerService.offlineAutoReply') : item.content }}</p>
+          <customer-offline-reply-contact v-if='isOfflineAutoReply(item)' />
           <attachment-list :attachments='item.attachments' />
           <small v-if='item.sendStatus === "FAILED"'>{{ t('customerService.sendFailed') }}</small>
         </div>

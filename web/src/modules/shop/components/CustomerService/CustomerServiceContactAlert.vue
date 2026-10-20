@@ -1,8 +1,9 @@
 <script setup>
-import { ref } from 'vue';
-import { QrcodeOutlined, WechatOutlined } from '@ant-design/icons-vue';
+import { computed, ref } from 'vue';
+import { QrcodeOutlined, SendOutlined, WechatOutlined, WhatsAppOutlined } from '@ant-design/icons-vue';
 import { getShopContactImages } from '@/modules/shop/assets/contact.js';
 import { useI18n } from 'vue-i18n';
+import { SUPPORT_CONTACTS } from '@/utils/supportContacts.js';
 
 defineProps({
   compact: Boolean
@@ -10,19 +11,47 @@ defineProps({
 
 const qrOpen = ref(false);
 const { customerWechatQr } = getShopContactImages();
-const { t } = useI18n();
+const { locale, t } = useI18n();
+const useInternationalContacts = computed(() => !String(locale.value).toLowerCase().startsWith('zh'));
 </script>
 
 <template>
   <div class='service-contact-alert' :class='{ compact }'>
     <a-alert type='info' show-icon>
       <template #message>
-        <span class='alert-message'>
+        <span v-if='useInternationalContacts' class='alert-message'>
+          {{ t('customerService.internationalReply') }}
+        </span>
+        <span v-else class='alert-message'>
           {{ t('customerService.delayedReply') }} <strong>Yous_Gift</strong>
         </span>
       </template>
       <template #action>
-        <a-button type='link' size='small' class='alert-action' @click='qrOpen = true'>
+        <span v-if='useInternationalContacts' class='international-actions'>
+          <a-button
+            type='link'
+            size='small'
+            class='alert-action whatsapp'
+            :href='SUPPORT_CONTACTS.whatsapp.href'
+            target='_blank'
+            rel='noopener noreferrer'
+          >
+            <template #icon><whats-app-outlined /></template>
+            {{ t('customerService.openWhatsApp') }}
+          </a-button>
+          <a-button
+            type='link'
+            size='small'
+            class='alert-action telegram'
+            :href='SUPPORT_CONTACTS.telegram.href'
+            target='_blank'
+            rel='noopener noreferrer'
+          >
+            <template #icon><send-outlined /></template>
+            {{ t('customerService.openTelegram') }}
+          </a-button>
+        </span>
+        <a-button v-else type='link' size='small' class='alert-action' @click='qrOpen = true'>
           <template #icon><qrcode-outlined /></template>
           {{ t('customerService.viewQrCode') }}
         </a-button>
@@ -30,6 +59,7 @@ const { t } = useI18n();
     </a-alert>
 
     <a-modal
+      v-if='!useInternationalContacts'
       v-model:open='qrOpen'
       :title="t('customerService.wechatTitle')"
       width='360'
@@ -83,6 +113,20 @@ const { t } = useI18n();
   height: 24px;
   padding: 0 2px;
   font-weight: 700;
+
+  &.whatsapp {
+    color: #128c4a;
+  }
+
+  &.telegram {
+    color: #168ac0;
+  }
+}
+
+.international-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .qr-panel {
@@ -130,6 +174,11 @@ const { t } = useI18n();
       margin-inline-start: 0;
       padding-top: 4px;
     }
+  }
+
+  .international-actions {
+    flex-wrap: wrap;
+    gap: 4px 10px;
   }
 }
 </style>

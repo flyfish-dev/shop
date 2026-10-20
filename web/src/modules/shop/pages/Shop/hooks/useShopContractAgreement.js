@@ -2,8 +2,9 @@ import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { getItemContracts, signItemContractFile } from '../apis/api.js';
 import { useI18n } from 'vue-i18n';
+import { contractViewerBase, isXianyuRuntime, resolveApiUrl } from '@/modules/xianyu/runtime.js';
 
-const viewerBase = '/file-viewer/index.html';
+const viewerBase = contractViewerBase();
 
 const extensionFrom = value => {
   if (!value) {
@@ -43,8 +44,8 @@ const resolveContractFileType = file => (
   || extensionFrom(file?.fileUrl)
 );
 
-export function useShopContractAgreement({ item, user, store, router }) {
-  const { t } = useI18n();
+export function useShopContractAgreement({ item, user, store, router, maintenanceAgreement, licenseRenewal }) {
+  const { locale, t } = useI18n();
   const visible = ref(false);
   const loading = ref(false);
   const signing = ref(false);
@@ -80,7 +81,12 @@ export function useShopContractAgreement({ item, user, store, router }) {
     }
     loading.value = true;
     try {
-      const data = await getItemContracts(item.value.id, item.value.skuId);
+      const data = await getItemContracts(
+        item.value.id,
+        item.value.skuId,
+        maintenanceAgreement?.value === true,
+        locale.value
+      );
       contracts.value = data || [];
       return contracts.value;
     } finally {
@@ -104,7 +110,9 @@ export function useShopContractAgreement({ item, user, store, router }) {
   };
 
   const ensureContractAgreement = async () => {
-    if (!item.value?.contractRequired) {
+    if (!item.value?.contractRequired
+      && maintenanceAgreement?.value !== true
+      && licenseRenewal?.value !== true) {
       return {};
     }
     if (!user.value?.id) {
@@ -143,7 +151,10 @@ export function useShopContractAgreement({ item, user, store, router }) {
     }
     const params = new URLSearchParams();
     const type = resolveContractFileType(file);
-    params.set('url', file.fileUrl);
+    if (isXianyuRuntime && !['pdf', 'doc', 'docx', 'xls', 'xlsx'].includes(resolveContractFileType(file))) {
+      throw new Error('该合同格式暂不支持当前渠道');
+    }
+    params.set('url', isXianyuRuntime ? resolveApiUrl(`/xianyu/contracts/${file.id}`) : file.fileUrl);
     if (file.fileName) {
       params.set('filename', file.fileName);
       params.set('name', file.fileName);
@@ -289,7 +300,7 @@ export function useShopContractAgreement({ item, user, store, router }) {
         contractId: file.contractId,
         fileId: file.id,
         readPercent: 100
-      }, item.value.skuId);
+      }, item.value.skuId, maintenanceAgreement?.value === true);
       signToken.value = progress.signToken;
       agreedFileIds.value = new Set([...agreedFileIds.value, file.id]);
       if (progress.completed || agreedFileIds.value.size >= totalCount.value) {

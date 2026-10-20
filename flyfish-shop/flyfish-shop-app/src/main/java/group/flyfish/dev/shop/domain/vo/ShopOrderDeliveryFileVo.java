@@ -15,6 +15,11 @@ public class ShopOrderDeliveryFileVo {
     private String code;
 
     /**
+     * 文件所属授权编号。组合订单下载时用于精确选择许可证。
+     */
+    private String licenseNo;
+
+    /**
      * 下载文件名。
      */
     private String name;

@@ -6,6 +6,7 @@ import { message, theme } from 'ant-design-vue';
 import {
   DeleteOutlined,
   EditOutlined,
+  LinkOutlined,
   PlusOutlined,
   ShoppingCartOutlined
 } from '@ant-design/icons-vue';
@@ -14,6 +15,7 @@ import { resolveShopItemCover, setShopImageFallback } from '@/modules/shop/utils
 import { deliveryActionText, deliveryModeColor, deliveryModeText } from '@/modules/shop/utils/shopDelivery.js';
 
 const ShopItemModal = defineAsyncComponent(() => import('../ShopItemModal.vue'));
+const ShopOfferLinkModal = defineAsyncComponent(() => import('../../components/ShopOfferLinkModal.vue'));
 
 const { useToken } = theme;
 const { token } = useToken();
@@ -22,6 +24,8 @@ const loading = ref(false);
 const dataSource = ref([]);
 const visible = ref(false);
 const editingItem = ref(null);
+const offerLinkVisible = ref(false);
+const offerLinkItem = ref(null);
 const groups = ref([]); // 商品分组列表
 const selectedGroupId = ref(undefined); // 选中的分组ID
 
@@ -126,6 +130,11 @@ const handleAdd = () => {
 const handleEdit = (record) => {
   editingItem.value = { ...record };
   visible.value = true;
+};
+
+const handleOfferLinks = record => {
+  offerLinkItem.value = record;
+  offerLinkVisible.value = true;
 };
 
 const handleDelete = async (id) => {
@@ -343,6 +352,17 @@ onMounted(async () => {
               </div>
 
               <div class="action-buttons">
+                <a-tooltip title="专享购买链接">
+                  <a-button
+                    type="text"
+                    shape="circle"
+                    size="small"
+                    aria-label="专享购买链接"
+                    @click="handleOfferLinks(record)"
+                  >
+                    <template #icon><link-outlined /></template>
+                  </a-button>
+                </a-tooltip>
                 <a-button type="link" size="small" @click="handleEdit(record)">
                   <template #icon><edit-outlined /></template>
                   编辑
@@ -382,6 +402,11 @@ onMounted(async () => {
       v-model:visible="visible"
       :item="editingItem"
       @save="handleSave"
+    />
+    <shop-offer-link-modal
+      v-if="offerLinkVisible"
+      v-model:open="offerLinkVisible"
+      :item="offerLinkItem"
     />
   </div>
 </template>

@@ -1,7 +1,10 @@
 package group.flyfish.dev.shop.controller;
 
+import group.flyfish.dev.shop.license.LicenseMaintenanceAgreementService;
+import group.flyfish.dev.shop.license.LicenseRenewalService;
 import group.flyfish.dev.shop.service.ShopContractService;
 import group.flyfish.dev.shop.service.ShopOrderService;
+import group.flyfish.dev.shop.service.ShopOfferLinkService;
 import group.flyfish.dev.shop.service.ShopService;
 import group.flyfish.dev.shop.pricing.ShopPricingService;
 import group.flyfish.dev.shop.service.support.h5zhifu.bean.H5ZhiFuNotifyDto;
@@ -28,7 +31,9 @@ class ShopControllerTest {
         ShopOrderService orderService = mock(ShopOrderService.class);
         when(orderService.handlePaymentNotify(any(H5ZhiFuNotifyDto.class))).thenReturn(Mono.empty());
         ShopController controller = new ShopController(mock(ShopService.class), orderService,
-                mock(ShopContractService.class), mock(ShopPricingService.class));
+                mock(ShopOfferLinkService.class),
+                mock(ShopContractService.class), mock(ShopPricingService.class),
+                mock(LicenseMaintenanceAgreementService.class), mock(LicenseRenewalService.class));
 
         StepVerifier.create(controller.h5ZhiFuNotify(Map.of(
                         "app_id", 10001,
@@ -58,7 +63,9 @@ class ShopControllerTest {
         ShopOrderService orderService = mock(ShopOrderService.class);
         when(orderService.handlePaymentNotify(any(H5ZhiFuNotifyDto.class))).thenReturn(Mono.empty());
         ShopController controller = new ShopController(mock(ShopService.class), orderService,
-                mock(ShopContractService.class), mock(ShopPricingService.class));
+                mock(ShopOfferLinkService.class),
+                mock(ShopContractService.class), mock(ShopPricingService.class),
+                mock(LicenseMaintenanceAgreementService.class), mock(LicenseRenewalService.class));
         MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest
                 .post("/shops/payments/h5zhifu/notify")
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)

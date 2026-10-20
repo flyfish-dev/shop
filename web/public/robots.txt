@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /account/
+Disallow: /shop/manage
+Disallow: /oauth2/
+Disallow: /login/oauth2/
+Disallow: /api/

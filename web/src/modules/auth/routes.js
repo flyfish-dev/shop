@@ -7,6 +7,12 @@ const Login = lazy(() => import('@/modules/auth/pages/Login'));
 const AccountProfile = lazy(() => import('@/modules/auth/pages/Account/Profile.vue'));
 
 export const authRoutes = {
+  '/account/channel-link': {
+    name: '小铺账号关联',
+    component: defineAsyncComponent(() => import('@/modules/xianyu/AccountLink.vue')),
+    layout: MainLayout,
+    meta: { requiresAuth: true }
+  },
   '/login': {
     name: '登录',
     component: Login,

@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CompositeShopDeliveryServiceTest {
@@ -38,6 +39,42 @@ class CompositeShopDeliveryServiceTest {
         assertEquals(1, secondCalls.get());
     }
 
+    @Test
+    void runsExperienceOnlyAfterCoreDeliverySucceeds() {
+        AtomicInteger experienceCalls = new AtomicInteger();
+        CompositeShopDeliveryService service = new CompositeShopDeliveryService(List.of(
+                handler("仓库已开通", new AtomicInteger()),
+                afterSuccessHandler("体验指引已生成", experienceCalls)
+        ));
+
+        StepVerifier.create(service.deliver(new ShopOrder(), new ShopItem(), new PortalUserVo()))
+                .assertNext(result -> {
+                    assertTrue(result.isSuccess());
+                    assertTrue(result.getMessage().contains("体验指引已生成"));
+                })
+                .verifyComplete();
+
+        assertEquals(1, experienceCalls.get());
+    }
+
+    @Test
+    void skipsExperienceWhenCoreDeliveryFails() {
+        AtomicInteger experienceCalls = new AtomicInteger();
+        CompositeShopDeliveryService service = new CompositeShopDeliveryService(List.of(
+                failedHandler("仓库开通失败"),
+                afterSuccessHandler("体验指引已生成", experienceCalls)
+        ));
+
+        StepVerifier.create(service.deliver(new ShopOrder(), new ShopItem(), new PortalUserVo()))
+                .assertNext(result -> {
+                    assertFalse(result.isSuccess());
+                    assertTrue(result.getMessage().contains("仓库开通失败"));
+                })
+                .verifyComplete();
+
+        assertEquals(0, experienceCalls.get());
+    }
+
     private ShopDeliveryHandler handler(String message, AtomicInteger calls) {
         return new ShopDeliveryHandler() {
             @Override
@@ -49,6 +86,40 @@ class CompositeShopDeliveryServiceTest {
             public Mono<DeliveryResult> deliver(ShopOrder order, ShopItem item, PortalUserVo buyer) {
                 calls.incrementAndGet();
                 return Mono.just(DeliveryResult.ok(message));
+            }
+        };
+    }
+
+    private ShopDeliveryHandler afterSuccessHandler(String message, AtomicInteger calls) {
+        return new ShopDeliveryHandler() {
+            @Override
+            public boolean supports(ShopItem item) {
+                return true;
+            }
+
+            @Override
+            public Stage stage() {
+                return Stage.AFTER_SUCCESS;
+            }
+
+            @Override
+            public Mono<DeliveryResult> deliver(ShopOrder order, ShopItem item, PortalUserVo buyer) {
+                calls.incrementAndGet();
+                return Mono.just(DeliveryResult.ok(message));
+            }
+        };
+    }
+
+    private ShopDeliveryHandler failedHandler(String message) {
+        return new ShopDeliveryHandler() {
+            @Override
+            public boolean supports(ShopItem item) {
+                return true;
+            }
+
+            @Override
+            public Mono<DeliveryResult> deliver(ShopOrder order, ShopItem item, PortalUserVo buyer) {
+                return Mono.just(DeliveryResult.failed(message));
             }
         };
     }

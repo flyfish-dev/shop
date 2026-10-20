@@ -10,6 +10,15 @@ export const formatShopMoney = (value, currency) => {
   return `${shopCurrencySymbol(currency)}${normalized.toFixed(2)}`;
 };
 
+export const formatShopCatalogMoney = (value, currency) => {
+  const normalizedCurrency = normalizeShopCurrency(currency);
+  if (normalizedCurrency !== 'USD') {
+    return formatShopMoney(value, normalizedCurrency);
+  }
+  const amount = Number(value || 0);
+  return `$${Number.isFinite(amount) ? Math.round(amount) : 0}`;
+};
+
 export const formatRevenueBreakdown = (cnyValue, usdValue) => {
   const cny = Number(cnyValue || 0);
   const usd = Number(usdValue || 0);

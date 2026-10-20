@@ -38,6 +38,8 @@ public class ShopOrderDeliveryExtractVo {
 
     private LocalDateTime extractedTime;
 
+    private ShopOrderDeliveryExperienceVo experience;
+
     private List<ShopOrderDeliveryExtractVo> deliveries;
 
     public ShopOrderDeliveryExtractVo() {
@@ -53,7 +55,12 @@ public class ShopOrderDeliveryExtractVo {
         this.title = delivery.getTitle();
         this.sensitive = isLicenseDelivery(delivery);
         this.securityMessage = Boolean.TRUE.equals(this.sensitive) ? LICENSE_SECURITY_MESSAGE : null;
-        this.content = Boolean.TRUE.equals(this.sensitive) ? LICENSE_SECURITY_MESSAGE : delivery.getContent();
+        this.experience = isExperienceDelivery(delivery)
+                ? ShopOrderDeliveryExperienceVo.from(delivery.getMetadata())
+                : null;
+        this.content = isExperienceDelivery(delivery)
+                ? null
+                : (Boolean.TRUE.equals(this.sensitive) ? LICENSE_SECURITY_MESSAGE : delivery.getContent());
         this.attachments = parseAttachments(delivery.getAttachments());
         this.files = files == null ? List.of() : files;
         this.licenseNo = delivery.getLicenseNo();
@@ -87,6 +94,11 @@ public class ShopOrderDeliveryExtractVo {
         vo.sensitive = deliveries.stream().anyMatch(delivery -> Boolean.TRUE.equals(delivery.getSensitive()));
         vo.securityMessage = Boolean.TRUE.equals(vo.sensitive) ? LICENSE_SECURITY_MESSAGE : null;
         vo.content = combineContent(deliveries, vo.sensitive);
+        vo.experience = deliveries.stream()
+                .map(ShopOrderDeliveryExtractVo::getExperience)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
         vo.licenseNo = deliveries.stream()
                 .map(ShopOrderDeliveryExtractVo::getLicenseNo)
                 .filter(StringUtils::isNotBlank)
@@ -118,6 +130,12 @@ public class ShopOrderDeliveryExtractVo {
     private boolean isLicenseDelivery(ShopOrderDelivery delivery) {
         return delivery != null
                 && StringUtils.equalsIgnoreCase(ShopOrderDelivery.DeliveryType.LICENSE.name(), delivery.getDeliveryType());
+    }
+
+    private boolean isExperienceDelivery(ShopOrderDelivery delivery) {
+        return delivery != null
+                && StringUtils.equalsIgnoreCase(
+                ShopOrderDelivery.DeliveryType.EXPERIENCE.name(), delivery.getDeliveryType());
     }
 
     private List<FileAttachmentVo> parseAttachments(String value) {

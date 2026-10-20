@@ -11,6 +11,9 @@ import reactor.core.publisher.Mono;
  * 商品 SKU 仓库。
  */
 public interface ShopItemSkuRepository extends DefaultReactiveRepository<ShopItemSku> {
+    @org.springframework.data.r2dbc.repository.Modifying
+    @org.springframework.data.r2dbc.repository.Query("UPDATE shop_item_sku SET buy_count=COALESCE(buy_count,0)+:count WHERE id=:id")
+    Mono<Integer> incrementBuyCount(Long id, int count);
 
     default Flux<ShopItemSku> findAllByItemIdOrderBySort(Long itemId) {
         return findAllBy(Criteria.where("item_id").is(itemId), orderBySort());

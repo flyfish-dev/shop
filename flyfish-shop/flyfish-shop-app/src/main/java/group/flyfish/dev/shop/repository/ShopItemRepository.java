@@ -9,4 +9,7 @@ import group.flyfish.dev.shop.domain.po.ShopItem;
  * @author wangyu
  */
 public interface ShopItemRepository extends DefaultReactiveRepository<ShopItem> {
+    @org.springframework.data.r2dbc.repository.Modifying
+    @org.springframework.data.r2dbc.repository.Query("UPDATE shop_item SET buy_count=COALESCE(buy_count,0)+:count WHERE id=:id")
+    reactor.core.publisher.Mono<Integer> incrementBuyCount(Long id, int count);
 }

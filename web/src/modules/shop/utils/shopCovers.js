@@ -3,6 +3,7 @@ import defaultGitAccessCover from '@/assets/shop/default-git-access.webp';
 import defaultDigitalDownloadCover from '@/assets/shop/default-digital-download.webp';
 import defaultServicePackageCover from '@/assets/shop/default-service-package.webp';
 import defaultLicenseCover from '@/assets/shop/default-license.webp';
+import { staticAssetUrl } from '@/utils/staticAssets.js';
 
 export const SHOP_ITEM_DEFAULT_COVERS = {
   GIT_REPOSITORY_ACCESS: defaultGitAccessCover,
@@ -32,17 +33,20 @@ const isUsableUrl = url => typeof url === 'string' && url.trim().length > 0;
 
 export const normalizeShopImages = images => {
   if (Array.isArray(images)) {
-    return images.filter(isUsableUrl).map(url => url.trim());
+    return images.filter(isUsableUrl).map(url => staticAssetUrl(url.trim()));
   }
   if (isUsableUrl(images)) {
-    return images.split(',').map(url => url.trim()).filter(Boolean);
+    return images.split(',')
+      .map(url => url.trim())
+      .filter(Boolean)
+      .map(staticAssetUrl);
   }
   return [];
 };
 
 export const resolveShopItemCover = item => {
   if (isUsableUrl(item?.cover)) {
-    return item.cover.trim();
+    return staticAssetUrl(item.cover.trim());
   }
   return getShopItemDefaultCover(item?.type);
 };
@@ -53,7 +57,7 @@ export const resolveShopItemImages = item => {
     return images;
   }
   if (isUsableUrl(item?.cover)) {
-    return [item.cover.trim()];
+    return [staticAssetUrl(item.cover.trim())];
   }
   return [getShopItemDefaultCover(item?.type)];
 };

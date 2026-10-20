@@ -10,6 +10,7 @@ import group.flyfish.dev.shop.service.ShopDeliveryService;
 import group.flyfish.dev.shop.service.PayService;
 import group.flyfish.dev.shop.service.impl.CompositeShopDeliveryService;
 import group.flyfish.dev.shop.service.impl.DigitalDownloadDeliveryService;
+import group.flyfish.dev.shop.service.impl.DeliveryExperienceService;
 import group.flyfish.dev.shop.service.impl.GitRepositoryDeliveryService;
 import group.flyfish.dev.shop.service.impl.LicenseDeliveryService;
 import group.flyfish.dev.shop.service.support.h5zhifu.H5ZhiFuPayService;
@@ -27,14 +28,15 @@ import java.util.List;
 
 @Configuration
 @Import({H5ZhiFuConfig.class, StripePaymentConfig.class})
-@EnableConfigurationProperties(ShopPricingProperties.class)
+@EnableConfigurationProperties({ShopPricingProperties.class, ShopOfferLinkProperties.class})
 public class ShopConfig {
 
     @Bean
     @Primary
     public PayService payService(H5ZhiFuPayService h5ZhiFuPayService,
-                                 StripeCheckoutPayService stripeCheckoutPayService) {
-        return new RoutingPayService(List.of(h5ZhiFuPayService, stripeCheckoutPayService));
+                                 StripeCheckoutPayService stripeCheckoutPayService,
+                                 group.flyfish.dev.shop.xianyu.XianyuPayService xianyuPayService) {
+        return new RoutingPayService(List.of(h5ZhiFuPayService, stripeCheckoutPayService, xianyuPayService));
     }
 
     @Bean
@@ -44,14 +46,17 @@ public class ShopConfig {
                                                    GitAccessTokenService tokenService,
                                                    GitRepositoryAccessResolver repositoryAccessResolver,
                                                    DigitalDownloadDeliveryService digitalDownloadDeliveryService,
-                                                   LicenseDeliveryService licenseDeliveryService) {
+                                                   LicenseDeliveryService licenseDeliveryService,
+                                                   DeliveryExperienceService deliveryExperienceService,
+                                                   group.flyfish.dev.shop.xianyu.DeliveryTaskLedger ledger) {
         GitRepositoryDeliveryService gitRepositoryDeliveryService = new GitRepositoryDeliveryService(
                 giteaRepositoryClient, githubRepositoryClient, giteeRepositoryClient, tokenService,
-                repositoryAccessResolver);
+                repositoryAccessResolver, ledger);
         return new CompositeShopDeliveryService(List.of(
                 gitRepositoryDeliveryService,
                 digitalDownloadDeliveryService,
-                licenseDeliveryService
-        ));
+                licenseDeliveryService,
+                deliveryExperienceService
+        ), ledger);
     }
 }

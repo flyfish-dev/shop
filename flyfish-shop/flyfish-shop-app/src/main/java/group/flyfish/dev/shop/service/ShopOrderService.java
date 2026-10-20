@@ -18,6 +18,10 @@ import reactor.core.publisher.Mono;
 
 public interface ShopOrderService {
 
+    Mono<ShopOrderVo> confirmXianyuPayment(String orderNo, java.math.BigDecimal amount, String channelKey);
+    Mono<ShopOrderVo> fulfillXianyuOrder(String orderNo);
+    Mono<Boolean> xianyuNativeEligible(Long itemId, String skuId);
+
     Mono<ShopOrderCreateVo> createOrder(ShopOrderDto dto, PortalUserVo buyer);
 
     Mono<ShopCouponApplyVo> applyCoupon(ShopCouponApplyDto dto, PortalUserVo buyer);
@@ -36,11 +40,19 @@ public interface ShopOrderService {
 
     Mono<ShopOrderDeliveryExtractVo> viewDelivery(PortalUserVo user, String orderNo);
 
-    Mono<ShopOrderDeliveryDownloadVo> downloadDeliveryFile(PortalUserVo user, String orderNo, String fileCode);
+    Mono<ShopOrderDeliveryDownloadVo> downloadDeliveryFile(
+            PortalUserVo user, String orderNo, String fileCode, String licenseNo);
+
+    default Mono<ShopOrderDeliveryDownloadVo> downloadDeliveryFile(
+            PortalUserVo user, String orderNo, String fileCode) {
+        return downloadDeliveryFile(user, orderNo, fileCode, null);
+    }
 
     Mono<ShopOrderVo> updateDelivery(String orderNo, ShopOrderDeliveryDto dto);
 
     Mono<ShopOrderVo> retryDelivery(String orderNo);
+
+    Mono<ShopOrderVo> reissuePermanentLicense(String orderNo, String reason, PortalUserVo operator);
 
     Mono<Void> handlePaymentNotify(H5ZhiFuNotifyDto dto);
 

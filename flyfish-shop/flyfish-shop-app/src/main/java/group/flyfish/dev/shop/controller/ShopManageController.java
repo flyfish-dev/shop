@@ -14,6 +14,8 @@ import group.flyfish.dev.shop.domain.vo.ShopContractSignatureRecordVo;
 import group.flyfish.dev.shop.domain.vo.ShopContractVo;
 import group.flyfish.dev.shop.domain.vo.ShopCouponVo;
 import group.flyfish.dev.shop.domain.vo.ShopManageWorkbenchSummaryVo;
+import group.flyfish.dev.shop.domain.vo.ShopOfferLinkCreateVo;
+import group.flyfish.dev.shop.domain.vo.ShopOfferLinkVo;
 import group.flyfish.dev.shop.domain.vo.ShopOrderDeliveryExtractVo;
 import group.flyfish.dev.shop.domain.vo.ShopOrderVo;
 import group.flyfish.dev.shop.service.ShopCouponService;
@@ -21,6 +23,7 @@ import group.flyfish.dev.shop.service.ShopContractService;
 import group.flyfish.dev.shop.service.ShopManageWorkbenchService;
 import group.flyfish.dev.shop.service.ShopManageService;
 import group.flyfish.dev.shop.service.ShopOrderService;
+import group.flyfish.dev.shop.service.ShopOfferLinkService;
 import group.flyfish.dev.shop.support.ShopAuthorizationUtils;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -48,6 +51,7 @@ public class ShopManageController {
     private final ShopManageWorkbenchService shopManageWorkbenchService;
     private final ShopOrderService shopOrderService;
     private final ShopCouponService shopCouponService;
+    private final ShopOfferLinkService shopOfferLinkService;
     private final ShopContractService shopContractService;
     private final AuthUserGateway authUserGateway;
     private final GitRepositoryLookupService gitRepositoryLookupService;
@@ -138,9 +142,11 @@ public class ShopManageController {
     @PostMapping(value = "contracts/{id}/files", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Mono<Result<ShopContractFileVo>> uploadContractFile(@NotNull @PathVariable Long id,
                                                                @RequestPart("file") FilePart file,
+                                                               @RequestParam(required = false) String locale,
+                                                               @RequestParam(required = false) String documentKey,
                                                                @CurrentUser PortalUserVo user) {
         ShopAuthorizationUtils.requireShopMaintainer(user);
-        return shopContractService.uploadContractFile(id, file).map(Result::ok);
+        return shopContractService.uploadContractFile(id, locale, documentKey, file).map(Result::ok);
     }
 
     /**
@@ -325,6 +331,36 @@ public class ShopManageController {
     }
 
     /**
+     * 查询指定商品生成过的专享购买链接。完整令牌不会在列表中回传。
+     */
+    @GetMapping("items/{itemId}/offer-links")
+    public Mono<Result<List<ShopOfferLinkVo>>> offerLinks(@PathVariable Long itemId,
+                                                          @CurrentUser PortalUserVo user) {
+        ShopAuthorizationUtils.requireShopMaintainer(user);
+        return shopOfferLinkService.list(itemId).collectList().map(Result::ok);
+    }
+
+    /**
+     * 生成限时一次性专享购买链接。
+     */
+    @PostMapping("items/{itemId}/offer-links")
+    public Mono<Result<ShopOfferLinkCreateVo>> createOfferLink(@PathVariable Long itemId,
+                                                               @Valid @RequestBody ShopOfferLinkCreateDto dto,
+                                                               @CurrentUser PortalUserVo user) {
+        ShopAuthorizationUtils.requireShopMaintainer(user);
+        return shopOfferLinkService.create(itemId, dto).map(Result::ok);
+    }
+
+    /**
+     * 作废尚未预约或核销的专享购买链接。
+     */
+    @PostMapping("offer-links/{id}/revoke")
+    public Mono<Result<Void>> revokeOfferLink(@PathVariable Long id, @CurrentUser PortalUserVo user) {
+        ShopAuthorizationUtils.requireShopMaintainer(user);
+        return shopOfferLinkService.revoke(id).thenReturn(Result.ok());
+    }
+
+    /**
      * 查看订单交付快照。
      * <p>管理员核查交付内容时只读查看，不会改变用户首次提取时间。</p>
      */
@@ -355,5 +391,16 @@ public class ShopManageController {
                                                         @CurrentUser PortalUserVo user) {
         ShopAuthorizationUtils.requireShopMaintainer(user);
         return shopOrderService.retryDelivery(orderNo).map(Result::ok);
+    }
+
+    /**
+     * 为已支付的商业版订单补发永久许可证。
+     */
+    @PostMapping("orders/{orderNo}/licenses/permanent/reissue")
+    public Mono<Result<ShopOrderVo>> reissuePermanentLicense(@NotNull @PathVariable String orderNo,
+                                                             @Valid @RequestBody ShopLicenseReissueDto dto,
+                                                             @CurrentUser PortalUserVo user) {
+        ShopAuthorizationUtils.requireShopMaintainer(user);
+        return shopOrderService.reissuePermanentLicense(orderNo, dto.getReason(), user).map(Result::ok);
     }
 }

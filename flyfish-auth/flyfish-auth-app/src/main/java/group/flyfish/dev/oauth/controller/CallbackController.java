@@ -113,6 +113,35 @@ public class CallbackController {
         return Result.ok(providers);
     }
 
+    /**
+     * 启动一次全新的第三方 OAuth 握手。
+     *
+     * <p>飞鱼登录态由 JWT 维护，pac4j 的 profile 只应存在于单次 OAuth 握手期间。部分浏览器会长期保留
+     * WebSession；如果用户随后绑定另一个渠道，旧 profile 会让 pac4j 将新请求误判为已认证但渠道不匹配，
+     * 最终返回 401。公开入口先清理旧 profile，再跳转到只供安全过滤器使用的内部入口，可以同时保证登录、
+     * 绑定和换绑流程互不干扰。</p>
+     */
+    @GetMapping("/oauth/{provider:gitea|gitee|github|google|microsoft}")
+    public Rendering startProvider(@PathVariable String provider, ServerWebExchange exchange) {
+        String normalizedProvider = normalizeProvider(provider);
+        oauthSessionService.clearProfiles(exchange);
+        return Rendering.redirectTo("/oauth/authorize/" + normalizedProvider).build();
+    }
+
+    /**
+     * 完成第三方授权后进入飞鱼登录态交换。
+     *
+     * <p>内部 {@code /oauth/authorize/*} 地址同时承担 pac4j 的授权发起地址和授权后的返回地址：
+     * 首次请求会被对应的安全过滤器重定向到第三方平台；第三方回调成功并恢复 profile 后，
+     * pac4j 会再次回到这里并放行控制器。此时必须继续进入 {@code /oauth/redirect} 签发飞鱼 JWT，
+     * 不能交给 {@code /oauth/**} 兜底直接返回首页，否则会出现第三方授权成功但仍是游客的状态。</p>
+     */
+    @GetMapping("/oauth/authorize/{provider:gitea|gitee|github|google|microsoft}")
+    public Rendering completeProviderAuthorization(@PathVariable String provider) {
+        normalizeProvider(provider);
+        return Rendering.redirectTo("/oauth/redirect").build();
+    }
+
     @PostMapping("/oauth/bind/{provider}")
     @ResponseBody
     public Mono<Result<String>> prepareProviderBind(@PathVariable String provider,
@@ -231,9 +260,15 @@ public class CallbackController {
                 .onErrorResume(error -> {
                     log.warn("OAuth callback failed, redirecting to login page: {}", sanitizeOAuthError(error.getMessage()));
                     clearBindingCookie(serverWebExchange);
-                    serverWebExchange.getResponse().setStatusCode(HttpStatus.FOUND);
-                    serverWebExchange.getResponse().getHeaders().setLocation(URI.create("/login?oauth=failed"));
-                    return serverWebExchange.getResponse().setComplete();
+                    // state 在回调解析阶段已经被 pac4j 消费。失败后必须销毁整个握手会话，否则用户
+                    // 再次点击登录会携带残留状态进入安全过滤器，并直接得到裸露的 unauthorized 页面。
+                    return oauthSessionService.invalidate(serverWebExchange)
+                            .then(Mono.defer(() -> {
+                                serverWebExchange.getResponse().setStatusCode(HttpStatus.FOUND);
+                                serverWebExchange.getResponse().getHeaders()
+                                        .setLocation(URI.create("/login?oauth=failed"));
+                                return serverWebExchange.getResponse().setComplete();
+                            }));
                 });
     }
 

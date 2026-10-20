@@ -2,6 +2,8 @@ package group.flyfish.dev.shop.config;
 
 import group.flyfish.dev.customer.domain.dto.CustomerSocketCommand;
 import group.flyfish.dev.shop.converter.impl.GitRepositoryAccessParamValue;
+import group.flyfish.dev.shop.converter.impl.DeliveryExperienceParamValue;
+import group.flyfish.dev.shop.converter.impl.LicenseDeliveryParamValue;
 import group.flyfish.dev.shop.domain.dto.ShopItemCreateDto;
 import group.flyfish.dev.shop.domain.qo.ShopItemGroupListQo;
 import group.flyfish.dev.shop.domain.qo.ShopItemListQo;
@@ -27,6 +29,10 @@ class ShopRuntimeHintsConfigurationTest {
                 .registerHints(hints, getClass().getClassLoader());
 
         assertBindingHint(hints.reflection().getTypeHint(GitRepositoryAccessParamValue.class));
+        assertBindingHint(hints.reflection().getTypeHint(DeliveryExperienceParamValue.class));
+        assertBindingHint(hints.reflection().getTypeHint(DeliveryExperienceParamValue.Link.class));
+        assertBindingHint(hints.reflection().getTypeHint(LicenseDeliveryParamValue.MaintenanceAgreement.class));
+        assertBindingHint(hints.reflection().getTypeHint(LicenseDeliveryParamValue.LicenseRenewal.class));
         assertBindingHint(hints.reflection().getTypeHint(CustomerSocketCommand.class));
         assertBindingHint(hints.reflection().getTypeHint(ShopItemGroupListQo.class));
         assertBindingHint(hints.reflection().getTypeHint(ShopItemListQo.class));

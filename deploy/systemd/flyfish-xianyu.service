@@ -1,0 +1,27 @@
+[Unit]
+Description=Flyfish Xianyu Tower JVM Service
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=flyfish-xianyu
+Group=flyfish-xianyu
+WorkingDirectory=/opt/flyfish-xianyu
+EnvironmentFile=/opt/flyfish-xianyu/config/xianyu.env
+Environment=TZ=Asia/Shanghai
+ExecStart=/usr/bin/java -Xms128m -Xmx512m -jar /opt/flyfish-xianyu/current/flyfish-xianyu.jar
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=60
+SuccessExitStatus=143
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/flyfish-xianyu/logs /opt/flyfish-xianyu/data
+StandardOutput=append:/opt/flyfish-xianyu/logs/xianyu.log
+StandardError=append:/opt/flyfish-xianyu/logs/xianyu.err.log
+
+[Install]
+WantedBy=multi-user.target

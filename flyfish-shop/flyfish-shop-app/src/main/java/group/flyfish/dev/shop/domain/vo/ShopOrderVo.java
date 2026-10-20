@@ -10,6 +10,10 @@ import java.util.Map;
 @Data
 public class ShopOrderVo {
 
+    private group.flyfish.dev.xianyu.api.SalesChannel salesChannel;
+    private String refundState;
+    private java.math.BigDecimal refundAmount;
+
     private String orderNo;
 
     private Long itemId;
@@ -50,6 +54,16 @@ public class ShopOrderVo {
 
     private String couponCode;
 
+    private ShopOrder.SettlementSource settlementSource;
+
+    private String externalContractReference;
+
+    private String externalPaymentReference;
+
+    private String externalConfirmationNote;
+
+    private String externalConfirmedBy;
+
     private Map<String, Object> properties;
 
     private Map<String, Object> itemSnapshot;
@@ -73,6 +87,8 @@ public class ShopOrderVo {
     private String deliveryFailureTaskName;
 
     private Boolean extractable;
+
+    private Boolean permanentLicenseReissueable;
 
     private String paymentProvider;
 

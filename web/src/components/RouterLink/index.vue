@@ -18,7 +18,7 @@ export default {
     const { href } = toRefs(props);
     const router = useRouter();
     const external = computed(() => /^https?:\/\//.test(href.value));
-    const to = computed(() => external.value ? href.value : router.resolve(href.value).fullPath);
+    const to = computed(() => external.value ? href.value : router.href(href.value));
     return {
       to,
       go: event => {

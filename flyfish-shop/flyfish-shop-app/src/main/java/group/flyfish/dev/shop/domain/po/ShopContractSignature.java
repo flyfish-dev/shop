@@ -53,6 +53,14 @@ public class ShopContractSignature extends AuditDomain {
     @Column("contract_type")
     private String contractType;
 
+    @Property("签署语言快照")
+    @Column("contract_locale")
+    private String contractLocale;
+
+    @Property("逻辑文档标识快照")
+    @Column("document_key")
+    private String documentKey;
+
     @Property("文件名称快照")
     @Column("file_name")
     private String fileName;
@@ -60,6 +68,14 @@ public class ShopContractSignature extends AuditDomain {
     @Property("文件地址快照")
     @Column("file_url")
     private String fileUrl;
+
+    @Property("文件SHA-256快照")
+    @Column("file_hash")
+    private String fileHash;
+
+    @Property("逻辑文档版本快照")
+    @Column("file_version")
+    private Integer fileVersion;
 
     @Property("阅读比例")
     @Column("read_percent")

@@ -3,7 +3,7 @@ import { message } from 'ant-design-vue';
 import { downloadOrderDeliveryFile } from '@/modules/shop/pages/Shop/apis/api.js';
 import { useI18n } from 'vue-i18n';
 
-const fileKey = (delivery, file) => `${delivery?.orderNo || ''}:${file?.code || ''}`;
+const fileKey = (delivery, file) => `${delivery?.orderNo || ''}:${file?.licenseNo || ''}:${file?.code || ''}`;
 
 const saveBlob = (blob, filename) => {
   const url = URL.createObjectURL(blob);
@@ -28,7 +28,7 @@ export const useDeliveryFiles = () => {
     const key = fileKey(delivery, file);
     downloadingFileCode.value = key;
     try {
-      const blob = await downloadOrderDeliveryFile(delivery.orderNo, file.code);
+      const blob = await downloadOrderDeliveryFile(delivery.orderNo, file.code, file.licenseNo);
       saveBlob(blob, file.name);
       message.success(t('orders.downloadStarted'));
     } catch (e) {

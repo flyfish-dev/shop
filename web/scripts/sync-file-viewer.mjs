@@ -16,6 +16,7 @@ const rendererPackageNames = [
 ];
 const webPackageVersion = process.env.FLYFISH_FILE_VIEWER_WEB_VERSION || 'latest';
 const rendererPackageVersion = process.env.FLYFISH_FILE_VIEWER_RENDERER_VERSION || process.env.FLYFISH_FILE_VIEWER_VERSION || 'latest';
+const pdfjsPackageVersion = process.env.FLYFISH_FILE_VIEWER_PDFJS_VERSION || '5.4.624';
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const publicViewerRoot = path.join(projectRoot, 'public', 'file-viewer');
 const viteBin = path.join(projectRoot, 'node_modules', 'vite', 'bin', 'vite.js');
@@ -23,7 +24,8 @@ const viteBin = path.join(projectRoot, 'node_modules', 'vite', 'bin', 'vite.js')
 const packageSpecs = [
   `${webPackageName}@${webPackageVersion}`,
   `${corePackageName}@${rendererPackageVersion}`,
-  ...rendererPackageNames.map(name => `${name}@${rendererPackageVersion}`)
+  ...rendererPackageNames.map(name => `${name}@${rendererPackageVersion}`),
+  `pdfjs-dist@${pdfjsPackageVersion}`
 ];
 
 function fail(message, cause) {
@@ -88,6 +90,15 @@ async function copyOptional(source, target) {
   await mkdir(path.dirname(target), { recursive: true });
   await cp(source, target, { recursive: true });
   return true;
+}
+
+async function firstExistingPath(candidates) {
+  for (const candidate of candidates) {
+    if (await pathExists(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
 }
 
 async function installViewerPackages(tempDir) {
@@ -302,6 +313,10 @@ const explicitType = getParam('type', 'fileType', 'ext').replace(/^\\./, '').toL
 const type = explicitType || inferTypeFromFilename(filename);
 const size = toPositiveNumber(getParam('size', 'fileSize'));
 const incomingOptions = parseJson(getParam('options'));
+// iframe HTML 保持在业务域名，重型 viewer 资源则跟随启动器选中的静态 release。
+// 这里不从 query string 接受静态域名，避免合同页被注入不可信 Worker 地址。
+const staticReleaseBase = window.__FLYFISH_STATIC_RUNTIME__?.baseUrl || window.location.origin + '/';
+const viewerStaticBase = new URL('file-viewer/', staticReleaseBase).href;
 const incomingToolbar = incomingOptions.toolbar;
 const toolbar = incomingToolbar === false
   ? false
@@ -321,10 +336,10 @@ const options = {
   renderers: rendererPlugins,
   toolbar,
   pdf: {
-    workerUrl: '/file-viewer/vendor/pdf/pdf.worker.mjs',
-    cMapUrl: '/file-viewer/vendor/pdf/cmaps/',
-    wasmUrl: '/file-viewer/vendor/pdf/wasm/',
-    standardFontDataUrl: '/file-viewer/vendor/pdf/standard_fonts/',
+    workerUrl: new URL('vendor/pdf/pdf.worker.mjs', viewerStaticBase).href,
+    cMapUrl: new URL('vendor/pdf/cmaps/', viewerStaticBase).href,
+    wasmUrl: new URL('vendor/pdf/wasm/', viewerStaticBase).href,
+    standardFontDataUrl: new URL('vendor/pdf/standard_fonts/', viewerStaticBase).href,
     ...(incomingOptions.pdf && typeof incomingOptions.pdf === 'object' && !Array.isArray(incomingOptions.pdf) ? incomingOptions.pdf : {})
   },
   docx: {
@@ -408,9 +423,13 @@ async function buildViewerBundle(tempDir) {
 async function copyPdfAssets(tempDir) {
   const pdfRoot = moduleRoot(tempDir, 'pdfjs-dist');
   const publicPdfRoot = path.join(publicViewerRoot, 'vendor', 'pdf');
+  const workerSource = await firstExistingPath([
+    path.join(pdfRoot, 'legacy', 'build', 'pdf.worker.mjs'),
+    path.join(pdfRoot, 'build', 'pdf.worker.mjs')
+  ]);
 
   await copyRequired(
-    path.join(pdfRoot, 'legacy', 'build', 'pdf.worker.mjs'),
+    workerSource || path.join(pdfRoot, 'legacy', 'build', 'pdf.worker.mjs'),
     path.join(publicPdfRoot, 'pdf.worker.mjs'),
     'PDF.js worker'
   );

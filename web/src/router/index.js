@@ -1,10 +1,14 @@
 import { computed, ref, shallowReactive, watch } from 'vue';
-import routes from '@/router/routes';
+import routes from '@app-routes';
 import { last, splitPath } from '@/utils/utils';
 import { parse, stringify } from 'qs';
 import RouterLink from '@/components/RouterLink/index.vue';
 import RouterView from '@/components/RouterView/index.vue';
 import { ROUTE_KEY, ROUTER_KEY } from '@/router/use';
+import { isXianyuRuntime } from '@/modules/xianyu/runtime.js';
+import { isLowcodeApp, isSeparateApplicationPath } from '@/runtime/application.js';
+
+const hashRouting = isXianyuRuntime || isLowcodeApp;
 
 const PATH_PARAM_PREFIX = '/:';
 const ROUTE_PROPS = {
@@ -53,7 +57,8 @@ export const resolveRouteLocation = (target = '/', params = {}) => {
   };
 };
 
-const readBrowserLocation = () => resolveRouteLocation(`${location.pathname}${location.search}${location.hash}`);
+const readBrowserLocation = () => resolveRouteLocation(hashRouting
+  ? (location.hash.slice(1) || (isXianyuRuntime ? '/shop' : '/')) : `${location.pathname}${location.search}${location.hash}`);
 
 // 初始化逻辑
 const setup = () => {
@@ -63,11 +68,15 @@ const setup = () => {
   const currentRoute = computed(() => routeState.value.path);
   // 初始化返回事件监听
   window.addEventListener('popstate', () => routeState.value = readBrowserLocation());
+  if (hashRouting) window.addEventListener('hashchange', () => routeState.value = readBrowserLocation());
 
   // 调用路由
   const doRoute = (operation, target) => {
-    const next = resolveRouteLocation(target);
-    if (next.external) {
+    let next = resolveRouteLocation(target);
+    if (isLowcodeApp && next.path === location.pathname && next.hash.startsWith('#/')) {
+      next = resolveRouteLocation(next.hash.slice(1));
+    }
+    if (next.external || isSeparateApplicationPath(next.path)) {
       location.assign(next.fullPath);
       return;
     }
@@ -76,7 +85,8 @@ const setup = () => {
       const previousPath = routeState.value.path;
       routeState.value = next;
       // 目前简单处理，无论什么路由都跳转
-      history[operation](null, '', next.fullPath);
+      history[operation](null, '', hashRouting
+        ? `${location.pathname}${location.search}#${next.fullPath}` : next.fullPath);
       if (next.path !== previousPath) {
         window.scrollTo({ top: 0, left: 0 });
       }
@@ -187,7 +197,11 @@ const setup = () => {
     back: step => history.go(-step),
     // 替换
     replace: (path, params) => doRoute('replaceState', resolveRouteLocation(path, params)),
-    resolve: resolveRouteLocation
+    resolve: resolveRouteLocation,
+    href: path => {
+      const target = resolveRouteLocation(path);
+      return hashRouting && !target.external ? `${location.pathname}${location.search}#${target.fullPath}` : target.fullPath;
+    }
   };
 
 // 检查有效的路由，遇到路由存在子级，自动跳转第一个

@@ -13,8 +13,8 @@ class ShopPricingServiceTest {
     private final ShopPricingService service = new ShopPricingService(properties);
 
     @Test
-    void prefersManualUsdPrice() {
-        assertEquals(new BigDecimal("18.88"),
+    void roundsManualUsdPriceToWholeDollar() {
+        assertEquals(new BigDecimal("19.00"),
                 service.effectiveUsdPrice(new BigDecimal("99.00"), new BigDecimal("18.88")));
     }
 
@@ -22,8 +22,13 @@ class ShopPricingServiceTest {
     void convertsCnyUsingConfiguredSnapshot() {
         properties.setCnyPerUsd(new BigDecimal("6.78"));
 
-        assertEquals(new BigDecimal("58.85"),
+        assertEquals(new BigDecimal("62.00"),
                 service.effectiveUsdPrice(new BigDecimal("399.00"), null));
+    }
+
+    @Test
+    void exposesSettlementBufferForManagementPreview() {
+        assertEquals(new BigDecimal("0.05"), service.pricing().getUsdSettlementBufferRate());
     }
 
     @Test

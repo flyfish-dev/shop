@@ -6,8 +6,11 @@ import { fileURLToPath } from 'node:url';
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const srcRoot = path.join(projectRoot, 'src');
 const distRoot = path.join(projectRoot, 'dist');
-const assetsRoot = path.join(distRoot, 'assets');
-const indexPath = path.join(distRoot, 'index.html');
+const splitReleaseIdPath = path.join(distRoot, 'release-id.txt');
+const splitShellIndexPath = path.join(distRoot, 'shell', 'index.html');
+let assetsRoot = path.join(distRoot, 'assets');
+let indexPath = path.join(distRoot, 'index.html');
+let bootstrapManifestPath;
 
 function fail(message) {
   console.error(`ERROR: ${message}`);
@@ -68,9 +71,9 @@ function jsImports(sourceText) {
   return Array.from(new Set(imports));
 }
 
-function assertRouteImportsStayInModule(sourceText, moduleName, label) {
+function assertRouteImportsStayInModule(sourceText, moduleName, label, allowed = []) {
   const dynamicImports = Array.from(sourceText.matchAll(/import\(['"]([^'"]+)['"]\)/g), match => match[1]);
-  const unexpected = dynamicImports.filter(specifier => !specifier.startsWith(`@/modules/${moduleName}/`));
+  const unexpected = dynamicImports.filter(specifier => !specifier.startsWith(`@/modules/${moduleName}/`) && !allowed.includes(specifier));
   if (unexpected.length > 0) {
     fail(`${label} has route imports outside ${moduleName}: ${unexpected.join(', ')}`);
   }
@@ -87,6 +90,13 @@ function assertBusinessImplementationAbsent(sourceText, forbiddenPatterns, label
 
 if (!existsSync(srcRoot)) {
   fail(`missing src directory: ${srcRoot}`);
+}
+if (existsSync(splitReleaseIdPath) && existsSync(splitShellIndexPath)) {
+  const releaseId = (await readFile(splitReleaseIdPath, 'utf8')).trim();
+  const releaseRoot = path.join(distRoot, 'static', 'releases', releaseId);
+  assetsRoot = path.join(releaseRoot, 'assets');
+  indexPath = splitShellIndexPath;
+  bootstrapManifestPath = path.join(releaseRoot, 'bootstrap-manifest.json');
 }
 if (!existsSync(indexPath) || !existsSync(assetsRoot)) {
   fail('missing dist output; run npm run build first');
@@ -105,26 +115,27 @@ const [
   userInfoSource
 ] = await Promise.all([
   source('src/App.vue'),
-  source('src/pages/Home/index.vue'),
+  source('lowcode/src/Home.vue'),
   source('src/modules/portal/usePortalCapabilities.js'),
-  source('src/layouts/hooks/useTopBarState.js'),
+  source('lowcode/src/layouts/hooks/useTopBarState.js'),
   source('src/components/RouterView/index.vue'),
   source('src/router/routes.js'),
-  source('src/modules/lowcode/routes.js'),
+  source('lowcode/src/routes.js'),
   source('src/modules/shop/routes.js'),
   source('src/modules/shop/layouts/ShopAccountLayout.vue'),
   source('src/components/UserInfo/index.vue')
 ]);
 
-assertIncludes(rootRoutesSource, "capability: 'lowcode'", 'root lowcode route builder');
+assertIncludes(rootRoutesSource, "...shopRoutes['/shop']", 'shop root route');
+assertNotIncludes(rootRoutesSource, '@/modules/lowcode', 'shop root routes');
 assertIncludes(shopRoutesSource, "capability: 'shop'", 'shop route metadata');
 assertIncludes(shopRoutesSource, 'ShopAccountLayout', 'shop account routes');
-assertRouteImportsStayInModule(lowcodeRoutesSource, 'lowcode', 'lowcode routes');
-assertRouteImportsStayInModule(shopRoutesSource, 'shop', 'shop routes');
+assertIncludes(lowcodeRoutesSource, '@lowcode/pages/', 'standalone lowcode routes');
+assertRouteImportsStayInModule(shopRoutesSource, 'shop', 'shop routes', ['@/modules/xianyu/XianyuManage.vue']);
 
 assertNotIncludes(appSource, 'CustomerServiceWidget', 'App shell');
 assertNotIncludes(appSource, '@/modules/shop/', 'App shell');
-assertIncludes(appSource, 'portalTitle', 'App shell title');
+assertIncludes(appSource, 'isLowcodeApp', 'App shell title');
 assertNotIncludes(appSource, '飞鱼小铺', 'App shell');
 assertNotIncludes(appSource, '飞鱼低代码平台', 'App shell');
 assertBefore(appSource, 'if (!capabilityAllowed.value)', 'store.syncRouteAuth(router)', 'App auth sync');
@@ -139,15 +150,14 @@ assertNotIncludes(topBarStateSource, "router.push('/shop/item-list')", 'topbar s
 assertNotIncludes(topBarStateSource, '飞鱼 - 低代码开发平台', 'topbar title');
 
 assertNotIncludes(homeSource, '@/router/routes', 'Home page');
-assertIncludes(homeSource, "import('@/modules/lowcode/nav.js')", 'Home lowcode nav');
-assertBefore(homeSource, 'if (!hasLowcode.value || lowcodeModules.value.length > 0)', "import('@/modules/lowcode/nav.js')", 'Home lowcode nav');
-assertIncludes(homeSource, "import('@/modules/lowcode/components/LowcodeWorkbench.vue')", 'Home lowcode workbench');
-assertIncludes(homeSource, "import('@/modules/shop/components/MarketEntry.vue')", 'Home shop entry component');
+assertIncludes(homeSource, "import('@lowcode/nav.js')", 'Home lowcode nav');
+assertBefore(homeSource, 'if (!hasLowcode.value || lowcodeModules.value.length > 0)', "import('@lowcode/nav.js')", 'Home lowcode nav');
+assertIncludes(homeSource, "import('@lowcode/components/LowcodeWorkbench.vue')", 'Home lowcode workbench');
+assertNotIncludes(homeSource, '@/modules/shop/', 'standalone lowcode home');
 assertNotIncludes(homeSource, '/portal/workbench', 'Home page');
 assertNotIncludes(homeSource, 'workbench?.shop', 'Home page');
 assertNotIncludes(homeSource, '/shop/manage/items', 'Home page');
-assertIncludes(homeSource, 'shopEntryName', 'Home shop entry');
-assertIncludes(homeSource, 'shopEntryPath', 'Home shop entry');
+
 
 assertBefore(routerViewSource, 'if (requiredCapability.value && !loaded.value)', 'return h(matchedRouteRef.value?.component', 'RouterView loading gate');
 assertBefore(routerViewSource, 'if (!capabilityAllowed.value)', 'return h(matchedRouteRef.value?.component', 'RouterView capability gate');
@@ -160,11 +170,18 @@ assertIncludes(userInfoSource, 'hasShop', 'user menu');
 assertIncludes(userInfoSource, "capability: 'shop'", 'user menu shop actions');
 
 const indexHtml = await readFile(indexPath, 'utf8');
-const scripts = attrValues(indexHtml, 'src').filter(ref => /\/assets\/.+\.js$/.test(ref));
+const bootstrapManifest = bootstrapManifestPath
+  ? JSON.parse(await readFile(bootstrapManifestPath, 'utf8'))
+  : null;
+const scripts = bootstrapManifest
+  ? [`/${bootstrapManifest.entry}`]
+  : attrValues(indexHtml, 'src').filter(ref => /\/assets\/.+\.js$/.test(ref));
 if (scripts.length !== 1 || !/\/assets\/index-.+\.js$/.test(scripts[0])) {
   fail(`dist/index.html must reference exactly one main entry script, found: ${scripts.join(', ')}`);
 }
-const preloads = Array.from(indexHtml.matchAll(/<link[^>]+rel="modulepreload"[^>]+href="([^"]+)"/g), match => match[1]);
+const preloads = bootstrapManifest
+  ? (bootstrapManifest.modulePreloads || []).map(ref => `/${ref}`)
+  : Array.from(indexHtml.matchAll(/<link[^>]+rel="modulepreload"[^>]+href="([^"]+)"/g), match => match[1]);
 const unexpectedPreloads = preloads.filter(ref => !/\/assets\/vendor-(vue|ant-design)-.+\.js$/.test(ref));
 if (unexpectedPreloads.length > 0) {
   fail(`business chunks must not be modulepreloaded: ${unexpectedPreloads.join(', ')}`);
@@ -191,10 +208,9 @@ const shopItemListChunk = findAsset(assets, /^ShopItemList-.+\.js$/, 'ShopItemLi
 const markdownPreviewChunk = findAsset(assets, /^MarkdownPreview-.+\.js$/, 'MarkdownPreview');
 const shopMarkdownPreviewChunk = findAsset(assets, /^ShopMarkdownPreview-.+\.js$/, 'ShopMarkdownPreview');
 const shopMarkdownEditorChunk = findAsset(assets, /^ShopMarkdownEditor-.+\.js$/, 'ShopMarkdownEditor');
-const lowcodeWorkbenchChunk = findAsset(assets, /^LowcodeWorkbench-.+\.js$/, 'LowcodeWorkbench');
-const marketEntryChunk = findAsset(assets, /^MarketEntry-.+\.js$/, 'MarketEntry');
-const selectModelDesignChunk = findAsset(assets, /^SelectModelDesign-.+\.js$/, 'SelectModelDesign');
-const selectDataSourceChunk = findAsset(assets, /^SelectDataSource-.+\.js$/, 'SelectDataSource');
+if (assets.some(asset => /^(LowcodeWorkbench|SelectModelDesign|SelectDataSource|MarketEntry)-/.test(asset))) {
+  fail('shop artifact contains standalone lowcode code');
+}
 
 const [
   shopAccountLayoutBuilt,
@@ -202,18 +218,14 @@ const [
   shopItemDetailBuilt,
   shopItemListBuilt,
   markdownPreviewBuilt,
-  shopMarkdownPreviewBuilt,
-  selectModelDesignBuilt,
-  selectDataSourceBuilt
+  shopMarkdownPreviewBuilt
 ] = await Promise.all([
   assetSource(shopAccountLayoutChunk),
   assetSource(customerServiceChunk),
   assetSource(shopItemDetailChunk),
   assetSource(shopItemListChunk),
   assetSource(markdownPreviewChunk),
-  assetSource(shopMarkdownPreviewChunk),
-  assetSource(selectModelDesignChunk),
-  assetSource(selectDataSourceChunk)
+  assetSource(shopMarkdownPreviewChunk)
 ]);
 
 assertIncludes(shopAccountLayoutBuilt, customerServiceChunk, 'built shop account layout');
@@ -224,8 +236,6 @@ assertBusinessImplementationAbsent(shopItemDetailBuilt, [/integrity\/sources/i, 
 assertBusinessImplementationAbsent(shopItemListBuilt, [/integrity\/sources/i, /SelectModel/i, /\/portal\/customer-service/i], 'built shop item list');
 assertBusinessImplementationAbsent(markdownPreviewBuilt, [new RegExp(shopMarkdownEditorChunk), /MdEditorV3/i], 'built markdown preview');
 assertBusinessImplementationAbsent(shopMarkdownPreviewBuilt, [new RegExp(shopMarkdownEditorChunk), /MdEditorV3/i], 'built shop markdown preview');
-assertBusinessImplementationAbsent(selectModelDesignBuilt, [/\/shops/i, /\/portal\/customer-service/i, /ShopItem/i], 'built lowcode model design');
-assertBusinessImplementationAbsent(selectDataSourceBuilt, [/\/shops/i, /\/portal\/customer-service/i, /ShopItem/i], 'built lowcode data source');
 
 const markdownPreviewDependencies = new Set([
   ...jsImports(markdownPreviewBuilt),

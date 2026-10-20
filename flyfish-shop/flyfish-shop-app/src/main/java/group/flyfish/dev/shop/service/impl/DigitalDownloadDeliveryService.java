@@ -25,6 +25,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DigitalDownloadDeliveryService implements ShopDeliveryHandler {
 
+    @Override
+    public boolean recoverySafe() { return true; }
+
     private static final String ACTOR = "auto-delivery";
 
     private final ShopOrderDeliveryRepository deliveryRepository;

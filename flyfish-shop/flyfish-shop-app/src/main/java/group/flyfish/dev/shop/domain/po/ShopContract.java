@@ -26,6 +26,9 @@ public class ShopContract extends AuditDomain {
     @Property("合同标签")
     private String tags;
 
+    @Property("合同多语言内容")
+    private String i18n;
+
     @Property("启用状态")
     private Boolean enabled;
 

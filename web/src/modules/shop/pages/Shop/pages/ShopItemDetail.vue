@@ -34,27 +34,33 @@ import {
   orderStatusText,
   shopItemTypeText
 } from '@/modules/shop/utils/shopDelivery.js';
-import { getShopItemHighlight } from '@/modules/shop/utils/shopItemEffects.js';
+import { getShopItemSkuHighlight } from '@/modules/shop/utils/shopItemEffects.js';
 import { useGitRepositoryBinding } from '../hooks/useGitRepositoryBinding.js';
 import { useShopDonationAmount } from '../hooks/useShopDonationAmount.js';
 import { useShopCoupon } from '../hooks/useShopCoupon.js';
 import { useShopDefaultCoupon } from '../hooks/useShopDefaultCoupon.js';
 import { useShopOrders } from '../hooks/useShopOrders.js';
+import { useShopOfferLink } from '../hooks/useShopOfferLink.js';
 import { useShopPayment } from '../hooks/useShopPayment.js';
 import { useShopContractAgreement } from '../hooks/useShopContractAgreement.js';
 import { useShopPurchaseAvailability } from '../hooks/useShopPurchaseAvailability.js';
+import { useLicenseMaintenanceAgreement } from '../hooks/useLicenseMaintenanceAgreement.js';
+import { useLicenseRenewal } from '../hooks/useLicenseRenewal.js';
 import ShopSupportEntry from '../components/ShopSupportEntry.vue';
 import ShopContractAgreementModal from '../components/ShopContractAgreementModal.vue';
 import ShopPaymentMethodSelector from '../components/ShopPaymentMethodSelector.vue';
+import ShopLicenseRenewalPanel from '../components/ShopLicenseRenewalPanel.vue';
 import { resolveLocalizedShopItem } from '@/modules/shop/utils/shopI18n.js';
 import {
   buildOrderFormProperties,
   defaultOrderFormValues,
+  isOrderFormFieldVisible,
   normalizeOrderFormValues,
   parseShopOrderFormConfig
 } from '@/modules/shop/utils/shopOrderForm.js';
 import { message } from 'ant-design-vue';
-import { formatShopMoney } from '@/modules/shop/utils/shopMoney.js';
+import { formatShopCatalogMoney } from '@/modules/shop/utils/shopMoney.js';
+import { resolveShopCatalogRedirect } from '@/modules/shop/utils/shopCatalogRedirect.js';
 
 const ShopMarkdownPreview = defineAsyncComponent(() => import('../components/ShopMarkdownPreview.vue'));
 
@@ -131,15 +137,15 @@ const priceStartBeforeAmount = computed(() => donationEnabled.value
 const displayCurrencySymbol = computed(() => paymentCurrency.value === 'CNY'
   && String(locale.value || '').toLowerCase().startsWith('en') ? 'CN¥' : currencySymbol.value);
 const formatSkuPrice = sku => paymentCurrency.value === 'USD'
-  ? formatShopMoney(sku?.effectiveUsdPrice, 'USD')
-  : formatShopMoney(sku?.price, 'CNY');
+  ? formatShopCatalogMoney(sku?.effectiveUsdPrice, 'USD')
+  : formatShopCatalogMoney(sku?.price, 'CNY');
 const highlightIcons = {
   crown: CrownOutlined,
   badge: SafetyCertificateOutlined,
   spark: ThunderboltOutlined,
   fire: FireOutlined
 };
-const itemHighlight = computed(() => getShopItemHighlight(data.value, t));
+const itemHighlight = computed(() => getShopItemSkuHighlight(data.value, selectedSku.value, t));
 const itemHighlightIcon = computed(() => highlightIcons[itemHighlight.value.icon]);
 
 const {
@@ -175,6 +181,70 @@ const {
 } = useShopDonationAmount({ item: saleItem });
 
 const {
+  maintenanceAvailable,
+  maintenanceConfig,
+  maintenanceSelected,
+  maintenanceOrderPayload,
+  validateMaintenanceAgreement
+} = useLicenseMaintenanceAgreement({ item: saleItem });
+const {
+  renewalEnabled,
+  renewalLoading,
+  renewalEligible,
+  renewalLicenses,
+  renewalSourceLicenseNo,
+  renewalStartDate,
+  renewalYears,
+  renewalAnnualPrice,
+  renewalMaxYears,
+  renewalAmount,
+  renewalUnavailableMessage,
+  validateLicenseRenewal,
+  licenseRenewalOrderPayload
+} = useLicenseRenewal({ item: saleItem, user, paymentCurrency });
+const checkoutBaseAmount = computed(() => renewalEnabled.value
+  ? Number(renewalAmount.value || 0)
+  : Number(payableBaseAmount.value || 0));
+const checkoutAmountPayload = () => ({
+  ...(orderAmountPayload ? orderAmountPayload() : {}),
+  ...maintenanceOrderPayload(),
+  ...licenseRenewalOrderPayload()
+});
+
+const offerLink = useShopOfferLink({
+  item: saleItem,
+  route: router.route,
+  orderAmountPayload: checkoutAmountPayload,
+  user
+});
+const {
+  offerLinkPresent,
+  offerLinkActive,
+  offerLinkExternalSettlement,
+  offerLinkLoading,
+  offerLinkError,
+  offerLinkPreview,
+  offerLinkBlocksCheckout
+} = offerLink;
+const offerLinkExpiryText = computed(() => offerLinkPreview.value?.expiresAt
+  ? new Intl.DateTimeFormat(locale.value, {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(new Date(offerLinkPreview.value.expiresAt))
+  : '');
+const offerLinkDiscountText = computed(() => formatShopCatalogMoney(
+  offerLinkPreview.value?.discountAmount,
+  offerLinkPreview.value?.currency || paymentCurrency.value
+));
+const offerLinkPayableText = computed(() => formatShopCatalogMoney(
+  offerLinkPreview.value?.payableAmount,
+  offerLinkPreview.value?.currency || paymentCurrency.value
+));
+
+const {
   availabilityLoading,
   availabilityError,
   purchaseBlocked,
@@ -204,16 +274,24 @@ const validateOrderForm = () => {
 const validateCheckout = () => validateGitCheckout()
   && validatePurchaseAvailability()
   && validateDonationAmount()
-  && validateOrderForm();
+  && validateOrderForm()
+  && validateMaintenanceAgreement()
+  && validateLicenseRenewal();
 
 const canCheckout = computed(() => {
-  if (!user.value?.id) {
-    return false;
-  }
   if (isGitRepositoryAccessType(saleItem.value.type) && !gitAuthorization.value) {
     return false;
   }
   if (purchaseBlocked.value || availabilityLoading.value) {
+    return false;
+  }
+  if (renewalEnabled.value && (renewalLoading.value || !renewalEligible.value)) {
+    return false;
+  }
+  if (maintenanceAvailable.value && maintenanceConfig.value.required && !maintenanceSelected.value) {
+    return false;
+  }
+  if (offerLinkBlocksCheckout.value) {
     return false;
   }
   if (!orderFormReady.value) {
@@ -222,31 +300,40 @@ const canCheckout = computed(() => {
   return data.value.enabled !== false;
 });
 const checkoutHint = computed(() => {
+  if (offerLinkLoading.value) {
+    return t('shop.offerLink.validating');
+  }
+  if (offerLinkError.value) {
+    return t('shop.offerLink.unavailableHint');
+  }
   if (availabilityLoading.value) {
     return t('shop.checkingStatus');
   }
   if (purchaseBlocked.value) {
     return t('shop.purchasedHint');
   }
+  if (renewalEnabled.value && renewalLoading.value) {
+    return t('shop.licenseRenewal.checking');
+  }
+  if (renewalEnabled.value && !renewalEligible.value) {
+    return renewalUnavailableMessage.value;
+  }
+  if (maintenanceAvailable.value && maintenanceConfig.value.required && !maintenanceSelected.value) {
+    return t('shop.licenseMaintenance.agreementRequired');
+  }
   if (orderFormConfig.value.enabled && !orderFormReady.value) {
     return t('shop.completeOrderDetails');
   }
   return checkoutTip.value;
 });
-const checkoutButtonText = computed(() => {
-  if (isPureDonationType(saleItem.value.type)) {
-    return t('shop.immediateDonate');
-  }
-  return donationEnabled.value ? t('shop.donationAccess') : t('shop.immediateBuy');
-});
-
 const coupon = useShopCoupon({
   item: saleItem,
   user,
   store,
   router,
-  baseAmount: payableBaseAmount,
-  orderAmountPayload
+  baseAmount: checkoutBaseAmount,
+  orderAmountPayload: checkoutAmountPayload,
+  offerLink
 });
 const couponSupported = computed(() => paymentCurrency.value !== 'USD');
 const {
@@ -254,18 +341,23 @@ const {
   couponCode,
   appliedCoupon,
   couponError,
+  effectiveDiscount,
   currentPayableAmount,
   hasAppliedCoupon,
+  hasActiveDiscount,
   applyCouponCode,
   resetCoupon
 } = coupon;
+const displayedPayableAmount = computed(() => paymentCurrency.value === 'USD' && !donationEnabled.value
+  ? Math.round(Number(currentPayableAmount.value || 0))
+  : currentPayableAmount.value);
 
 const { defaultPromotion } = useShopDefaultCoupon({
   item: saleItem,
   couponCode,
   appliedCoupon,
   couponError,
-  enabled: couponSupported
+  enabled: computed(() => couponSupported.value && !offerLinkPresent.value)
 });
 
 watch(couponSupported, supported => {
@@ -283,7 +375,9 @@ const {
   paymentScene,
   qrCode,
   payLink,
+  paymentActionReady,
   redirectPayment,
+  zeroAmountCheckout,
   checkoutTip,
   paymentFinished,
   paymentModalTitle,
@@ -310,15 +404,40 @@ const {
   loadOrders: refreshOrderState,
   validateCheckout,
   coupon,
-  orderAmountPayload,
-  paymentCurrency
+  orderAmountPayload: checkoutAmountPayload,
+  paymentCurrency,
+  externalSettlementCheckout: offerLinkExternalSettlement
+});
+
+const checkoutButtonText = computed(() => {
+  if (!user.value?.id) {
+    if (offerLinkExternalSettlement.value) {
+      return t('shop.offerLink.signInToReceive');
+    }
+    return zeroAmountCheckout.value ? t('shop.signInToClaim') : t('shop.signInToBuy');
+  }
+  if (offerLinkExternalSettlement.value) {
+    return t('shop.offerLink.directCheckoutButton');
+  }
+  if (renewalEnabled.value) {
+    return t('shop.licenseRenewal.buyNow');
+  }
+  if (zeroAmountCheckout.value) {
+    return t('shop.immediateClaim');
+  }
+  if (isPureDonationType(saleItem.value.type)) {
+    return t('shop.immediateDonate');
+  }
+  return donationEnabled.value ? t('shop.donationAccess') : t('shop.immediateBuy');
 });
 
 const contractAgreement = useShopContractAgreement({
   item: saleItem,
   user,
   store,
-  router
+  router,
+  maintenanceAgreement: maintenanceSelected,
+  licenseRenewal: renewalEnabled
 });
 
 const handleCheckout = async () => {
@@ -326,7 +445,9 @@ const handleCheckout = async () => {
     return;
   }
   const orderFormResult = normalizeOrderFormValues(orderFormConfig.value, orderFormValues.value, t);
-  const contractPayload = await contractAgreement.ensureContractAgreement();
+  const contractPayload = offerLinkExternalSettlement.value
+    ? {}
+    : await contractAgreement.ensureContractAgreement();
   if (contractPayload === null) {
     return;
   }
@@ -342,6 +463,11 @@ const useDefaultCover = event => setShopImageFallback(event, data.value?.type);
 
 const resolveDefaultSkuId = detail => {
   const skus = (detail?.skus || []).filter(sku => sku.enabled !== false);
+  const requestedSku = router.route.query.sku;
+  const linkedSku = skus.find(sku => String(sku.id) === String(requestedSku));
+  if (linkedSku) {
+    return linkedSku.id;
+  }
   return (skus.find(sku => sku.defaultSelected) || skus[0])?.id || null;
 };
 
@@ -358,6 +484,11 @@ const loadDetail = async id => {
     resetCoupon();
     const detail = await getShopItemDetail(id);
     if (requestSeq === detailRequestSeq && String(router.route.params.id) === currentId) {
+      const redirect = resolveShopCatalogRedirect(detail, router.route.query);
+      if (redirect) {
+        router.replace(redirect);
+        return;
+      }
       data.value = detail;
       selectedSkuId.value = resolveDefaultSkuId(detail);
       const defaultSku = (detail.skus || []).find(sku => String(sku.id) === String(selectedSkuId.value));
@@ -401,6 +532,12 @@ watch(() => router.route.params.id, async id => {
   await loadDetail(id);
 });
 
+watch(() => router.route.query.sku, () => {
+  if (String(data.value.id) === String(router.route.params.id)) {
+    selectedSkuId.value = resolveDefaultSkuId(data.value);
+  }
+});
+
 watch(() => user.value?.id, () => {
   refreshOrderState();
 });
@@ -430,7 +567,7 @@ const handleTabChange = key => {
           <a-tabs v-model:activeKey='activeTab' @change='handleTabChange'>
             <a-tab-pane key='1' :tab="t('shop.detailTab')">
               <a-empty v-if='detailError' :description='detailError' />
-              <div v-else-if='localizedSaleData.description' class='detail-content'>
+              <div v-else-if='localizedData.description' class='detail-content'>
                 <section class='detail-showcase'>
                   <img :src='images[0]' alt='' @error='useDefaultCover' />
                   <div class='detail-showcase-text'>
@@ -440,14 +577,29 @@ const handleTabChange = key => {
                     <p>{{ saleItemDeliveryText }}</p>
                   </div>
                 </section>
-                <ShopMarkdownPreview
-                  :id='detailPreviewId'
-                  class='description'
-                  :model-value='localizedSaleData.description || ""'
-                  :language='locale'
-                  preview-theme='default'
-                  code-theme='github'
-                />
+                <div class='detail-body'>
+                  <section v-if='selectedLocalizedSku?.description' class='selected-sku-summary'>
+                    <span>{{ t('shop.package') }}</span>
+                    <strong>{{ selectedLocalizedSku.name }}</strong>
+                  </section>
+                  <ShopMarkdownPreview
+                    :id='detailPreviewId'
+                    class='description'
+                    :model-value='localizedData.description || ""'
+                    :language='locale'
+                    preview-theme='default'
+                    code-theme='github'
+                  />
+                  <ShopMarkdownPreview
+                    v-if='selectedLocalizedSku?.description'
+                    :id='`${detailPreviewId}-sku-${selectedSkuId}`'
+                    class='description'
+                    :model-value='selectedLocalizedSku.description'
+                    :language='locale'
+                    preview-theme='default'
+                    code-theme='github'
+                  />
+                </div>
               </div>
               <a-empty v-else :description="t('shop.emptyDetail')" />
             </a-tab-pane>
@@ -526,10 +678,10 @@ const handleTabChange = key => {
               </div>
               <div class='price-box'>
                 <div class='price-main'>
-                  <span v-if='hasAppliedCoupon' class='original-price'>{{ displayCurrencySymbol }}{{ appliedCoupon.originalAmount }}</span>
+                  <span v-if='hasActiveDiscount' class='original-price'>{{ displayCurrencySymbol }}{{ effectiveDiscount.originalAmount }}</span>
                   <span v-if='priceStartBeforeAmount' class='price-suffix'>{{ t('shop.priceStartSuffix') }}</span>
                   <span class='price'>
-                    <span class='currency-mark'>{{ displayCurrencySymbol }}</span>{{ currentPayableAmount }}
+                    <span class='currency-mark'>{{ displayCurrencySymbol }}</span>{{ displayedPayableAmount }}
                   </span>
                   <span v-if='donationEnabled && !priceStartBeforeAmount' class='price-suffix'>{{ t('shop.priceStartSuffix') }}</span>
                 </div>
@@ -633,7 +785,7 @@ const handleTabChange = key => {
                 show-icon
               />
               <a-alert
-                v-if='saleItem.contractRequired'
+                v-if='saleItem.contractRequired && !offerLinkExternalSettlement'
                 class='contract-guard'
                 :message="t('shop.contractRequired')"
                 type='info'
@@ -648,6 +800,7 @@ const handleTabChange = key => {
                   <a-form-item
                     v-for='field in orderFormConfig.fields'
                     :key='field.key'
+                    v-show='isOrderFormFieldVisible(field, orderFormValues)'
                     :label='field.type === "checkbox" ? "" : field.label'
                     :required='field.required && field.type !== "checkbox"'
                   >
@@ -684,6 +837,44 @@ const handleTabChange = key => {
               </div>
               <shop-support-entry variant='inline' />
               <a-divider />
+              <a-alert
+                v-if='offerLinkPresent && offerLinkLoading'
+                class='offer-link-notice'
+                :message="t('shop.offerLink.validating')"
+                type='info'
+                show-icon
+              />
+              <a-alert
+                v-else-if='offerLinkExternalSettlement'
+                class='offer-link-notice'
+                :message="t('shop.offerLink.directTitle')"
+                :description="t('shop.offerLink.directDescription', {
+                  amount: offerLinkPayableText,
+                  expires: offerLinkExpiryText
+                })"
+                type='success'
+                show-icon
+              />
+              <a-alert
+                v-else-if='offerLinkActive'
+                class='offer-link-notice'
+                :message="t('shop.offerLink.appliedTitle')"
+                :description="t('shop.offerLink.appliedDescription', {
+                  amount: offerLinkDiscountText,
+                  payable: offerLinkPayableText,
+                  expires: offerLinkExpiryText
+                })"
+                type='success'
+                show-icon
+              />
+              <a-alert
+                v-else-if='offerLinkPresent && offerLinkError'
+                class='offer-link-notice'
+                :message="t('shop.offerLink.unavailableTitle')"
+                :description='offerLinkError'
+                type='warning'
+                show-icon
+              />
               <div v-if='donationEnabled' class='donation-line'>
                 <span>{{ t('shop.donationAmount') }}</span>
                 <div class='donation-main'>
@@ -700,7 +891,27 @@ const handleTabChange = key => {
                   }) }}</a-tag>
                 </div>
               </div>
-              <div v-if='couponSupported' class='coupon-line'>
+              <shop-license-renewal-panel
+                v-if='renewalEnabled'
+                v-model:source-license-no='renewalSourceLicenseNo'
+                v-model:start-date='renewalStartDate'
+                v-model:years='renewalYears'
+                :loading='renewalLoading'
+                :eligible='renewalEligible'
+                :licenses='renewalLicenses'
+                :annual-price='renewalAnnualPrice'
+                :max-years='renewalMaxYears'
+                :amount='renewalAmount'
+                :currency='paymentCurrency'
+                :unavailable-message='renewalUnavailableMessage'
+              />
+              <div v-if='maintenanceAvailable' class='maintenance-option'>
+                <a-checkbox v-model:checked='maintenanceSelected'>
+                  {{ t('shop.licenseMaintenance.option') }}
+                </a-checkbox>
+                <p>{{ t('shop.licenseMaintenance.description') }}</p>
+              </div>
+              <div v-if='couponSupported && !offerLinkPresent' class='coupon-line'>
                 <span>{{ t('shop.coupon') }}</span>
                 <div class='coupon-main'>
                   <a-input-group compact class='coupon-control'>
@@ -730,7 +941,14 @@ const handleTabChange = key => {
                   </div>
                 </div>
               </div>
-              <div class='payment-method-line'>
+              <a-alert
+                v-if='zeroAmountCheckout'
+                class='free-checkout-notice'
+                :message="t('shop.paymentFlow.freeCheckoutNotice')"
+                type='success'
+                show-icon
+              />
+              <div v-else-if='!offerLinkExternalSettlement' class='payment-method-line'>
                 <span>{{ t('shop.paymentMethod') }}</span>
                 <ShopPaymentMethodSelector
                   v-model="paymentMethod"
@@ -759,7 +977,7 @@ const handleTabChange = key => {
 
     <a-modal
       v-model:open="payModalVisible"
-      :title="t('shop.paymentTitle')"
+      :title="paymentModalTitle"
       :footer="null"
       :maskClosable="false"
       wrap-class-name="shop-payment-modal"
@@ -789,7 +1007,7 @@ const handleTabChange = key => {
           show-icon
         />
         <div v-if="!paymentFinished" class="pay-actions">
-          <a-button v-if="redirectPayment && payLink" type="primary" @click="openPayLink">
+          <a-button v-if="redirectPayment && paymentActionReady" type="primary" @click="openPayLink">
             {{ redirectPayButtonText }}
           </a-button>
         </div>
@@ -984,8 +1202,9 @@ const handleTabChange = key => {
         }
 
         .sku-options {
-          display: flex;
-          flex-wrap: wrap;
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+          grid-auto-rows: minmax(48px, auto);
           gap: 8px;
         }
 
@@ -993,7 +1212,9 @@ const handleTabChange = key => {
           display: inline-flex;
           height: auto;
           min-height: 42px;
-          max-width: 220px;
+          min-width: 0;
+          max-width: 100%;
+          padding: 10px 12px;
           align-items: center;
           gap: 8px;
           border-inline-start-width: 1px;
@@ -1007,18 +1228,21 @@ const handleTabChange = key => {
           .ant-radio-button + span {
             display: inline-flex;
             min-width: 0;
+            width: 100%;
             align-items: center;
+            justify-content: space-between;
             gap: 8px;
           }
 
           strong {
-            overflow: hidden;
             min-width: 0;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            line-height: 1.4;
+            white-space: normal;
+            overflow-wrap: anywhere;
           }
 
           em {
+            flex-shrink: 0;
             color: #ef4444;
             font-style: normal;
             font-weight: 700;
@@ -1207,6 +1431,36 @@ const handleTabChange = key => {
         }
       }
 
+      .maintenance-option {
+        margin: 14px 0;
+        padding: 14px 16px;
+        border: 1px solid #d9ead3;
+        border-radius: 6px;
+        background: #f7fcf5;
+
+        :deep(.ant-checkbox-wrapper) {
+          color: #173b28;
+          font-weight: 600;
+        }
+
+        p {
+          margin: 7px 0 0 24px;
+          color: #66776f;
+          font-size: 13px;
+          line-height: 1.6;
+        }
+      }
+
+      .offer-link-notice {
+        width: min(100%, 520px);
+        margin: 0 0 16px;
+        text-align: left;
+
+        :deep(.ant-alert-description) {
+          line-height: 1.55;
+        }
+      }
+
       .coupon-line {
         display: grid;
         grid-template-columns: 58px minmax(0, 360px);
@@ -1273,6 +1527,14 @@ const handleTabChange = key => {
           color: #5f6f66;
           font-weight: 600;
         }
+      }
+
+      .free-checkout-notice {
+        width: min(100%, 520px);
+        margin: 0 0 16px;
+        text-align: left;
+        border-color: #b7eb8f;
+        background: #f6ffed;
       }
 
       .purchase-guard {
@@ -1441,6 +1703,43 @@ const handleTabChange = key => {
   box-sizing: border-box;
   text-align: left;
   word-break: break-word;
+}
+
+.detail-body {
+  min-width: 0;
+}
+
+.selected-sku-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  border-inline-start: 3px solid #2f9e63;
+  background: #f6fbf8;
+
+  > span {
+    grid-row: 1 / 3;
+    align-self: start;
+    color: #75827a;
+    font-size: 12px;
+    line-height: 22px;
+  }
+
+  strong {
+    min-width: 0;
+    color: #1f3b2a;
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  p {
+    min-width: 0;
+    margin: 0;
+    color: #5f6f66;
+    font-size: 13px;
+    line-height: 1.65;
+  }
 }
 
 .order-list {
@@ -1722,6 +2021,16 @@ const handleTabChange = key => {
 
   .description {
     font-size: 14px;
+  }
+
+  .selected-sku-summary {
+    grid-template-columns: 1fr;
+    gap: 3px;
+    padding: 12px 14px;
+
+    > span {
+      grid-row: auto;
+    }
   }
 
   .order-list {

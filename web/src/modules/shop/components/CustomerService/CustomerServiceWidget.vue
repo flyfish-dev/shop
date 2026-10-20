@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, watch } from 'vue';
 import { BellOutlined, CustomerServiceOutlined } from '@ant-design/icons-vue';
 import { storeToRefs } from 'pinia';
 import useClientStore from '@/modules/auth/store/client.js';
-import { useRouter } from '@/router/use.js';
+import { useRoute, useRouter } from '@/router/use.js';
 import { listenCustomerServiceOpen } from './customerServiceBus.js';
 import CustomerChatDrawer from './CustomerChatDrawer.vue';
 import CustomerNotificationDrawer from './CustomerNotificationDrawer.vue';
@@ -14,6 +14,7 @@ import { useI18n } from 'vue-i18n';
 
 const store = useClientStore();
 const router = useRouter();
+const route = useRoute();
 const { user, token, width } = storeToRefs(store);
 const { t } = useI18n();
 
@@ -96,6 +97,17 @@ const handleOpenChat = payload => {
   }
 };
 
+const openConversationFromRoute = () => {
+  const conversationId = Number(route.query?.customerConversation);
+  if (!conversationId || !user.value?.id || !token.value || !manager.value) {
+    return;
+  }
+  handleOpenChat({ conversationId });
+  const query = { ...(route.query || {}) };
+  delete query.customerConversation;
+  router.replace({ path: route.path, query, hash: route.hash });
+};
+
 const updateAttachmentUploading = value => {
   uploadingAttachments.value = value;
 };
@@ -126,6 +138,13 @@ watch(manager, value => {
     stopActivityAutoRefresh();
   }
 });
+
+watch([
+  () => route.query?.customerConversation,
+  () => user.value?.id,
+  () => token.value,
+  manager
+], openConversationFromRoute, { immediate: true });
 
 onMounted(() => {
   removeOpenListener = listenCustomerServiceOpen(handleOpenChat);

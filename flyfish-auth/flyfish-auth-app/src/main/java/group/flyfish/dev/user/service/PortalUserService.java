@@ -14,6 +14,9 @@ import reactor.core.publisher.Mono;
 
 public interface PortalUserService {
 
+    Mono<UserToken> registerOrLoginXianyuSubject(String subject);
+    Mono<OAuthBindPlan> prepareBindXianyuSubject(String subject, Long userId, String ticket);
+
     /**
      * 使用微信注册
      *

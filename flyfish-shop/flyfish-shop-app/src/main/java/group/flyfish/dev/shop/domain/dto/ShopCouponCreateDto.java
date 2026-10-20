@@ -21,6 +21,12 @@ public class ShopCouponCreateDto {
     @NotBlank(message = "优惠券名称不能为空")
     private String name;
 
+    /** 为空表示全店可用。 */
+    private Long itemId;
+
+    /** 为空表示商品下全部SKU可用；设置时必须同时设置商品。 */
+    private Long skuId;
+
     @NotNull(message = "优惠类型不能为空")
     private ShopCoupon.Type type;
 

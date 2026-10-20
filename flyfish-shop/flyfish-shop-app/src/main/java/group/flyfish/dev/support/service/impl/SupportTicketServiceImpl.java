@@ -279,7 +279,8 @@ public class SupportTicketServiceImpl implements SupportTicketService {
 
     private SupportTicketMessageVo toMessageVo(SupportTicketMessage message, PortalUserVo creator) {
         boolean fromUser = SupportTicketMessage.SenderRole.USER.name().equals(message.getSenderRole());
-        String senderName = fromUser ? creatorName(creator, message.getSenderId()) : "客服";
+        String senderName = fromUser ? creatorName(creator, message.getSenderId())
+                : SupportTicketMessage.SenderRole.SYSTEM.name().equals(message.getSenderRole()) ? "系统" : "客服";
         String senderAvatar = fromUser && creator != null ? creator.getAvatar() : null;
         return new SupportTicketMessageVo(message, senderName, senderAvatar);
     }

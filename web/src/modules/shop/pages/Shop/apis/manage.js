@@ -17,6 +17,14 @@ export const deleteItemGroup = (id) => del(`/shops/managements/item-groups/${id}
 export const createItem = (data) => post(`/shops/managements/items`, { body: data, credential: true });
 export const updateItem = (id, data) => put(`/shops/managements/items/${id}`, { body: data, credential: true });
 export const deleteItem = (id) => del(`/shops/managements/items/${id}`, { credential: true });
+export const getItemOfferLinks = id => get(`/shops/managements/items/${id}/offer-links`, { credential: true });
+export const createItemOfferLink = (id, data) => post(`/shops/managements/items/${id}/offer-links`, {
+  body: data,
+  credential: true
+});
+export const revokeItemOfferLink = id => post(`/shops/managements/offer-links/${id}/revoke`, {
+  credential: true
+});
 export const getGitRepositories = (params) => get('/shops/managements/repositories', { params, credential: true });
 export const getGitRepositoryOptions = (params) => get('/shops/managements/git/repository-options', { params, credential: true });
 
@@ -40,7 +48,11 @@ export const getContracts = (params) => get('/shops/managements/contracts', { pa
 export const createContract = (data) => post('/shops/managements/contracts', { body: data, credential: true });
 export const updateContract = (id, data) => put(`/shops/managements/contracts/${id}`, { body: data, credential: true });
 export const deleteContract = (id) => del(`/shops/managements/contracts/${id}`, { credential: true });
-export const uploadContractFile = (id, data) => post(`/shops/managements/contracts/${id}/files`, { body: data, credential: true });
+export const uploadContractFile = (id, data, params) => post(`/shops/managements/contracts/${id}/files`, {
+  body: data,
+  params,
+  credential: true
+});
 export const updateContractFile = (id, fileId, data) => put(`/shops/managements/contracts/${id}/files/${fileId}`, { body: data, credential: true });
 export const deleteContractFile = (id, fileId) => del(`/shops/managements/contracts/${id}/files/${fileId}`, { credential: true });
 export const getContractSignatures = () => get('/shops/managements/contract-signatures', { credential: true });
@@ -55,6 +67,10 @@ export const deleteCoupon = (id) => del(`/shops/managements/coupons/${id}`, { cr
 export const getOrderDelivery = (orderNo) => get(`/shops/managements/orders/${orderNo}/delivery`, { credential: true });
 export const updateOrderDelivery = (orderNo, data) => put(`/shops/managements/orders/${orderNo}/delivery`, { body: data, credential: true });
 export const retryOrderDelivery = (orderNo) => post(`/shops/managements/orders/${orderNo}/delivery/retry`, { credential: true });
+export const reissuePermanentLicense = (orderNo, data) => post(
+  `/shops/managements/orders/${orderNo}/licenses/permanent/reissue`,
+  { body: data, credential: true }
+);
 
 // 文件上传
 export const uploadImage = (data) => post('/shops/managements/upload', { body: data, credential: true });

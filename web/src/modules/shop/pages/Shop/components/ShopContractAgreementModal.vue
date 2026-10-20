@@ -179,8 +179,11 @@ const shortName = name => {
 <style scoped lang="less">
 .contract-shell {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto minmax(0, 1fr);
+  width: 100%;
   height: 100%;
+  min-width: 0;
   min-height: 0;
   background: #fff;
 }
@@ -215,6 +218,7 @@ const shortName = name => {
 }
 
 .contract-tabs {
+  min-width: 0;
   min-height: 0;
   padding: 0 20px;
   border-bottom: 1px solid #edf2f7;
@@ -236,6 +240,8 @@ const shortName = name => {
 }
 
 .contract-preview-scroll {
+  width: 100%;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
   background: #eef3f7;
@@ -243,6 +249,8 @@ const shortName = name => {
   iframe {
     display: block;
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
     height: 100%;
     border: 0;
     background: #eef5f1;

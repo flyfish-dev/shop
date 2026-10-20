@@ -17,6 +17,7 @@
     <description>flyfish-dev-next</description>
 
     <modules>
+        <module>flyfish-xianyu-api</module>
         <module>flyfish-ddl</module>
         <module>flyfish-portal-api</module>
         <module>flyfish-common</module>
@@ -25,6 +26,7 @@
         <module>flyfish-auth</module>
         <module>flyfish-lowcode</module>
         <module>flyfish-shop</module>
+        <module>flyfish-xianyu-app</module>
     </modules>
 
     <properties>

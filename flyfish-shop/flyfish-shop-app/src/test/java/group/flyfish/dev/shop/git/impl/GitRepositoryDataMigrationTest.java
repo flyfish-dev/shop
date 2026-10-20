@@ -48,7 +48,9 @@ class GitRepositoryDataMigrationTest {
         item.setId(3L);
         item.setType(ShopItem.Type.GIT_REPOSITORY_ACCESS);
         item.setParams("""
-                {"provider":"gitea","repositoryIds":[18]}
+                {"provider":"gitea","repositoryIds":[18],
+                 "catalogMigration":"catalog-v1",
+                 "catalogRedirect":{"itemId":12,"skuId":5,"skuIds":{"9":6}}}
                 """);
         when(shopItemRepository.findAll()).thenReturn(Flux.just(item));
         when(shopItemRepository.save(any(ShopItem.class))).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
@@ -83,6 +85,10 @@ class GitRepositoryDataMigrationTest {
         assertEquals("flyfish-dev", migrated.getRepositories().getFirst().getOwner());
         assertEquals("rtsp-source", migrated.getRepositories().getFirst().getRepo());
         assertEquals("pull", migrated.getRepositories().getFirst().getPermission());
+        assertEquals("catalog-v1", migrated.getCatalogMigration());
+        assertEquals(12L, migrated.getCatalogRedirect().getItemId());
+        assertEquals(5L, migrated.getCatalogRedirect().getSkuId());
+        assertEquals(6L, migrated.getCatalogRedirect().getSkuIds().get("9"));
     }
 
     @Test

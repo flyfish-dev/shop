@@ -7,6 +7,10 @@ import java.time.LocalDateTime;
 @Data
 public class ShopOrderPaymentVo {
 
+    private String action;
+
+    private String platformOrderId;
+
     private String provider;
 
     private String tradeType;

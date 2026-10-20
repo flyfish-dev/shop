@@ -5,10 +5,14 @@ import fs from 'node:fs'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
+import { applicationBoundaries } from './scripts/application-boundaries.mjs'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // 构建资源使用相对地址，使同一份 release 可以从任意静态域名加载。
+  base: './',
   plugins: [
+    applicationBoundaries(),
     vue({
       template: {
         compilerOptions: {
@@ -20,6 +24,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
+      '@app-routes': fileURLToPath(new URL('./src/router/routes.js', import.meta.url)),
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
     extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json', '.vue']
@@ -123,7 +128,7 @@ export default defineConfig({
         ws: false,
         changeOrigin: true,
       },
-      '^/images/(?!contact/).*': {
+      '^/images/(?!contact/|shop/).*': {
         target: 'http://localhost:10081',
         ws: false,
         changeOrigin: true,

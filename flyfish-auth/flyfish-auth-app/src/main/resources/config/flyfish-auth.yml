@@ -1,5 +1,11 @@
 oauth:
   callback-url: ${OAUTH_CALLBACK_URL:http://127.0.0.1:9999/oauth/callback}
+  egress-proxy:
+    enabled: ${OAUTH_EGRESS_PROXY_ENABLED:false}
+    host: ${OAUTH_EGRESS_PROXY_HOST:127.0.0.1}
+    port: ${OAUTH_EGRESS_PROXY_PORT:13128}
+    connect-timeout: ${OAUTH_EGRESS_PROXY_CONNECT_TIMEOUT:5s}
+    read-timeout: ${OAUTH_EGRESS_PROXY_READ_TIMEOUT:15s}
   gitea:
     app-name: ${OAUTH_GITEA_APP_NAME:飞鱼}
     server: ${OAUTH_GITEA_SERVER:https://git.flyfish.dev}

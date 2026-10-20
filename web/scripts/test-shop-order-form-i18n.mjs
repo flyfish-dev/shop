@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import enUS from '../src/i18n/locales/en-US.js';
-import { parseShopOrderFormConfig } from '../src/modules/shop/utils/shopOrderForm.js';
+import {
+  defaultOrderFormValues,
+  normalizeOrderFormValues,
+  parseShopOrderFormConfig
+} from '../src/modules/shop/utils/shopOrderForm.js';
 
 const readMessage = key => key.split('.').reduce((value, part) => value?.[part], enUS);
 const t = (key, params = {}) => {
@@ -87,4 +91,83 @@ test('prefers explicit form translations over semantic fallbacks', () => {
 
   assert.equal(config.title, 'Custom License Setup');
   assert.equal(config.fields[0].label, 'Custom Origin');
+});
+
+test('localizes and validates the commercial specific and SaaS deployment modes', () => {
+  const config = parseShopOrderFormConfig(paramsWithForm({
+    enabled: true,
+    title: '商业授权部署信息',
+    description: '商业授权说明',
+    fields: [{
+      key: 'deploymentMode',
+      label: '部署模式',
+      type: 'select',
+      required: true,
+      target: 'license.deploymentMode',
+      options: [
+        { value: 'specific', label: '具体域名 / IP' },
+        { value: 'saas', label: 'SaaS 泛域名' }
+      ]
+    }, {
+      key: 'origins',
+      label: '授权域名 / IP',
+      type: 'textarea',
+      required: true,
+      target: 'license.allowedOrigins',
+      normalize: 'origin',
+      maxItems: 5,
+      visibleWhen: { key: 'deploymentMode', value: 'specific' }
+    }, {
+      key: 'saasOrigin',
+      label: 'SaaS 泛域名',
+      type: 'url',
+      required: true,
+      target: 'license.allowedOrigins',
+      normalize: 'origin',
+      visibleWhen: { key: 'deploymentMode', value: 'saas' }
+    }]
+  }), { locale: 'en-US', t });
+
+  assert.equal(config.title, 'Commercial License Deployment');
+  assert.equal(config.fields[0].label, 'Deployment Mode');
+  assert.equal(config.fields[0].options[0].label, 'Specific Origins / IPs');
+  assert.equal(config.fields[2].label, 'SaaS Wildcard Origin');
+  assert.deepEqual(defaultOrderFormValues(config), {
+    deploymentMode: 'specific',
+    origins: undefined,
+    saasOrigin: undefined
+  });
+
+  const specific = normalizeOrderFormValues(config, {
+    deploymentMode: 'specific',
+    origins: 'https://app.example.com/path\nhttp://192.168.1.10:8080',
+    saasOrigin: ''
+  }, t);
+  assert.deepEqual(specific, {
+    ok: true,
+    values: {
+      deploymentMode: 'specific',
+      origins: ['https://app.example.com', 'http://192.168.1.10:8080']
+    }
+  });
+
+  const saas = normalizeOrderFormValues(config, {
+    deploymentMode: 'saas',
+    origins: '',
+    saasOrigin: 'https://*.example.com'
+  }, t);
+  assert.deepEqual(saas, {
+    ok: true,
+    values: {
+      deploymentMode: 'saas',
+      saasOrigin: 'https://*.example.com'
+    }
+  });
+
+  const invalidSaas = normalizeOrderFormValues(config, {
+    deploymentMode: 'saas',
+    saasOrigin: 'http://*.example.com'
+  }, t);
+  assert.equal(invalidSaas.ok, false);
+  assert.match(invalidSaas.message, /https:\/\/\*\.example\.com/);
 });

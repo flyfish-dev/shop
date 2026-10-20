@@ -193,6 +193,7 @@ CREATE TABLE IF NOT EXISTS `shop_contract`
     `type`        varchar(40)  NOT NULL COMMENT '合同类型',
     `description` varchar(1024) NULL COMMENT '合同描述',
     `tags`        varchar(256) NULL COMMENT '合同标签',
+    `i18n`        json         NULL COMMENT '合同多语言内容',
     `enabled`     boolean      NOT NULL DEFAULT true COMMENT '启用状态',
     `sort`        int          NOT NULL DEFAULT 0 COMMENT '排序',
     `create_by`   varchar(32)  NOT NULL COMMENT '创建人',
@@ -203,6 +204,9 @@ CREATE TABLE IF NOT EXISTS `shop_contract`
     PRIMARY KEY (`id`)
 );
 
+ALTER TABLE `shop_contract`
+    ADD COLUMN IF NOT EXISTS `i18n` json NULL COMMENT '合同多语言内容';
+
 CREATE INDEX IF NOT EXISTS `idx_shop_contract_enabled_sort`
     ON `shop_contract` (`enabled`, `sort`, `id`);
 
@@ -210,8 +214,12 @@ CREATE TABLE IF NOT EXISTS `shop_contract_file`
 (
     `id`          bigint       NOT NULL COMMENT '主键' AUTO_INCREMENT,
     `contract_id` bigint       NOT NULL COMMENT '合同id',
+    `document_key` varchar(64) NULL COMMENT '同一逻辑文档的稳定标识',
+    `locale`      varchar(16)  NOT NULL DEFAULT 'zh-CN' COMMENT '合同文件语言',
     `file_name`   varchar(256) NOT NULL COMMENT '文件名称',
     `file_url`    varchar(512) NOT NULL COMMENT '文件地址',
+    `file_hash`   varchar(64)  NULL COMMENT '文件SHA-256',
+    `file_version` int         NOT NULL DEFAULT 1 COMMENT '逻辑文档版本',
     `content_type` varchar(128) NULL COMMENT '文件类型',
     `file_size`   bigint       NULL COMMENT '文件大小',
     `sort`        int          NOT NULL DEFAULT 0 COMMENT '排序',
@@ -224,8 +232,24 @@ CREATE TABLE IF NOT EXISTS `shop_contract_file`
     PRIMARY KEY (`id`)
 );
 
+ALTER TABLE `shop_contract_file`
+    ADD COLUMN IF NOT EXISTS `document_key` varchar(64) NULL COMMENT '同一逻辑文档的稳定标识';
+ALTER TABLE `shop_contract_file`
+    ADD COLUMN IF NOT EXISTS `locale` varchar(16) NOT NULL DEFAULT 'zh-CN' COMMENT '合同文件语言';
+ALTER TABLE `shop_contract_file`
+    ADD COLUMN IF NOT EXISTS `file_hash` varchar(64) NULL COMMENT '文件SHA-256';
+ALTER TABLE `shop_contract_file`
+    ADD COLUMN IF NOT EXISTS `file_version` int NOT NULL DEFAULT 1 COMMENT '逻辑文档版本';
+
+UPDATE `shop_contract_file`
+SET `document_key` = CONCAT('legacy-', `id`)
+WHERE `document_key` IS NULL OR `document_key` = '';
+
 CREATE INDEX IF NOT EXISTS `idx_shop_contract_file_contract`
     ON `shop_contract_file` (`contract_id`, `enabled`, `sort`, `id`);
+
+CREATE INDEX IF NOT EXISTS `idx_shop_contract_file_locale`
+    ON `shop_contract_file` (`contract_id`, `document_key`, `file_version`, `locale`, `enabled`);
 
 CREATE TABLE IF NOT EXISTS `shop_item_contract`
 (
@@ -258,8 +282,12 @@ CREATE TABLE IF NOT EXISTS `shop_contract_signature`
     `contract_file_id` bigint      NOT NULL COMMENT '合同文件id',
     `contract_name`   varchar(128) NOT NULL COMMENT '合同名称快照',
     `contract_type`   varchar(40)  NULL COMMENT '合同类型快照',
+    `contract_locale` varchar(16)  NOT NULL DEFAULT 'zh-CN' COMMENT '签署语言快照',
+    `document_key`    varchar(64)  NULL COMMENT '逻辑文档标识快照',
     `file_name`       varchar(256) NOT NULL COMMENT '文件名称快照',
     `file_url`        varchar(512) NOT NULL COMMENT '文件地址快照',
+    `file_hash`       varchar(64)  NULL COMMENT '文件SHA-256快照',
+    `file_version`    int          NOT NULL DEFAULT 1 COMMENT '逻辑文档版本快照',
     `read_percent`    int          NOT NULL DEFAULT 100 COMMENT '阅读比例',
     `status`          varchar(16)  NOT NULL DEFAULT 'AGREED' COMMENT '签署状态',
     `agreed_time`     datetime     NOT NULL COMMENT '同意时间',
@@ -277,6 +305,14 @@ CREATE INDEX IF NOT EXISTS `idx_shop_contract_signature_token`
     ON `shop_contract_signature` (`sign_token`, `buyer_id`, `item_id`, `contract_file_id`);
 ALTER TABLE `shop_contract_signature`
     ADD COLUMN IF NOT EXISTS `sku_id` bigint NULL COMMENT 'SKU id';
+ALTER TABLE `shop_contract_signature`
+    ADD COLUMN IF NOT EXISTS `contract_locale` varchar(16) NOT NULL DEFAULT 'zh-CN' COMMENT '签署语言快照';
+ALTER TABLE `shop_contract_signature`
+    ADD COLUMN IF NOT EXISTS `document_key` varchar(64) NULL COMMENT '逻辑文档标识快照';
+ALTER TABLE `shop_contract_signature`
+    ADD COLUMN IF NOT EXISTS `file_hash` varchar(64) NULL COMMENT '文件SHA-256快照';
+ALTER TABLE `shop_contract_signature`
+    ADD COLUMN IF NOT EXISTS `file_version` int NOT NULL DEFAULT 1 COMMENT '逻辑文档版本快照';
 
 CREATE INDEX IF NOT EXISTS `idx_shop_contract_signature_order`
     ON `shop_contract_signature` (`order_no`, `create_time`);
@@ -302,6 +338,12 @@ CREATE TABLE IF NOT EXISTS `shop_order`
     `original_amount` decimal(10, 2) NULL COMMENT '原始金额',
     `discount_amount` decimal(10, 2) NOT NULL DEFAULT 0 COMMENT '优惠金额',
     `coupon_code`    varchar(64)    NULL COMMENT '优惠券编码',
+    `offer_link_id`  bigint         NULL COMMENT '专享购买链接id',
+    `settlement_source` varchar(32) NOT NULL DEFAULT 'ONLINE_PAYMENT' COMMENT '订单结算来源',
+    `external_contract_reference` varchar(128) NULL COMMENT '合同确认编号',
+    `external_payment_reference` varchar(128) NULL COMMENT '付款确认编号',
+    `external_confirmation_note` varchar(500) NULL COMMENT '外部结算确认备注',
+    `external_confirmed_by` varchar(32) NULL COMMENT '外部结算确认人',
     `outer_no`       varchar(64)    NULL COMMENT '外部订单号',
     `payment_provider` varchar(32)  NULL COMMENT '支付提供方',
     `transaction_code` varchar(128) NULL COMMENT '支付流水号',
@@ -350,6 +392,18 @@ ALTER TABLE `shop_order`
 ALTER TABLE `shop_order`
     ADD COLUMN IF NOT EXISTS `coupon_code` varchar(64) NULL;
 ALTER TABLE `shop_order`
+    ADD COLUMN IF NOT EXISTS `offer_link_id` bigint NULL COMMENT '专享购买链接id';
+ALTER TABLE `shop_order`
+    ADD COLUMN IF NOT EXISTS `settlement_source` varchar(32) NOT NULL DEFAULT 'ONLINE_PAYMENT' COMMENT '订单结算来源';
+ALTER TABLE `shop_order`
+    ADD COLUMN IF NOT EXISTS `external_contract_reference` varchar(128) NULL COMMENT '合同确认编号';
+ALTER TABLE `shop_order`
+    ADD COLUMN IF NOT EXISTS `external_payment_reference` varchar(128) NULL COMMENT '付款确认编号';
+ALTER TABLE `shop_order`
+    ADD COLUMN IF NOT EXISTS `external_confirmation_note` varchar(500) NULL COMMENT '外部结算确认备注';
+ALTER TABLE `shop_order`
+    ADD COLUMN IF NOT EXISTS `external_confirmed_by` varchar(32) NULL COMMENT '外部结算确认人';
+ALTER TABLE `shop_order`
     ADD COLUMN IF NOT EXISTS `outer_no` varchar(64) NULL;
 ALTER TABLE `shop_order`
     ADD COLUMN IF NOT EXISTS `payment_provider` varchar(32) NULL;
@@ -369,12 +423,14 @@ CREATE TABLE IF NOT EXISTS `shop_order_delivery`
 (
     `id`             bigint       NOT NULL COMMENT '主键' AUTO_INCREMENT,
     `order_no`       varchar(64)  NOT NULL COMMENT '订单号',
+    `component_key`  varchar(64)  NOT NULL DEFAULT 'default' COMMENT '订单内交付组件标识',
     `item_id`        bigint       NOT NULL COMMENT '商品id',
     `buyer_id`       bigint       NOT NULL COMMENT '购买用户id',
     `delivery_type`  varchar(32)  NOT NULL COMMENT '交付类型',
     `title`          varchar(128) NULL COMMENT '提货标题',
     `content`        text         NULL COMMENT '提货内容',
     `attachments`    json         NULL COMMENT '交付附件JSON',
+    `metadata`       json         NULL COMMENT '结构化交付元数据JSON',
     `license_no`     varchar(64)  NULL COMMENT '授权编号',
     `extracted_time` datetime     NULL COMMENT '用户提取时间',
     `create_by`      varchar(32)  NOT NULL COMMENT '创建人',
@@ -383,8 +439,13 @@ CREATE TABLE IF NOT EXISTS `shop_order_delivery`
     `update_time`    datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
     `is_delete`      boolean      NOT NULL DEFAULT false COMMENT '删除标记',
     PRIMARY KEY (`id`),
-    UNIQUE (`order_no`, `delivery_type`)
+    UNIQUE (`order_no`, `delivery_type`, `component_key`)
 );
+
+ALTER TABLE `shop_order_delivery`
+    ADD COLUMN IF NOT EXISTS `metadata` json NULL COMMENT '结构化交付元数据JSON';
+ALTER TABLE `shop_order_delivery`
+    ADD COLUMN IF NOT EXISTS `component_key` varchar(64) NOT NULL DEFAULT 'default' COMMENT '订单内交付组件标识';
 
 CREATE INDEX IF NOT EXISTS `idx_shop_order_delivery_buyer`
     ON `shop_order_delivery` (`buyer_id`, `create_time`);
@@ -410,6 +471,7 @@ CREATE TABLE IF NOT EXISTS `shop_license_key_pair`
     `id`          bigint       NOT NULL COMMENT '主键' AUTO_INCREMENT,
     `license_no`  varchar(64)  NOT NULL COMMENT '授权编号',
     `order_no`    varchar(64)  NOT NULL COMMENT '订单号',
+    `component_key` varchar(64) NOT NULL DEFAULT 'default' COMMENT '订单内授权组件标识',
     `item_id`     bigint       NOT NULL COMMENT '商品id',
     `buyer_id`    bigint       NOT NULL COMMENT '购买用户id',
     `root_id`     bigint       NOT NULL COMMENT '根证书id',
@@ -425,14 +487,48 @@ CREATE TABLE IF NOT EXISTS `shop_license_key_pair`
     `is_delete`   boolean      NOT NULL DEFAULT false COMMENT '删除标记',
     PRIMARY KEY (`id`),
     UNIQUE (`license_no`),
-    UNIQUE (`order_no`)
+    UNIQUE (`order_no`, `component_key`)
 );
+
+ALTER TABLE `shop_license_key_pair`
+    ADD COLUMN IF NOT EXISTS `component_key` varchar(64) NOT NULL DEFAULT 'default' COMMENT '订单内授权组件标识';
+
+CREATE TABLE IF NOT EXISTS `shop_license_issue_history`
+(
+    `id`          bigint       NOT NULL COMMENT '主键' AUTO_INCREMENT,
+    `order_no`    varchar(64)  NOT NULL COMMENT '订单号',
+    `license_no`  varchar(64)  NOT NULL COMMENT '授权编号',
+    `item_id`     bigint       NOT NULL COMMENT '商品id',
+    `buyer_id`    bigint       NOT NULL COMMENT '购买用户id',
+    `issue_type`  varchar(32)  NOT NULL COMMENT '签发类型',
+    `reason`      varchar(512) NULL COMMENT '补发原因',
+    `permanent`   boolean      NOT NULL DEFAULT false COMMENT '是否永久有效',
+    `algorithm`   varchar(32)  NOT NULL COMMENT '签名算法',
+    `certificate` text         NOT NULL COMMENT '授权审计Payload',
+    `signature`   text         NOT NULL COMMENT '授权文件',
+    `create_by`   varchar(32)  NOT NULL COMMENT '创建人',
+    `update_by`   varchar(32)  NOT NULL COMMENT '修改人',
+    `create_time` datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time` datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
+    `is_delete`   boolean      NOT NULL DEFAULT false COMMENT '删除标记',
+    PRIMARY KEY (`id`),
+    UNIQUE (`license_no`)
+);
+
+CREATE INDEX IF NOT EXISTS `idx_shop_license_issue_history_order`
+    ON `shop_license_issue_history` (`order_no`, `create_time`, `id`);
+
+CREATE INDEX IF NOT EXISTS `idx_shop_license_key_pair_buyer_item`
+    ON `shop_license_key_pair` (`buyer_id`, `item_id`, `create_time`, `id`);
 
 CREATE TABLE IF NOT EXISTS `shop_coupon`
 (
     `id`               bigint         NOT NULL COMMENT '主键' AUTO_INCREMENT,
     `code`             varchar(64)    NOT NULL COMMENT '优惠券编码',
     `name`             varchar(64)    NOT NULL COMMENT '优惠券名称',
+    `source`           varchar(16)    NOT NULL DEFAULT 'MANUAL' COMMENT '优惠券来源',
+    `item_id`          bigint         NULL COMMENT '限定商品id，空表示全店可用',
+    `sku_id`           bigint         NULL COMMENT '限定SKU id，空表示商品下全部SKU可用',
     `type`             varchar(16)    NOT NULL COMMENT '优惠类型',
     `discount_value`   decimal(10, 2) NOT NULL COMMENT '优惠值',
     `threshold_amount` decimal(10, 2) NOT NULL DEFAULT 0 COMMENT '使用门槛',
@@ -456,6 +552,84 @@ CREATE INDEX IF NOT EXISTS `idx_shop_coupon_enabled_time`
 
 ALTER TABLE `shop_coupon`
     ADD COLUMN IF NOT EXISTS `max_discount_amount` decimal(10, 2) NOT NULL DEFAULT 0 COMMENT '最高减免金额，0代表不封顶，仅折扣券生效';
+
+ALTER TABLE `shop_coupon`
+    ADD COLUMN IF NOT EXISTS `item_id` bigint NULL COMMENT '限定商品id，空表示全店可用';
+
+ALTER TABLE `shop_coupon`
+    ADD COLUMN IF NOT EXISTS `sku_id` bigint NULL COMMENT '限定SKU id，空表示商品下全部SKU可用';
+
+ALTER TABLE `shop_coupon`
+    ADD COLUMN IF NOT EXISTS `source` varchar(16) NOT NULL DEFAULT 'MANUAL' COMMENT '优惠券来源';
+
+UPDATE `shop_coupon` SET `source` = 'MANUAL' WHERE `source` IS NULL;
+
+CREATE INDEX IF NOT EXISTS `idx_shop_coupon_scope`
+    ON `shop_coupon` (`item_id`, `sku_id`);
+
+CREATE TABLE IF NOT EXISTS `shop_offer_link`
+(
+    `id`                  bigint         NOT NULL COMMENT '主键' AUTO_INCREMENT,
+    `name`                varchar(64)    NOT NULL COMMENT '链接备注',
+    `token_hash`          varchar(64)    NOT NULL COMMENT '令牌SHA-256摘要',
+    `token_hint`          varchar(8)     NOT NULL COMMENT '令牌末尾提示',
+    `coupon_code`         varchar(64)    NULL COMMENT '内部优惠券编码',
+    `purpose`             varchar(32)    NOT NULL DEFAULT 'PROMOTION' COMMENT '链接用途',
+    `item_id`             bigint         NOT NULL COMMENT '限定商品id',
+    `item_name`           varchar(128)   NOT NULL COMMENT '商品名称快照',
+    `sku_id`              bigint         NULL COMMENT '限定SKU id',
+    `sku_name`            varchar(128)   NULL COMMENT 'SKU名称快照',
+    `type`                varchar(16)    NULL COMMENT '专享优惠类型',
+    `discount_value`      decimal(10, 2) NULL COMMENT '优惠值',
+    `max_discount_amount` decimal(10, 2) NOT NULL DEFAULT 0 COMMENT '折扣优惠上限',
+    `recipient_user_id`   bigint         NULL COMMENT '限定领取用户id',
+    `recipient_name`      varchar(128)   NULL COMMENT '领取用户名称快照',
+    `contract_reference`  varchar(128)   NULL COMMENT '合同确认编号',
+    `payment_reference`   varchar(128)   NULL COMMENT '付款确认编号',
+    `confirmation_note`   varchar(500)   NULL COMMENT '线下确认备注',
+    `settlement_amount`   decimal(10, 2) NULL COMMENT '已确认结算金额',
+    `settlement_currency` varchar(3)     NULL COMMENT '已确认结算币种',
+    `status`              varchar(16)    NOT NULL COMMENT '链接状态',
+    `expires_at`          datetime       NOT NULL COMMENT '失效时间',
+    `reserved_order_no`   varchar(64)    NULL COMMENT '预约订单号',
+    `reserved_by`         bigint         NULL COMMENT '预约用户id',
+    `reserved_time`       datetime       NULL COMMENT '预约时间',
+    `used_order_no`       varchar(64)    NULL COMMENT '核销订单号',
+    `used_by`             bigint         NULL COMMENT '核销用户id',
+    `used_time`           datetime       NULL COMMENT '核销时间',
+    `revoked_time`        datetime       NULL COMMENT '作废时间',
+    `create_by`           varchar(32)    NOT NULL COMMENT '创建人',
+    `update_by`           varchar(32)    NOT NULL COMMENT '修改人',
+    `create_time`         datetime       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time`         datetime       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
+    `is_delete`           boolean        NOT NULL DEFAULT false COMMENT '删除标记',
+    PRIMARY KEY (`id`),
+    UNIQUE (`token_hash`),
+    UNIQUE (`coupon_code`)
+);
+
+CREATE INDEX IF NOT EXISTS `idx_shop_offer_link_item_time`
+    ON `shop_offer_link` (`item_id`, `create_time`, `id`);
+
+CREATE INDEX IF NOT EXISTS `idx_shop_offer_link_status_expiry`
+    ON `shop_offer_link` (`status`, `expires_at`);
+
+ALTER TABLE `shop_offer_link`
+    ADD COLUMN IF NOT EXISTS `purpose` varchar(32) NOT NULL DEFAULT 'PROMOTION' COMMENT '链接用途';
+ALTER TABLE `shop_offer_link`
+    ADD COLUMN IF NOT EXISTS `recipient_user_id` bigint NULL COMMENT '限定领取用户id';
+ALTER TABLE `shop_offer_link`
+    ADD COLUMN IF NOT EXISTS `recipient_name` varchar(128) NULL COMMENT '领取用户名称快照';
+ALTER TABLE `shop_offer_link`
+    ADD COLUMN IF NOT EXISTS `contract_reference` varchar(128) NULL COMMENT '合同确认编号';
+ALTER TABLE `shop_offer_link`
+    ADD COLUMN IF NOT EXISTS `payment_reference` varchar(128) NULL COMMENT '付款确认编号';
+ALTER TABLE `shop_offer_link`
+    ADD COLUMN IF NOT EXISTS `confirmation_note` varchar(500) NULL COMMENT '线下确认备注';
+ALTER TABLE `shop_offer_link`
+    ADD COLUMN IF NOT EXISTS `settlement_amount` decimal(10, 2) NULL COMMENT '已确认结算金额';
+ALTER TABLE `shop_offer_link`
+    ADD COLUMN IF NOT EXISTS `settlement_currency` varchar(3) NULL COMMENT '已确认结算币种';
 
 CREATE TABLE IF NOT EXISTS `shop_transaction`
 (

@@ -9,19 +9,18 @@ import useClientStore from '@/modules/auth/store/client.js';
 import { useRoute, useRouter } from '@/router/use.js';
 import { usePortalCapabilities } from '@/modules/portal/usePortalCapabilities.js';
 import latestBrandLogo from '@/assets/flyfish-dev-logo-transparent.png';
+import { isLowcodeApp } from '@/runtime/application.js';
 
 const { t, locale } = useI18n();
 const store = useClientStore();
 const route = useRoute();
 const router = useRouter();
 const { initialized, isAuthenticated } = storeToRefs(store);
-const { portalTitle, loadPortalCapabilities } = usePortalCapabilities();
+const { loadPortalCapabilities } = usePortalCapabilities();
 const showLogin = computed(() => initialized.value && !isAuthenticated.value);
 const oauthFailed = computed(() => route.query?.oauth === 'failed');
-const localizedPortalTitle = computed(() => locale.value === 'en-US'
-  ? t('brand.lowcodeTitle')
-  : (portalTitle.value || t('brand.lowcodeTitle')));
-const brandPurpose = computed(() => t('home.appPurpose'));
+const localizedPortalTitle = computed(() => t(isLowcodeApp ? 'brand.lowcodeTitle' : 'storefront.title'));
+const brandPurpose = computed(() => t(isLowcodeApp ? 'home.appPurpose' : 'brand.shopDesc'));
 
 const redirectIfAuthenticated = () => {
   if (isAuthenticated.value) {
@@ -52,10 +51,10 @@ watch(isAuthenticated, redirectIfAuthenticated);
       <language-switch />
     </div>
 
-    <a class="back-link" href="/">
+    <router-link class="back-link" href="/">
       <arrow-left-outlined />
       <span>{{ t('auth.backHome') }}</span>
-    </a>
+    </router-link>
 
     <div class="login-layout">
       <section class="brand-stage" aria-labelledby="login-brand-title">

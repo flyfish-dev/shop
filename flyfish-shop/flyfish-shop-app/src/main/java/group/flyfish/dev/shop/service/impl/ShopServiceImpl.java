@@ -112,7 +112,8 @@ public class ShopServiceImpl implements ShopService {
                     return Mono.zip(
                                     shopContractService.getItemContractIds(id),
                                     shopContractService.hasActiveContracts(id),
-                                    defaultCouponPreview(vo.getDefaultCouponEnabled(), vo.getDefaultCouponCode(), vo.getPrice())
+                                    defaultCouponPreview(vo.getDefaultCouponEnabled(), vo.getDefaultCouponCode(),
+                                            vo.getPrice(), item.getId(), null)
                                             .map(Optional::of)
                                             .defaultIfEmpty(Optional.empty()),
                                     shopItemViewStatService.recordAndGetViewCount(id),
@@ -135,7 +136,8 @@ public class ShopServiceImpl implements ShopService {
         applyUsdPricing(vo, item);
         return Mono.zip(
                         shopContractService.hasActiveContracts(Long.valueOf(vo.getId())),
-                        defaultCouponPreview(vo.getDefaultCouponEnabled(), vo.getDefaultCouponCode(), money(vo.getPrice()))
+                        defaultCouponPreview(vo.getDefaultCouponEnabled(), vo.getDefaultCouponCode(),
+                                money(vo.getPrice()), item.getId(), null)
                                 .map(Optional::of)
                                 .defaultIfEmpty(Optional.empty()),
                         skuVos(item, false).collectList())
@@ -159,13 +161,21 @@ public class ShopServiceImpl implements ShopService {
         }
         ShopItemSkuVo defaultSku = defaultSku(skus);
         vo.setDefaultSku(defaultSku);
-        BigDecimal min = skus.stream().map(ShopItemSkuVo::getPrice).min(Comparator.naturalOrder()).orElse(item.getPrice());
-        BigDecimal max = skus.stream().map(ShopItemSkuVo::getPrice).max(Comparator.naturalOrder()).orElse(item.getPrice());
-        BigDecimal minUsd = skus.stream().map(ShopItemSkuVo::getEffectiveUsdPrice)
+        List<ShopItemSkuVo> publicPriceSkus = skus.stream()
+                .filter(sku -> !"RENEWAL".equalsIgnoreCase(sku.getCode()))
+                .toList();
+        if (publicPriceSkus.isEmpty()) {
+            publicPriceSkus = skus;
+        }
+        BigDecimal min = publicPriceSkus.stream().map(ShopItemSkuVo::getPrice)
+                .min(Comparator.naturalOrder()).orElse(item.getPrice());
+        BigDecimal max = publicPriceSkus.stream().map(ShopItemSkuVo::getPrice)
+                .max(Comparator.naturalOrder()).orElse(item.getPrice());
+        BigDecimal minUsd = publicPriceSkus.stream().map(ShopItemSkuVo::getEffectiveUsdPrice)
                 .filter(java.util.Objects::nonNull)
                 .min(Comparator.naturalOrder())
                 .orElse(shopPricingService.effectiveUsdPrice(item));
-        BigDecimal maxUsd = skus.stream().map(ShopItemSkuVo::getEffectiveUsdPrice)
+        BigDecimal maxUsd = publicPriceSkus.stream().map(ShopItemSkuVo::getEffectiveUsdPrice)
                 .filter(java.util.Objects::nonNull)
                 .max(Comparator.naturalOrder())
                 .orElse(minUsd);
@@ -233,7 +243,8 @@ public class ShopServiceImpl implements ShopService {
         return Mono.zip(
                         shopContractService.getSkuContractIds(sku.getId()),
                         shopContractService.hasActiveContracts(item.getId(), sku.getId()),
-                        defaultCouponPreview(vo.getDefaultCouponEnabled(), vo.getDefaultCouponCode(), sku.getPrice())
+                        defaultCouponPreview(vo.getDefaultCouponEnabled(), vo.getDefaultCouponCode(), sku.getPrice(),
+                                item.getId(), sku.getId())
                                 .map(Optional::of)
                                 .defaultIfEmpty(Optional.empty()))
                 .map(tuple -> {
@@ -291,11 +302,12 @@ public class ShopServiceImpl implements ShopService {
         return sku.getDefaultCouponEnabled() == null ? item.getDefaultCouponCode() : sku.getDefaultCouponCode();
     }
 
-    private Mono<ShopCouponApplyVo> defaultCouponPreview(Boolean enabled, String couponCode, BigDecimal price) {
+    private Mono<ShopCouponApplyVo> defaultCouponPreview(Boolean enabled, String couponCode, BigDecimal price,
+                                                         Long itemId, Long skuId) {
         if (!Boolean.TRUE.equals(enabled) || StringUtils.isBlank(couponCode) || price == null) {
             return Mono.empty();
         }
-        return shopCouponService.applyCoupon(couponCode, price)
+        return shopCouponService.applyCoupon(couponCode, price, itemId, skuId)
                 .map(ShopCouponApplyVo::new)
                 .onErrorResume(e -> Mono.empty());
     }

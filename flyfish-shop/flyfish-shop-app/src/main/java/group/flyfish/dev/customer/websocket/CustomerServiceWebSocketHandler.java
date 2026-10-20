@@ -60,8 +60,9 @@ public class CustomerServiceWebSocketHandler implements WebSocketHandler {
     private Mono<Void> handleAuthenticated(WebSocketSession session, PortalUserVo user) {
         AtomicLong activeConversationId = new AtomicLong(0);
         boolean customerSession = !ShopAuthorizationUtils.isShopMaintainer(user);
-        Runnable releasePresence = customerSession ? presenceRegistry.registerCustomer(user.getId()) : () -> {
-        };
+        Runnable releasePresence = customerSession
+                ? presenceRegistry.registerCustomer(user.getId())
+                : presenceRegistry.registerManager();
         if (customerSession) {
             realtimeNotifier.customerPresenceChanged(user.getId());
         }

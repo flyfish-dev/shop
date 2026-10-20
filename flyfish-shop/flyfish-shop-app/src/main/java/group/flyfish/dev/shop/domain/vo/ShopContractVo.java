@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 合同展示数据。
@@ -22,6 +23,8 @@ public class ShopContractVo {
     private String description;
 
     private List<String> tags;
+
+    private Map<String, ShopContractI18nVo> i18n;
 
     private Boolean enabled;
 

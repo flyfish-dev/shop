@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { applicationPath } from '@/runtime/application.js';
 import {
   CheckCircleOutlined,
   DownOutlined,
@@ -114,7 +115,7 @@ const fetchQrCode = async () => {
 };
 
 const rememberRedirect = () => {
-  store.rememberOAuthLoginRedirect(store.redirection || '/');
+  store.rememberOAuthLoginRedirect(store.redirection || applicationPath('/'));
 };
 
 const startOauth = provider => {
@@ -191,7 +192,7 @@ const normalizeRedirect = value => {
   return redirect && redirect.startsWith('/') && !redirect.startsWith('//') ? redirect : '/';
 };
 
-const emailRedirect = computed(() => normalizeRedirect(store.redirection));
+const emailRedirect = computed(() => normalizeRedirect(store.redirection || applicationPath('/')));
 const {
   emailAddress,
   emailSending,

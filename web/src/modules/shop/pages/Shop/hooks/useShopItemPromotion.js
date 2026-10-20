@@ -19,7 +19,7 @@ export const resolveShopItemPromotion = item => {
   const payableAmount = toNumber(preview.payableAmount ?? baseAmount);
   const discountAmount = toNumber(preview.discountAmount);
   const couponCode = (preview.couponCode || item?.defaultCouponCode || '').trim().toUpperCase();
-  const active = Boolean(couponCode && discountAmount > 0 && payableAmount > 0 && payableAmount < originalAmount);
+  const active = Boolean(couponCode && discountAmount > 0 && payableAmount >= 0 && payableAmount < originalAmount);
   const rangeSuffix = item?.multiSku && maxAmount > originalAmount ? ' 起' : '';
 
   return {

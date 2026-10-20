@@ -13,8 +13,9 @@ import java.math.RoundingMode;
 @RequiredArgsConstructor
 public class ShopPricingService {
 
-    private static final BigDecimal MINIMUM_USD_PAYMENT = new BigDecimal("0.50");
+    private static final BigDecimal MINIMUM_USD_PAYMENT = new BigDecimal("1.00");
     private static final BigDecimal MINIMUM_USD_DONATION = new BigDecimal("1.00");
+    private static final BigDecimal ONE_HUNDRED_PERCENT = BigDecimal.ONE;
 
     private final ShopPricingProperties properties;
 
@@ -31,13 +32,15 @@ public class ShopPricingService {
             if (manualUsdPrice.signum() <= 0) {
                 throw new BusinessException("USD_PRICE_INVALID", "美元价格必须大于0");
             }
-            return manualUsdPrice.setScale(2, RoundingMode.HALF_UP);
+            return normalizeCatalogUsdPrice(manualUsdPrice);
         }
         if (cnyPrice == null || cnyPrice.signum() <= 0) {
             return null;
         }
-        BigDecimal converted = cnyPrice.divide(properties.getCnyPerUsd(), 2, RoundingMode.HALF_UP);
-        return converted.max(MINIMUM_USD_PAYMENT);
+        BigDecimal converted = cnyPrice
+                .divide(properties.getCnyPerUsd(), 8, RoundingMode.HALF_UP)
+                .multiply(ONE_HUNDRED_PERCENT.add(properties.getUsdSettlementBufferRate()));
+        return normalizeCatalogUsdPrice(converted);
     }
 
     public BigDecimal minimumDonationUsd(ShopItem item) {
@@ -49,8 +52,18 @@ public class ShopPricingService {
         return properties.getCnyPerUsd().setScale(4, RoundingMode.HALF_UP).stripTrailingZeros();
     }
 
+    public BigDecimal usdSettlementBufferRate() {
+        return properties.getUsdSettlementBufferRate().setScale(4, RoundingMode.HALF_UP).stripTrailingZeros();
+    }
+
     public ShopPricingVo pricing() {
-        return new ShopPricingVo(cnyPerUsd());
+        return new ShopPricingVo(cnyPerUsd(), usdSettlementBufferRate());
+    }
+
+    private BigDecimal normalizeCatalogUsdPrice(BigDecimal value) {
+        return value.setScale(0, RoundingMode.HALF_UP)
+                .max(MINIMUM_USD_PAYMENT)
+                .setScale(2, RoundingMode.UNNECESSARY);
     }
 
     private boolean isDonationItem(ShopItem item) {

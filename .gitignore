@@ -44,12 +44,23 @@ node_modules
 
 .DS_Store
 .local/
+.codex-tmp/
 .playwright-mcp
+.playwright-cli/
 output/
+/outputs/
 test-results/
+/db/*.mv.db
+/db/*.trace.db
+/db/*.lock.db
+flyfish-main/db/
 flyfish-*/**/db/*.mv.db
 flyfish-*/**/db/*.trace.db
 web/public/file-viewer/
 web/dist/
+web/dist-docker/
 home-mobile-fixed.png
 prod-home-mobile-fixed.png
+# Xianyu miniapp build artifacts
+web/dist-xianyu/
+web/dist-xianyu.zip

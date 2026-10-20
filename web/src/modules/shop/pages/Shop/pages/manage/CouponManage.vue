@@ -6,6 +6,7 @@ const columns = [
   { title: '优惠券', dataIndex: 'name', key: 'name', width: 240 },
   { title: '类型', dataIndex: 'type', key: 'type', width: 100 },
   { title: '规则', dataIndex: 'displayRule', width: 180 },
+  { title: '适用范围', key: 'scope', width: 180 },
   { title: '数量', key: 'quota', width: 160 },
   { title: '状态', key: 'status', width: 120 },
   { title: '有效期', key: 'validTime', width: 260 },
@@ -53,7 +54,7 @@ const {
         :data-source="coupons"
         :loading="loading"
         :pagination="{ pageSize: 10, showSizeChanger: true }"
-        :scroll="{ x: 1200 }"
+        :scroll="{ x: 1380 }"
         row-key="id"
       >
         <template #bodyCell="{ column, record }">
@@ -65,6 +66,11 @@ const {
           </template>
           <template v-else-if="column.key === 'type'">
             <a-tag :color="record.type === 'DISCOUNT' ? 'blue' : 'green'">{{ record.typeName }}</a-tag>
+          </template>
+          <template v-else-if="column.key === 'scope'">
+            <span v-if="record.skuId">商品 #{{ record.itemId }} · SKU #{{ record.skuId }}</span>
+            <span v-else-if="record.itemId">商品 #{{ record.itemId }}</span>
+            <span v-else>全店通用</span>
           </template>
           <template v-else-if="column.key === 'quota'">
             <span v-if="record.totalCount && record.totalCount > 0">

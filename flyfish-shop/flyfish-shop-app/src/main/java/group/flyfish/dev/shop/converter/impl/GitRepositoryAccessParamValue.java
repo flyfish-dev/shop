@@ -42,6 +42,20 @@ public class GitRepositoryAccessParamValue implements ShopItemParamValue {
      */
     private ShopOrderFormParamValue orderForm;
 
+    /**
+     * 交付完成后的运行与验证入口。
+     *
+     * <p>该配置与仓库、授权动作共同存放在商品参数根节点，必须由模型显式承载，
+     * 否则组合交付商品会在 Jackson 转换阶段把它误判为未知字段。</p>
+     */
+    private DeliveryExperienceParamValue deliveryExperience;
+
+    /** 商品目录迁移版本，保证重复迁移与启动参数归一化可追溯。 */
+    private String catalogMigration;
+
+    /** 已归档商品的站内跳转配置，保留旧购买链接及 SKU 选择。 */
+    private CatalogRedirect catalogRedirect;
+
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String owner;
 
@@ -93,7 +107,17 @@ public class GitRepositoryAccessParamValue implements ShopItemParamValue {
                 .toList();
         deliveryActions = normalizeDeliveryActions(deliveryActions);
         if (licenseDelivery != null) {
+            ShopOrderFormParamValue nestedOrderForm = licenseDelivery.getOrderForm();
+            if (nestedOrderForm == null) {
+                licenseDelivery.setOrderForm(orderForm);
+            }
             licenseDelivery.normalize(null);
+            if (nestedOrderForm == null) {
+                licenseDelivery.setOrderForm(null);
+            }
+        }
+        if (deliveryExperience != null) {
+            deliveryExperience.normalize();
         }
         owner = null;
         repo = null;
@@ -145,6 +169,19 @@ public class GitRepositoryAccessParamValue implements ShopItemParamValue {
             normalized.add(ShopDeliveryAction.GIT_REPOSITORY_ACCESS);
         }
         return new ArrayList<>(normalized);
+    }
+
+    @Data
+    public static class CatalogRedirect {
+
+        /** 合并后的目标商品 ID。 */
+        private Long itemId;
+
+        /** 旧商品链接未指定 SKU 时默认选择的目标 SKU。 */
+        private Long skuId;
+
+        /** 已停用 SKU 到目标 SKU 的映射，例如统一续费入口。 */
+        private Map<String, Long> skuIds = new LinkedHashMap<>();
     }
 
     @Data

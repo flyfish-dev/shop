@@ -39,12 +39,29 @@ export const getShopItemHighlight = (item, t) => {
   };
 };
 
+export const getShopItemSkuHighlight = (item, sku, t) => {
+  if (!sku) {
+    return getShopItemHighlight(item, t);
+  }
+  const skuStyle = inferHighlightStyle(sku);
+  if (!skuStyle) {
+    return getShopItemHighlight(item, t);
+  }
+  return getShopItemHighlight({
+    ...item,
+    name: sku.name,
+    tags: sku.tags,
+    highlightStyle: skuStyle,
+    highlightIcon: inferredStyleIcon(skuStyle)
+  }, t);
+};
+
 const inferHighlightStyle = item => {
   const text = `${item?.name || ''} ${(item?.tags || []).join(' ')}`.toLowerCase();
-  if (text.includes('企业版') || text.includes('enterprise')) {
+  if (text.includes('企业版') || text.includes('企业授权') || text.includes('enterprise')) {
     return 'enterprise';
   }
-  if (text.includes('商业版') || text.includes('commercial')) {
+  if (text.includes('商业版') || text.includes('商业授权') || text.includes('commercial')) {
     return 'commercial';
   }
   return '';

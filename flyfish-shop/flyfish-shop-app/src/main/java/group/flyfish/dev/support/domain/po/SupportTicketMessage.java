@@ -27,6 +27,7 @@ public class SupportTicketMessage extends AuditDomain {
 
     public enum SenderRole {
         USER,
-        ADMIN
+        ADMIN,
+        SYSTEM
     }
 }

@@ -4,6 +4,7 @@ import group.flyfish.dev.annotations.data.Property;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Map;
 
 /**
@@ -12,6 +13,8 @@ import java.util.Map;
  */
 @Data
 public class ShopOrderDto {
+
+    private String channelOrderKey;
 
     @Property("商品id")
     private String itemId;
@@ -27,6 +30,9 @@ public class ShopOrderDto {
 
     @Property("优惠券编码")
     private String couponCode;
+
+    @Property("专享购买链接令牌")
+    private String offerToken;
 
     @Property("打赏金额")
     private BigDecimal donationAmount;
@@ -51,4 +57,16 @@ public class ShopOrderDto {
 
     @Property("合同签署令牌")
     private String contractSignToken;
+
+    @Property("是否确认年度维护协议")
+    private Boolean maintenanceAgreement;
+
+    @Property("续费来源许可证号")
+    private String sourceLicenseNo;
+
+    @Property("续费生效日期")
+    private LocalDate renewalStartDate;
+
+    @Property("续费年数")
+    private Integer renewalYears;
 }

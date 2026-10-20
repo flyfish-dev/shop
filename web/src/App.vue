@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n';
 import useClientStore from '@/modules/auth/store/client.js';
 import { useRoute, useRouter } from '@/router/use.js';
 import { usePortalCapabilities } from '@/modules/portal/usePortalCapabilities.js';
+import { isLowcodeApp } from '@/runtime/application.js';
 
 const AUTH_STORAGE_KEYS = new Set(['access_token', 'auth_changed_at']);
 
@@ -14,19 +15,13 @@ const store = useClientStore();
 const router = useRouter();
 const route = useRoute();
 const { locale, t } = useI18n();
-const { hasLowcode, hasShop, loaded: capabilitiesLoaded, portalTitle, loadPortalCapabilities } = usePortalCapabilities();
+const { hasLowcode, hasShop, loaded: capabilitiesLoaded, loadPortalCapabilities } = usePortalCapabilities();
 const antLocale = computed(() => locale.value === 'en-US' ? enUS : zhCN);
 const appTitle = computed(() => {
   if (route.meta?.titleKey) {
     return t(route.meta.titleKey);
   }
-  if (hasShop.value && !hasLowcode.value) {
-    return t('brand.shopTitle');
-  }
-  if (hasLowcode.value) {
-    return t('brand.lowcodeTitle');
-  }
-  return portalTitle.value || t('brand.defaultTitle');
+  return t(isLowcodeApp ? 'brand.lowcodeTitle' : 'storefront.title');
 });
 const requiredCapability = computed(() => route.matched?.map(item => item.meta?.capability).find(Boolean));
 const capabilityAllowed = computed(() => {

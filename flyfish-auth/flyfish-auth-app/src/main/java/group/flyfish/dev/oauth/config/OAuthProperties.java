@@ -2,6 +2,8 @@ package group.flyfish.dev.oauth.config;
 
 import lombok.Data;
 
+import java.time.Duration;
+
 /**
  * 开放认证配置
  * @author wangyu
@@ -18,6 +20,8 @@ public class OAuthProperties {
     private Google google = new Google();
 
     private Microsoft microsoft = new Microsoft();
+
+    private EgressProxy egressProxy = new EgressProxy();
 
     private String callbackUrl = "http://127.0.0.1:9999/oauth/callback";
 
@@ -103,5 +107,25 @@ public class OAuthProperties {
         private String clientSecret = "";
 
         private String scope = "openid profile email User.Read";
+    }
+
+    /**
+     * 境外 OAuth 出站代理。
+     *
+     * <p>该代理只用于 GitHub、Google、Microsoft 的授权码换取和用户资料请求，避免中国大陆
+     * 服务器跨境网络抖动消耗一次性授权码。Gitea、Gitee 仍保持国内直连。</p>
+     */
+    @Data
+    public static class EgressProxy {
+
+        private boolean enabled;
+
+        private String host = "127.0.0.1";
+
+        private int port = 13128;
+
+        private Duration connectTimeout = Duration.ofSeconds(5);
+
+        private Duration readTimeout = Duration.ofSeconds(15);
     }
 }

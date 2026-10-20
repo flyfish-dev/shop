@@ -28,6 +28,12 @@ public class ShopLicenseKeyPair extends AuditDomain {
     private String orderNo;
 
     /**
+     * 订单内授权组件标识。单品订单固定为 default，组合订单使用产品编码。
+     */
+    @Column("component_key")
+    private String componentKey;
+
+    /**
      * 商品 ID。
      */
     @Column("item_id")

@@ -6,6 +6,7 @@ import group.flyfish.dev.shop.converter.ShopItemParamValue;
 import group.flyfish.dev.shop.domain.dto.ShopOrderDto;
 import group.flyfish.dev.shop.domain.po.ShopItem;
 import group.flyfish.dev.shop.domain.po.ShopOrder;
+import group.flyfish.dev.shop.license.LicenseOriginPolicy;
 import lombok.Data;
 import org.apache.commons.lang3.StringUtils;
 import tools.jackson.core.type.TypeReference;
@@ -30,6 +31,7 @@ public class ShopOrderFormParamValue {
 
     public static final String PARAM_KEY = "orderForm";
     public static final String TARGET_LICENSE_ALLOWED_ORIGINS = "license.allowedOrigins";
+    public static final String TARGET_LICENSE_DEPLOYMENT_MODE = "license.deploymentMode";
     private static final Pattern FIELD_KEY_PATTERN = Pattern.compile("[A-Za-z][A-Za-z0-9_-]{0,63}");
     private static final int DEFAULT_MAX_LENGTH = 512;
 
@@ -102,6 +104,9 @@ public class ShopOrderFormParamValue {
                 : dto.getProperties().get(PARAM_KEY));
         Map<String, Object> normalized = new LinkedHashMap<>();
         for (Field field : fields) {
+            if (!field.isVisible(rawValues)) {
+                continue;
+            }
             Object normalizedValue = normalizeSubmittedValue(field, rawValues.get(field.getKey()));
             if (normalizedValue != null) {
                 normalized.put(field.getKey(), normalizedValue);
@@ -117,6 +122,16 @@ public class ShopOrderFormParamValue {
         }
         Set<String> allowedOrigins = new LinkedHashSet<>();
         for (Field field : fields) {
+            if (!field.isVisible(values)) {
+                continue;
+            }
+            if (TARGET_LICENSE_DEPLOYMENT_MODE.equals(field.getTarget())) {
+                Object value = values.get(field.getKey());
+                param.setDeploymentMode(value == null
+                        ? null
+                        : StringUtils.trimToNull(String.valueOf(value)));
+                continue;
+            }
             if (!TARGET_LICENSE_ALLOWED_ORIGINS.equals(field.getTarget())) {
                 continue;
             }
@@ -124,9 +139,11 @@ public class ShopOrderFormParamValue {
             allowedOrigins.addAll(toOrigins(value));
         }
         if (!allowedOrigins.isEmpty()) {
-            int maxDeployments = param.getMaxDeployments() == null || param.getMaxDeployments() <= 0
-                    ? 1
-                    : param.getMaxDeployments();
+            int maxDeployments = "commercial".equalsIgnoreCase(param.getEdition())
+                    ? LicenseOriginPolicy.COMMERCIAL_MAX_SPECIFIC_ORIGINS
+                    : param.getMaxDeployments() == null || param.getMaxDeployments() <= 0
+                            ? 1
+                            : param.getMaxDeployments();
             if (allowedOrigins.size() > maxDeployments) {
                 throw new BusinessException("ORDER_FORM_TOO_MANY_ORIGINS",
                         "授权域名数量不能超过 " + maxDeployments + " 个");
@@ -138,6 +155,18 @@ public class ShopOrderFormParamValue {
 
     public boolean isEnabled() {
         return Boolean.TRUE.equals(enabled) && fields != null && !fields.isEmpty();
+    }
+
+    /**
+     * 判断下单表单是否会覆盖指定交付参数。
+     *
+     * <p>商品保存时允许授权域名使用占位值或暂不填写，真正签发前再由已校验的下单表单覆盖。
+     * 该方法用于区分“商品配置阶段”和“许可证签发阶段”，避免过早拒绝正常商品配置。</p>
+     */
+    public boolean overridesTarget(String target) {
+        normalize();
+        return isEnabled() && StringUtils.isNotBlank(target)
+                && fields.stream().anyMatch(field -> StringUtils.equals(target, field.getTarget()));
     }
 
     private void normalize() {
@@ -177,6 +206,8 @@ public class ShopOrderFormParamValue {
         normalized.setPlaceholder(StringUtils.trimToNull(field.getPlaceholder()));
         normalized.setHelp(StringUtils.trimToNull(field.getHelp()));
         normalized.setMaxLength(normalizeMaxLength(field.getMaxLength()));
+        normalized.setMaxItems(normalizeMaxItems(field.getMaxItems()));
+        normalized.setVisibleWhen(normalizeVisibleWhen(field.getVisibleWhen()));
         normalized.setOptions(normalizeOptions(field.getOptions()));
         return normalized;
     }
@@ -194,6 +225,20 @@ public class ShopOrderFormParamValue {
             return DEFAULT_MAX_LENGTH;
         }
         return Math.min(value, 2048);
+    }
+
+    private Integer normalizeMaxItems(Integer value) {
+        return value == null || value <= 0 ? null : Math.min(value, 100);
+    }
+
+    private VisibleWhen normalizeVisibleWhen(VisibleWhen value) {
+        if (value == null || StringUtils.isBlank(value.getKey()) || value.getValue() == null) {
+            return null;
+        }
+        VisibleWhen normalized = new VisibleWhen();
+        normalized.setKey(StringUtils.trim(value.getKey()));
+        normalized.setValue(value.getValue());
+        return normalized;
     }
 
     private List<Option> normalizeOptions(List<Option> options) {
@@ -234,6 +279,20 @@ public class ShopOrderFormParamValue {
         }
         if ("url".equals(field.getType())) {
             return shouldNormalizeOrigin(field) ? normalizeOrigin(value, field.getLabel()) : validateUrl(value, field.getLabel());
+        }
+        if ("textarea".equals(field.getType()) && shouldNormalizeOrigin(field)) {
+            List<String> origins = toOrigins(raw);
+            if (origins.isEmpty()) {
+                if (field.isRequired()) {
+                    throw new BusinessException("ORDER_FORM_REQUIRED", field.getLabel() + "不能为空");
+                }
+                return null;
+            }
+            if (field.getMaxItems() != null && origins.size() > field.getMaxItems()) {
+                throw new BusinessException("ORDER_FORM_TOO_MANY_ORIGINS",
+                        field.getLabel() + "不能超过 " + field.getMaxItems() + " 个");
+            }
+            return origins;
         }
         if ("select".equals(field.getType()) && !field.getOptions().isEmpty()) {
             boolean matched = field.getOptions().stream()
@@ -281,15 +340,7 @@ public class ShopOrderFormParamValue {
     }
 
     private String normalizeOrigin(String value, String label) {
-        URI uri = parseHttpUri(value, label);
-        StringBuilder origin = new StringBuilder()
-                .append(StringUtils.lowerCase(uri.getScheme(), Locale.ROOT))
-                .append("://")
-                .append(StringUtils.lowerCase(uri.getHost(), Locale.ROOT));
-        if (uri.getPort() > 0) {
-            origin.append(':').append(uri.getPort());
-        }
-        return origin.toString();
+        return LicenseOriginPolicy.normalizeFormOrigin(value, label);
     }
 
     private URI parseHttpUri(String value, String label) {
@@ -382,11 +433,28 @@ public class ShopOrderFormParamValue {
 
         private Integer maxLength;
 
+        private Integer maxItems;
+
+        private VisibleWhen visibleWhen;
+
         private List<Option> options = new ArrayList<>();
 
         public boolean isRequired() {
             return Boolean.TRUE.equals(required);
         }
+
+        public boolean isVisible(Map<String, Object> values) {
+            return visibleWhen == null || Objects.equals(String.valueOf(visibleWhen.getValue()),
+                    String.valueOf(values == null ? null : values.get(visibleWhen.getKey())));
+        }
+    }
+
+    @Data
+    public static class VisibleWhen {
+
+        private String key;
+
+        private Object value;
     }
 
     @Data

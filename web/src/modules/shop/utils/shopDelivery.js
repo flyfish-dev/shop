@@ -4,6 +4,14 @@ export const DELIVERY_MODE = {
   NONE: 'NONE'
 };
 
+export const isOrderRefundFrozen = order => Boolean(order &&
+  (order.paymentProvider === 'xianyu' || String(order.salesChannel || '').startsWith('XIANYU_')) &&
+  (Number(order.refundAmount || 0) > 0 || (order.refundState && !['NONE', 'CLOSED', 'REJECTED'].includes(order.refundState))));
+
+export const refundStatusText = (state, t) => t(`orders.refundStates.${
+  ['NONE', 'PENDING', 'PROCESSING', 'PARTIAL', 'REFUNDED', 'CLOSED', 'REJECTED'].includes(state) ? state : 'PENDING'
+}`);
+
 export const DELIVERY_MODE_OPTIONS = [
   { label: '自动交付', value: DELIVERY_MODE.AUTOMATIC },
   { label: '人工交付', value: DELIVERY_MODE.MANUAL },
@@ -47,9 +55,18 @@ export const OFFICE_LICENSE_KIND_OPTIONS = [
   { label: '品牌标识移除声明', value: OFFICE_LICENSE_KIND.BRAND_REMOVAL }
 ];
 
+export const LICENSE_PRODUCT = {
+  OFFICE_PREVIEW: 'office-preview',
+  DWG_VIEWER: 'dwg-viewer',
+  MODEL_VIEWER: 'model-viewer',
+  FILE_VIEWER: 'file-viewer'
+};
+
 export const LICENSE_PRODUCT_OPTIONS = [
-  { label: '通用授权产品', value: 'license-product' },
-  { label: 'Flyfish Viewer', value: 'file-viewer' }
+  { label: 'Office Preview', value: LICENSE_PRODUCT.OFFICE_PREVIEW },
+  { label: 'DWG Viewer', value: LICENSE_PRODUCT.DWG_VIEWER },
+  { label: 'Flyfish Model Viewer', value: LICENSE_PRODUCT.MODEL_VIEWER },
+  { label: 'Flyfish Viewer', value: LICENSE_PRODUCT.FILE_VIEWER }
 ];
 
 export const OFFICE_LICENSE_FEATURE_OPTIONS = [
@@ -61,6 +78,34 @@ export const OFFICE_LICENSE_FEATURE_OPTIONS = [
   { label: 'XLSX', value: 'xlsx' },
   { label: 'XLSB', value: 'xlsb' },
   { label: '虚拟表格', value: 'virtual-excel' },
+  { label: 'DWG', value: 'dwg' },
+  { label: '3D 模型预览', value: 'model-preview' },
+  { label: 'glTF / GLB', value: 'gltf' },
+  { label: 'STEP / STP', value: 'step' },
+  { label: 'OBJ', value: 'obj' },
+  { label: 'FBX', value: 'fbx' },
+  { label: 'STL', value: 'stl' },
+  { label: 'PLY', value: 'ply' },
+  { label: 'COLLADA / DAE', value: 'dae' },
+  { label: '3DS', value: '3ds' },
+  { label: '3MF', value: '3mf' },
+  { label: 'AMF', value: 'amf' },
+  { label: 'USD / USDZ', value: 'usd' },
+  { label: 'VRML', value: 'vrml' },
+  { label: 'VTK', value: 'vtk' },
+  { label: 'PCD', value: 'pcd' },
+  { label: 'XYZ', value: 'xyz' },
+  { label: 'VOX', value: 'vox' },
+  { label: 'LightWave', value: 'lwo' },
+  { label: 'KMZ', value: 'kmz' },
+  { label: 'G-code', value: 'gcode' },
+  { label: 'MD2', value: 'md2' },
+  { label: 'BVH', value: 'bvh' },
+  { label: 'PDB', value: 'pdb' },
+  { label: 'LDraw', value: 'ldraw' },
+  { label: 'Draco', value: 'draco' },
+  { label: 'NRRD', value: 'nrrd' },
+  { label: 'Rhino 3DM', value: 'rhino3dm' },
   { label: '移除界面可见品牌标识', value: 'visible-branding-removal' },
   { label: '保留版权与许可证声明', value: 'apache-2.0-attribution-required' }
 ];
@@ -75,6 +120,22 @@ export const DEFAULT_OFFICE_LICENSE_FEATURES = [
   'xlsb',
   'virtual-excel'
 ];
+
+export const DEFAULT_DWG_LICENSE_FEATURES = ['dwg'];
+
+export const DEFAULT_MODEL_LICENSE_FEATURES = [
+  'model-preview', 'gltf', 'step', 'obj', 'fbx', 'stl', 'ply', 'dae', '3ds', '3mf',
+  'amf', 'usd', 'vrml', 'vtk', 'pcd', 'xyz', 'vox', 'lwo', 'kmz', 'gcode', 'md2',
+  'bvh', 'pdb', 'ldraw', 'draco', 'nrrd', 'rhino3dm'
+];
+
+export const defaultLicenseFeaturesForProduct = product => (
+  product === LICENSE_PRODUCT.DWG_VIEWER
+    ? [...DEFAULT_DWG_LICENSE_FEATURES]
+    : product === LICENSE_PRODUCT.MODEL_VIEWER
+      ? [...DEFAULT_MODEL_LICENSE_FEATURES]
+    : [...DEFAULT_OFFICE_LICENSE_FEATURES]
+);
 
 export const DEFAULT_VIEWER_BRAND_STATEMENT_FEATURES = [
   'visible-branding-removal',

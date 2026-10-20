@@ -1,7 +1,9 @@
 package group.flyfish.dev.shop.config;
 
+import group.flyfish.dev.common.bean.page.PageResult;
 import group.flyfish.dev.customer.domain.dto.CustomerSocketCommand;
 import group.flyfish.dev.shop.converter.impl.DigitalDeliveryParamValue;
+import group.flyfish.dev.shop.converter.impl.DeliveryExperienceParamValue;
 import group.flyfish.dev.shop.converter.impl.GitRepositoryAccessParamValue;
 import group.flyfish.dev.shop.converter.impl.LicenseDeliveryParamValue;
 import group.flyfish.dev.shop.converter.impl.ShopOrderFormParamValue;
@@ -32,10 +34,17 @@ public class ShopRuntimeHintsConfiguration {
             hints.proxies().registerJdkProxy(H5ZhiFuService.class,
                     SpringProxy.class, Advised.class, DecoratingProxy.class);
             new BindingReflectionHintsRegistrar().registerReflectionHints(hints.reflection(),
+                    PageResult.class,
+                    PageResult.PageInfo.class,
                     GitRepositoryAccessParamValue.class,
                     GitRepositoryAccessParamValue.Repository.class,
+                    GitRepositoryAccessParamValue.CatalogRedirect.class,
                     DigitalDeliveryParamValue.class,
+                    DeliveryExperienceParamValue.class,
+                    DeliveryExperienceParamValue.Link.class,
                     LicenseDeliveryParamValue.class,
+                    LicenseDeliveryParamValue.MaintenanceAgreement.class,
+                    LicenseDeliveryParamValue.LicenseRenewal.class,
                     ShopOrderFormParamValue.class,
                     ShopOrderFormParamValue.Field.class,
                     ShopOrderFormParamValue.Option.class,

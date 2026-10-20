@@ -73,6 +73,49 @@ class GitRepositoryAccessOrderCheckerTest {
     }
 
     @Test
+    void keepsCompositeLicensePurchaseAvailableWhenRepositoryWasAlreadyPurchasedAndOpened() {
+        ShopOrderRepository orderRepository = mock(ShopOrderRepository.class);
+        ShopItemRepository itemRepository = mock(ShopItemRepository.class);
+        GithubRepositoryClient githubClient = mock(GithubRepositoryClient.class);
+        GithubProperties githubProperties = new GithubProperties();
+        githubProperties.setAdminToken("github-admin");
+        ShopOrder previousOrder = paidOrder("FF-SOURCE-ONLY", 99L);
+        previousOrder.setProperties("""
+                {
+                  "gitProvider":"github",
+                  "gitRepositoryKeys":["github:wybaby168/ppt-viewer"],
+                  "gitRepositories":["wybaby168/ppt-viewer"]
+                }
+                """);
+        GitRepositoryCollaborator collaborator = collaborator(123456L, "imdiana168",
+                Map.of("pull", true));
+        when(orderRepository.findPaidOrDeliveredByBuyerId(100L)).thenReturn(Flux.just(previousOrder));
+        when(githubClient.listCollaborators("Bearer github-admin", "wybaby168",
+                "ppt-viewer", "all", 100, 1)).thenReturn(Mono.just(List.of(collaborator)));
+        when(githubClient.getCollaboratorPermission("Bearer github-admin", "wybaby168",
+                "ppt-viewer", "imdiana168"))
+                .thenReturn(Mono.just(new GitRepositoryCollaboratorPermission("pull", "read", collaborator)));
+
+        GitRepositoryAccessOrderChecker checker = checker(orderRepository, itemRepository,
+                null, new GiteaProperties(), githubClient, githubProperties);
+
+        StepVerifier.create(checker.check(gitItem(8L, "github", """
+                        {
+                          "owner":"wybaby168",
+                          "repo":"ppt-viewer",
+                          "permission":"pull",
+                          "deliveryActions":["GIT_REPOSITORY_ACCESS","LICENSE"]
+                        }
+                        """), sanitizedOauthBuyer(OAuthType.GITHUB, "github", "imdiana168", 123456L)))
+                .assertNext(availability -> {
+                    assertTrue(availability.isPurchasable());
+                    assertEquals("wybaby168/ppt-viewer", availability.getOpenedRepositories().get(0));
+                    assertTrue(availability.getMessage().contains("继续完成本商品的其他交付内容"));
+                })
+                .verifyComplete();
+    }
+
+    @Test
     void keepsGithubPurchaseAvailableWhenOnlyPartOfRepositoriesOpened() {
         ShopOrderRepository orderRepository = mock(ShopOrderRepository.class);
         ShopItemRepository itemRepository = mock(ShopItemRepository.class);

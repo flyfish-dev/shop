@@ -1,4 +1,5 @@
 import { get, post } from '@/network/request.js';
+import { isXianyuRuntime, storageKey } from '@/modules/xianyu/runtime.js';
 
 export const getCurrentShop = async () => {
   return get('/shops/current')
@@ -47,15 +48,29 @@ export const checkPurchaseAvailability = async (id, skuId) => {
   });
 };
 
-export const getItemContracts = async (id, skuId) => {
-  return get(`/shops/items/${id}/contracts`, {
-    params: skuId ? { skuId } : undefined
+export const getLicenseRenewalEligibility = async (id, skuId) => {
+  return get(`/shops/items/${id}/license-renewal`, {
+    params: skuId ? { skuId } : undefined,
+    credential: true
   });
 };
 
-export const signItemContractFile = async (id, data, skuId) => {
+export const getItemContracts = async (id, skuId, maintenanceAgreement = false, locale) => {
+  return get(`/shops/items/${id}/contracts`, {
+    params: {
+      ...(skuId ? { skuId } : {}),
+      ...(maintenanceAgreement ? { maintenanceAgreement: true } : {}),
+      ...(locale ? { locale } : {})
+    }
+  });
+};
+
+export const signItemContractFile = async (id, data, skuId, maintenanceAgreement = false) => {
   return post(`/shops/items/${id}/contracts/signatures`, {
-    params: skuId ? { skuId } : undefined,
+    params: {
+      ...(skuId ? { skuId } : {}),
+      ...(maintenanceAgreement ? { maintenanceAgreement: true } : {})
+    },
     body: data,
     credential: true
   });
@@ -79,11 +94,29 @@ export const prepareGithubBinding = async (redirect = `${location.pathname}${loc
 };
 
 export const createOrder = async (params) => {
-  return post('/shops/orders', { body: params, credential: true });
+  let headers;
+  const key = storageKey('checkout-request');
+  if (isXianyuRuntime) {
+    const fingerprint = JSON.stringify(params);
+    let saved;
+    try { saved = JSON.parse(sessionStorage.getItem(key)); } catch { saved = null; }
+    if (!saved || saved.fingerprint !== fingerprint) {
+      saved = { fingerprint, id: crypto.randomUUID() };
+      sessionStorage.setItem(key, JSON.stringify(saved));
+    }
+    headers = { 'Idempotency-Key': saved.id };
+  }
+  const result = await post('/shops/orders', { body: params, credential: true, headers });
+  if (isXianyuRuntime) sessionStorage.removeItem(key);
+  return result;
 };
 
 export const applyCoupon = async (params) => {
   return post('/shops/coupons/apply', { body: params, credential: true });
+};
+
+export const previewOfferLink = async params => {
+  return post('/shops/offer-links/preview', { body: params, credential: true, authRedirect: false });
 };
 
 export const getOrders = async (params) => {
@@ -102,10 +135,11 @@ export const extractOrderDelivery = async orderNo => {
   return post(`/shops/orders/${orderNo}/delivery/extract`, { credential: true });
 };
 
-export const downloadOrderDeliveryFile = async (orderNo, fileCode) => {
+export const downloadOrderDeliveryFile = async (orderNo, fileCode, licenseNo) => {
   return get(`/shops/orders/${orderNo}/delivery/files/${fileCode}`, {
     credential: true,
-    blob: true
+    blob: true,
+    params: licenseNo ? { licenseNo } : undefined
   });
 };
 

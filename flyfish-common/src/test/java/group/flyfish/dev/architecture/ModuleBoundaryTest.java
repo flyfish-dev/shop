@@ -53,6 +53,8 @@ class ModuleBoundaryTest {
     @Test
     void internalMavenDependenciesFollowModuleBoundaries() throws Exception {
         Map<String, Set<String>> expected = Map.ofEntries(
+                Map.entry("flyfish-xianyu-api", Set.of()),
+                Map.entry("flyfish-xianyu-app", Set.of("flyfish-xianyu-api", "flyfish-common")),
                 Map.entry("flyfish-portal-api", Set.of()),
                 Map.entry("flyfish-common", Set.of("flyfish-ddl")),
                 Map.entry("flyfish-auth-api", Set.of("flyfish-common")),
@@ -62,7 +64,7 @@ class ModuleBoundaryTest {
                 Map.entry("flyfish-lowcode-api", Set.of()),
                 Map.entry("flyfish-lowcode-app", Set.of("flyfish-portal-api", "flyfish-common", "flyfish-platform", "flyfish-auth-api")),
                 Map.entry("flyfish-shop-api", Set.of()),
-                Map.entry("flyfish-shop-app", Set.of("flyfish-portal-api", "flyfish-common", "flyfish-platform", "flyfish-auth-api", "flyfish-git"))
+                Map.entry("flyfish-shop-app", Set.of("flyfish-xianyu-api", "flyfish-portal-api", "flyfish-common", "flyfish-platform", "flyfish-auth-api", "flyfish-git"))
         );
 
         Map<String, Set<String>> actual = new HashMap<>();

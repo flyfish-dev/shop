@@ -12,9 +12,17 @@ public class ShopContractFileVo {
 
     private Long contractId;
 
+    private String documentKey;
+
+    private String locale;
+
     private String fileName;
 
     private String fileUrl;
+
+    private String fileHash;
+
+    private Integer fileVersion;
 
     private String contentType;
 

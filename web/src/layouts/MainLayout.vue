@@ -1,44 +1,15 @@
 <script setup>
-import TopBar from '@/layouts/TopBar.vue';
-import FooterBar from '@/layouts/FooterBar.vue';
-import useClientStore from '@/modules/auth/store/client.js';
-import { storeToRefs } from 'pinia';
-
-const { collapsed } = storeToRefs(useClientStore());
+import StorefrontHeader from './StorefrontHeader.vue';
+import FooterBar from './FooterBar.vue';
 </script>
-
 <template>
-  <div class='app-wrapper' :class='{ collapsed }'>
-    <top-bar />
-    <div class="main-page">
-      <div class="module-page">
-        <router-view />
-      </div>
-    </div>
+  <div class="main-layout">
+    <storefront-header />
+    <main><router-view /></main>
     <footer-bar />
   </div>
 </template>
-
-<style>
-.color-red {
-  color: red;
-}
-</style>
-<!-- Add "scoped" attribute to limit CSS to this component only -->
-<style scoped lang="less">
-.app-wrapper {
-  display: flex;
-  flex-direction: column;
-  background: #f6f6f6;
-  min-height: 100vh;
-
-  .main-page {
-    flex: 1 0 auto;
-
-    .module-page {
-      text-align: left;
-      margin: 20px 0;
-    }
-  }
-}
+<style scoped>
+.main-layout { min-height: 100vh; background: #fafbfa; }
+main { max-width: 1280px; min-height: 60vh; padding: 24px 16px; margin: auto; text-align: left; }
 </style>

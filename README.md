@@ -19,7 +19,7 @@
   <a href="LICENSE"><img alt="AGPL-3.0-only" src="https://img.shields.io/badge/license-AGPL--3.0--only-red" /></a>
 </p>
 
-飞鱼小铺服务于独立开发者、小团队和数字产品交付场景，覆盖商品展示、SKU、订单、合同、优惠券、人民币与美元定价、Stripe/H5 支付、Git 仓库开通、数字文件交付、失败任务重试、客服工单和多渠道登录。仓库同时提供飞鱼低代码平台的最小运行实例，并由独立认证服务为两套业务共享登录态。
+飞鱼小铺服务于独立开发者、小团队和数字产品交付场景，覆盖商品展示、SKU、订单、合同、优惠券、人民币与美元定价、Stripe/H5 支付、Git 仓库开通、数字文件交付、失败任务重试、客服工单和多渠道登录。仓库同时提供飞鱼低代码平台的最小运行实例、默认关闭的闲鱼渠道适配模块，并由独立认证服务共享登录态。
 
 <p align="center">
   <a href="https://dev.flyfish.group/shop/item-list"><strong>在线预览</strong></a>
@@ -50,18 +50,20 @@
 | 商品与定价 | 商品分组、搜索、推荐、置顶、排序、SKU、多语言内容、人民币/美元展示、打赏商品 |
 | 订单与支付 | 下单、试算、优惠券、合同确认、Stripe Checkout、H5 支付、回调验签与幂等处理 |
 | 自动交付 | GitHub/Gitea/Gitee 仓库开通、数字文件、通用授权扩展、任务级失败原因与重试续跑 |
+| 渠道接入 | 可选闲鱼商品映射、渠道订单、退款冻结、发货回读、任务核查和独立小程序候选包 |
 | 共享认证 | 独立 Auth 服务、JWT 共享登录态、邮箱 Magic Link、GitHub/Gitee/Gitea、Google、Microsoft、微信公众号 |
-| 运营与服务 | 管理工作台、商品和订单管理、合同、仓库、工单、WebSocket 客服、通知和公众号动态 |
+| 运营与服务 | 管理工作台、商品和订单管理、专享报价链接、合同、仓库、工单、WebSocket 客服、离线通知和公众号动态 |
 | 工程交付 | Spring Boot 多模块、Vue 3 单前端、MySQL/H2、GraalVM Native、Docker Compose、Nginx 示例 |
 
 ## 开源边界
 
 本仓库是经过边界审计的源码交付版，公开的是可独立运行的小铺、认证、低代码最小实例及通用交付编排：
 
-- 包含商品、订单、支付接入、合同、客服、仓库交付和任务重试等完整业务代码。
+- 包含商品、订单、支付接入、合同、客服、仓库交付、任务重试及可选渠道桥接等通用业务代码。
 - 商业授权交付仅保留 [`ExternalLicenseIssuer`](flyfish-shop/flyfish-shop-app/src/main/java/group/flyfish/dev/shop/license/ExternalLicenseIssuer.java) 扩展契约和通用流程。
-- 不包含任何商业授权签发算法、根密钥材料、专有签发协议、生产配置、生产数据或内部运维客户端。
+- 不包含任何商业授权签发算法、企业注册机实现、根密钥材料、专有签发协议、生产配置、生产数据或内部运维客户端。
 - 外部登录、邮件、公众号、支付和 Git 平台默认关闭或保持未配置状态，必须通过环境变量显式启用。
+- 闲鱼渠道代码默认关闭，不包含平台凭据、商家令牌或已获批能力证明，真实交易必须另行完成平台授权与验收。
 - `.env`、数据库、日志、证书、构建产物和本地运行目录均不属于源码交付范围。
 
 如果需要接入自有授权系统，请在私有模块中实现 `ExternalLicenseIssuer`，通过 Spring Bean 注入，不要把签发密钥或专有实现提交到业务仓库。
@@ -101,6 +103,9 @@ flowchart LR
     Nginx --> Auth["Auth App :10080"]
     Nginx --> Lowcode["Lowcode App :10081"]
     Nginx --> Shop["Shop App :10082"]
+    Xianyu["Xianyu App :10083（可选）"] --> Auth
+    Xianyu --> Shop
+    Xianyu --> Channel["闲鱼开放平台"]
     Lowcode --> AuthApi["flyfish-auth-api"]
     Shop --> AuthApi
     Auth --> DB[("MySQL / H2")]
@@ -120,6 +125,8 @@ flyfish-lowcode/flyfish-lowcode-api    低代码平台对外 API 边界
 flyfish-lowcode/flyfish-lowcode-app    低代码平台最小运行实例
 flyfish-shop/flyfish-shop-api          小铺对外 API 边界
 flyfish-shop/flyfish-shop-app          小铺最小运行实例与业务实现
+flyfish-xianyu-api                     渠道共享契约
+flyfish-xianyu-app                     可选闲鱼渠道服务，默认关闭
 web                                    Vue 3 单前端，按 capability 装载业务入口
 ```
 
@@ -133,10 +140,11 @@ web                                    Vue 3 单前端，按 capability 装载�
 ./scripts/docker-native-up.sh
 ```
 
-脚本会构建 linux/amd64 GraalVM native 镜像，并启动 MySQL、三个 native 后端实例和 Nginx 前端。首次构建耗时较长，完成后访问：
+脚本会构建 linux/amd64 GraalVM native 镜像，并启动 MySQL、Auth、Lowcode、Shop 三个 native 后端实例和 Nginx 前端。首次构建耗时较长，完成后访问：
 
 ```text
-http://127.0.0.1:9999
+飞鱼小铺：http://127.0.0.1:9999/
+低代码平台：http://127.0.0.1:9999/lowcode/
 ```
 
 查看状态和停止服务：
@@ -147,6 +155,8 @@ docker compose -f deploy/docker/docker-compose.native.yml ps
 ```
 
 默认配置只适合本机体验。公开部署前必须复制 `.env.example` 为 `.env`，更换数据库密码和 `USER_JWT_SECRET`，并按需启用外部渠道。完整说明见 [Docker Native 部署指南](docs/docker-native-deploy.md)。
+
+闲鱼渠道服务采用独立 Java 21 JVM 运行，不属于默认 Docker Native 体验栈。需要该能力时请阅读 [闲鱼渠道接入指南](docs/xianyu-integration.md)，并从 [无密钥配置模板](deploy/config/xianyu.env.example) 开始配置。
 
 ## 本地开发
 
@@ -165,15 +175,28 @@ java -jar flyfish-lowcode/flyfish-lowcode-app/target/flyfish-lowcode.jar --sprin
 java -jar flyfish-shop/flyfish-shop-app/target/flyfish-shop.jar --spring.profiles.active=local
 ```
 
-启动前端：
+分别启动小铺和低代码前端：
 
 ```bash
 cd web
 npm ci
 npm run dev
+
+# 另一个终端
+cd web
+npm run dev:lowcode
 ```
 
-默认前端地址是 `http://127.0.0.1:9999`，Vite 会将认证、低代码和小铺路径分别代理到 `10080`、`10081`、`10082`。
+小铺默认地址是 `http://127.0.0.1:9999`，低代码平台默认地址是 `http://127.0.0.1:9998`。两套前端共享认证模块和同一登录态，Vite 将认证、低代码和小铺 API 分别代理到 `10080`、`10081`、`10082`。
+
+可选闲鱼模块先保持全部开关关闭，再单独构建和验证：
+
+```bash
+./mvnw -pl flyfish-xianyu-app -am test
+cd web
+npm run test:xianyu
+npm run build:xianyu
+```
 
 ## Production
 
@@ -192,7 +215,9 @@ Jar 与前端构建：
 ./mvnw -pl flyfish-auth/flyfish-auth-app,flyfish-lowcode/flyfish-lowcode-app,flyfish-shop/flyfish-shop-app -am -DskipTests clean package
 cd web
 npm ci
+npm audit --omit=dev --registry=https://registry.npmjs.org
 npm run build
+npm run build:lowcode
 ```
 
 第三方回调示例：
@@ -217,6 +242,7 @@ Stripe webhook: https://shop.example.com/shops/payments/stripe/webhook
 | 微信公众号 | AppID、AppSecret、消息 Token、EncodingAESKey、素材 media_id、网页授权域名 |
 | 支付 | Stripe secret key / webhook secret，或 H5 支付 app id / key / 回调白名单 |
 | Git 交付 | Git 平台管理 Token、可交付仓库、组织和最小权限策略 |
+| 闲鱼（可选） | 已批准应用与接口权限、商家授权、独立数据库、HTTPS 入口、加密密钥和桥接密钥 |
 | 运维 | 日志、监控、告警、数据库备份、发布回滚和密钥轮换流程 |
 
 ## 关键配置
@@ -233,19 +259,26 @@ Stripe webhook: https://shop.example.com/shops/payments/stripe/webhook
 | 微信 | `WX_MP_APP_ID`, `WX_MP_SECRET`, `WX_MP_TOKEN`, `WX_MP_AES_KEY`, `WX_MP_QUICK_LOGIN_BASE_URL` |
 | 支付与定价 | `H5ZHIFU_*`, `STRIPE_*`, `SHOP_PRICING_CNY_PER_USD` |
 | 通知 | `SUPPORT_NOTIFICATION_*` |
+| 闲鱼（可选） | 独立模板 `deploy/config/xianyu.env.example`，所有 `XIANYU_*_ENABLED` 默认关闭 |
 | 低代码 | `LOWCODE_CACHE_PATH`, `LOWCODE_GENERATOR_R2DBC_*`, `LOWCODE_GENERATOR_PACKAGE_PARENT` |
 
 ## 质量验证
 
 ```bash
+python3 scripts/check-public-boundary.py
 ./mvnw test
 
 cd web
 npm ci
 npm run build
+npm run build:lowcode
+npm run build:docker
+npm run test:unit
 npm run test:architecture
 npm run test:build-artifacts
 npm run test:route-smoke
+npm run test:xianyu
+npm run build:xianyu
 ```
 
 最小应用和认证冒烟：
@@ -263,6 +296,7 @@ scripts/smoke-authenticated-apps.sh
 - 邮箱 Magic Link 的一次性状态在多实例环境中应迁移到 Redis 或数据库。
 - 管理接口依赖共享认证和维护者权限，上线前必须分别使用匿名、普通用户和管理员验证。
 - 支付回调必须使用 HTTPS、原始请求体验签、幂等处理和最小化日志。
+- 渠道桥接必须使用签名、防重放、最小网络权限和独立凭据存储，不能把平台令牌下发到浏览器。
 - 安全问题请遵循 [SECURITY.md](SECURITY.md) 中的私下报告流程，不要公开披露可利用细节。
 
 ## 参与贡献

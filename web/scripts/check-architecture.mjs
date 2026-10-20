@@ -43,23 +43,23 @@ const legacyShopUtilityFiles = new Set([
 
 const rules = [
   {
-    scope: 'src/modules/lowcode/',
+    scope: 'lowcode/src/',
     forbidden: ['src/modules/shop/'],
     reason: 'lowcode module must not depend on shop module'
   },
   {
     scope: 'src/modules/shop/',
-    forbidden: ['src/modules/lowcode/'],
+    forbidden: ['lowcode/src/'],
     reason: 'shop module must not depend on lowcode module'
   },
   {
     scope: 'src/modules/auth/',
-    forbidden: ['src/modules/lowcode/', 'src/modules/shop/'],
+    forbidden: ['lowcode/src/', 'src/modules/shop/'],
     reason: 'auth module must stay shared and business-neutral'
   },
   {
     scope: 'src/modules/portal/',
-    forbidden: ['src/modules/lowcode/', 'src/modules/shop/'],
+    forbidden: ['lowcode/src/', 'src/modules/shop/'],
     reason: 'portal capability state must not import business modules'
   }
 ];
@@ -69,6 +69,7 @@ const publicScopes = [
   'src/components/',
   'src/layouts/',
   'src/main.js',
+  'src/bootstrap.js',
   'src/network/',
   'src/pages/',
   'src/router/'
@@ -76,21 +77,11 @@ const publicScopes = [
 
 const publicBusinessAllowList = new Map([
   ['src/router/routes.js', new Set([
-    'src/modules/lowcode/routes',
-    'src/modules/lowcode/routes.js',
     'src/modules/shop/routes',
     'src/modules/shop/routes.js'
   ])]
 ]);
 const publicBusinessDynamicAllowList = new Map([
-  ['src/pages/Home/index.vue', new Set([
-    'src/modules/lowcode/components/LowcodeWorkbench',
-    'src/modules/lowcode/components/LowcodeWorkbench.vue',
-    'src/modules/lowcode/nav',
-    'src/modules/lowcode/nav.js',
-    'src/modules/shop/components/MarketEntry',
-    'src/modules/shop/components/MarketEntry.vue'
-  ])],
   ['src/layouts/FooterBar.vue', new Set([
     'src/modules/shop/assets/contact',
     'src/modules/shop/assets/contact.js'
@@ -127,6 +118,7 @@ function normalizeRelative(file) {
 }
 
 function resolveSpecifier(specifier, file) {
+  if (specifier.startsWith('@lowcode/')) return `lowcode/src/${specifier.slice(9)}`;
   if (specifier.startsWith('@/')) {
     return `src/${specifier.slice(2)}`;
   }
@@ -197,7 +189,7 @@ function checkPublicShell(relativeFile, specifier, target, isDynamicImport) {
   if (!target || !isPublicShellFile(relativeFile)) {
     return;
   }
-  const importsBusinessModule = target.startsWith('src/modules/lowcode/') || target.startsWith('src/modules/shop/');
+  const importsBusinessModule = target.startsWith('lowcode/src/') || target.startsWith('src/modules/shop/');
   if (importsBusinessModule && !allowedPublicBusinessImport(relativeFile, target, isDynamicImport)) {
     addViolation(relativeFile, specifier, 'public shell must not import business modules directly');
   }
@@ -230,39 +222,6 @@ function checkPublicShellShopAssetMarkers(relativeFile, source) {
     if (source.includes(marker)) {
       addViolation(relativeFile, marker, 'public shell must not hard-code shop-owned asset URLs; load them through a shop-owned optional extension behind the shop capability');
     }
-  }
-}
-
-function checkHomeOptionalLowcodeNav(relativeFile, source) {
-  if (relativeFile !== 'src/pages/Home/index.vue') {
-    return;
-  }
-  const forbidden = [
-    ['./api', 'home must not own lowcode workbench API; keep it in src/modules/lowcode'],
-    ['@/modules/lowcode/api/workbench', 'home must not fetch lowcode workbench data directly; load the lowcode workbench component lazily'],
-    ['/portal/workbench', 'home must not call lowcode workbench API directly'],
-    ['workbench?.shop', 'home must not read shop-specific workbench summaries'],
-    ['/shop/manage/items', 'home must not hard-code shop management routes; use extension actions']
-  ];
-  for (const [marker, reason] of forbidden) {
-    if (source.includes(marker)) {
-      addViolation(relativeFile, marker, reason);
-    }
-  }
-  if (source.includes('@/router/routes')) {
-    addViolation(relativeFile, '@/router/routes', 'home must not import the full route table for lowcode cards; load optional lowcode nav metadata behind the lowcode capability');
-  }
-  if (source.includes('@/modules/lowcode/nav.js')
-    && (!source.includes('hasLowcode') || !source.includes('loadLowcodeModules'))) {
-    addViolation(relativeFile, '@/modules/lowcode/nav.js', 'home lowcode nav metadata must be loaded only through the hasLowcode-gated loader');
-  }
-  if (source.includes('@/modules/lowcode/components/LowcodeWorkbench.vue')
-    && (!source.includes('defineAsyncComponent') || !source.includes('v-if="hasLowcode"'))) {
-    addViolation(relativeFile, '@/modules/lowcode/components/LowcodeWorkbench.vue', 'home lowcode workbench must be an async component gated by the lowcode capability');
-  }
-  if (source.includes('@/modules/shop/components/MarketEntry.vue')
-    && (!source.includes('defineAsyncComponent') || !source.includes('v-if="hasShop"'))) {
-    addViolation(relativeFile, '@/modules/shop/components/MarketEntry.vue', 'home shop market entry must be an async component gated by the shop capability');
   }
 }
 
@@ -303,14 +262,13 @@ function checkPortalBusinessNeutrality(relativeFile, source) {
 function checkProductBusinessNeutrality(relativeFile, source) {
   const checks = [
     {
-      scope: 'src/modules/lowcode/',
+      scope: 'lowcode/src/',
       forbidden: [
         ['飞鱼小铺', 'lowcode module must not hard-code shop branding'],
         ['商品管理', 'lowcode module must not hard-code shop management labels'],
         ['/shop', 'lowcode module must not hard-code shop routes'],
         ['/shops', 'lowcode module must not hard-code shop API paths'],
-        ['Shop', 'lowcode module must not reference shop implementation names'],
-        ['shop', 'lowcode module must not reference shop implementation names']
+        ['@/modules/shop', 'lowcode app must not import shop implementation']
       ]
     },
     {
@@ -350,7 +308,6 @@ async function checkFile(file) {
   const source = await readFile(file, 'utf8');
   checkPublicShellCapabilityMarkers(relativeFile, source);
   checkPublicShellShopAssetMarkers(relativeFile, source);
-  checkHomeOptionalLowcodeNav(relativeFile, source);
   checkAuthBusinessNeutrality(relativeFile, source);
   checkPortalBusinessNeutrality(relativeFile, source);
   checkProductBusinessNeutrality(relativeFile, source);
@@ -368,7 +325,7 @@ if (!existsSync(srcRoot)) {
   throw new Error(`Missing src directory: ${srcRoot}`);
 }
 
-for (const file of await walk(srcRoot)) {
+for (const file of [...await walk(srcRoot), ...await walk(path.join(projectRoot, 'lowcode/src'))]) {
   await checkFile(file);
 }
 

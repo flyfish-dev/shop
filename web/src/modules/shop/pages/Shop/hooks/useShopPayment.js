@@ -4,6 +4,8 @@ import { useLocalStorage } from '@vueuse/core';
 import { message } from 'ant-design-vue';
 import { createOrder, getOrder, getPaymentMethods } from '../apis/api.js';
 import { deliveryStatusText } from '@/modules/shop/utils/shopDelivery.js';
+import { isXianyuRuntime, storageKey, authorizeXianyu, payXianyu } from '@/modules/xianyu/runtime.js';
+import { get } from '@/network/request.js';
 import {
   isGitRepositoryAccessType,
   isGitRepositoryDonationAccessType,
@@ -33,6 +35,7 @@ const defaultPaymentMethodForLocale = (locale, methods = FALLBACK_PAYMENT_METHOD
 };
 
 const parsePaymentMethod = value => {
+  if (value === 'xianyu') return { method: 'xianyu', provider: 'xianyu', payType: 'xianyu' };
   if (value === 'stripe') {
     return {
       method: 'stripe',
@@ -64,22 +67,25 @@ export function useShopPayment({
   validateCheckout,
   coupon,
   orderAmountPayload,
-  paymentCurrency
+  paymentCurrency,
+  externalSettlementCheckout
 }) {
   const { locale, t } = useI18n();
-  const pendingPaymentOrderNo = useLocalStorage('shop-pending-payment-order', '');
-  const pendingPaymentScene = useLocalStorage('shop-pending-payment-scene', '');
-  const pendingPaymentMethod = useLocalStorage('shop-pending-payment-method', '');
+  const pendingPaymentOrderNo = useLocalStorage(storageKey('shop-pending-payment-order'), '');
+  const pendingPaymentScene = useLocalStorage(storageKey('shop-pending-payment-scene'), '');
+  const pendingPaymentMethod = useLocalStorage(storageKey('shop-pending-payment-method'), '');
   const payModalVisible = ref(false);
   const payLoading = ref(false);
   const currentOrder = ref(null);
   const currentPayment = ref(null);
-  const availablePaymentMethods = ref([...FALLBACK_PAYMENT_METHODS]);
-  const paymentMethod = ref(defaultPaymentMethodForLocale(locale.value));
+  const availablePaymentMethods = ref(isXianyuRuntime ? ['xianyu'] : [...FALLBACK_PAYMENT_METHODS]);
+  const paymentMethod = ref(isXianyuRuntime ? 'xianyu' : defaultPaymentMethodForLocale(locale.value));
   const paymentScene = ref(parsePaymentMethod(paymentMethod.value).provider === 'stripe' ? 'checkout' : 'native');
   const poller = ref(null);
 
-  const paymentMethodOptions = computed(() => [
+  const paymentMethodOptions = computed(() => isXianyuRuntime ? [
+    { value: 'xianyu', label: locale.value.startsWith('en') ? 'Xianyu Pay' : '闲鱼支付', description: '', badge: '' }
+  ] : [
     {
       value: 'h5zhifu-wechat',
       label: t('shop.paymentMethods.wechat.title'),
@@ -117,10 +123,30 @@ export function useShopPayment({
     return text ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(text)}` : '';
   });
   const payLink = computed(() => currentPayment.value?.jumpUrl || currentPayment.value?.qrcodeText || '');
+  const paymentActionReady = computed(() => currentPaymentProvider.value === 'xianyu'
+    ? currentPayment.value?.action === 'XIANYU_TRADE_PAY'
+      && typeof currentPayment.value?.platformOrderId === 'string'
+      && /^[0-9]+$/.test(currentPayment.value.platformOrderId)
+    : Boolean(payLink.value));
   const currentTradeType = computed(() => (currentPayment.value?.tradeType || paymentScene.value || 'native').toLowerCase());
-  const redirectPayment = computed(() => currentPaymentProvider.value === 'stripe'
+  const redirectPayment = computed(() => currentPaymentProvider.value === 'xianyu' || currentPaymentProvider.value === 'stripe'
     || ['h5', 'jsapi', 'checkout'].includes(currentTradeType.value));
+  const zeroAmountCheckout = computed(() => coupon.hasActiveDiscount?.value
+    && Number(coupon.effectiveDiscount?.value?.payableAmount) === 0);
+  const offerLinkCheckout = computed(() => Boolean(coupon.effectiveDiscount?.value)
+    && !coupon.effectiveDiscount.value.couponCode);
+  const zeroAmountOrder = computed(() => Boolean(currentOrder.value)
+    && Number(currentOrder.value.amount) === 0);
+  const externalSettlementOrder = computed(() => currentOrder.value?.settlementSource === 'EXTERNAL_CONFIRMED');
   const checkoutTip = computed(() => {
+    if (externalSettlementCheckout?.value) {
+      return t('shop.offerLink.directCheckoutTip');
+    }
+    if (zeroAmountCheckout.value) {
+      return offerLinkCheckout.value
+        ? t('shop.offerLink.freeCheckoutTip')
+        : t('shop.paymentFlow.freeCheckoutTip');
+    }
     if (isGitRepositoryDonationAccessType(item.value?.type)) {
       return t('shop.paymentFlow.confirmContribution');
     }
@@ -159,6 +185,12 @@ export function useShopPayment({
 
   const paymentFinished = computed(() => isPaymentFlowFinished(currentOrder.value));
   const paymentModalTitle = computed(() => {
+    if (externalSettlementOrder.value) {
+      return t('shop.offerLink.directOrderTitle');
+    }
+    if (zeroAmountOrder.value && paymentFinished.value) {
+      return t('shop.paymentFlow.freeOrderComplete');
+    }
     if (paymentFinished.value) {
       return ['PAID', 'DELIVERED'].includes(currentOrder.value?.status)
         ? t('shop.paymentFlow.paymentComplete')
@@ -176,6 +208,18 @@ export function useShopPayment({
     if (currentOrder.value?.status === 'FAILED') {
       return t('shop.paymentFlow.orderFailed');
     }
+    if (externalSettlementOrder.value && currentOrder.value?.status === 'DELIVERED') {
+      return t('shop.offerLink.directComplete');
+    }
+    if (externalSettlementOrder.value && currentOrder.value?.status === 'PAID') {
+      return t('shop.offerLink.directAwaiting');
+    }
+    if (zeroAmountOrder.value && currentOrder.value?.status === 'DELIVERED') {
+      return t('shop.paymentFlow.freeServiceReady');
+    }
+    if (zeroAmountOrder.value && currentOrder.value?.status === 'PAID') {
+      return t('shop.paymentFlow.freeAwaitingManual');
+    }
     if (currentOrder.value?.status === 'DELIVERED') {
       if (isPureDonationType(item.value?.type)) {
         return t('shop.paymentFlow.contributionComplete');
@@ -191,6 +235,11 @@ export function useShopPayment({
     }
     if (paymentFinished.value) {
       return t('shop.paymentFlow.orderUpdated');
+    }
+    if (currentPaymentProvider.value === 'xianyu') {
+      return normalizeLocale(locale.value).startsWith('en')
+        ? (paymentActionReady.value ? 'Continue with Xianyu payment.' : 'Preparing your payment. Keep this order open.')
+        : (paymentActionReady.value ? '请继续完成闲鱼付款。' : '支付订单正在准备，请稍候。');
     }
     if (currentPaymentProvider.value === 'stripe' || currentTradeType.value === 'checkout') {
       return t('shop.paymentMethods.stripe.instruction');
@@ -215,6 +264,7 @@ export function useShopPayment({
   };
 
   const loadAvailablePaymentMethods = async () => {
+    if (isXianyuRuntime) return;
     try {
       const result = await getPaymentMethods();
       const methods = Array.isArray(result)
@@ -238,6 +288,9 @@ export function useShopPayment({
   const refreshOrder = async orderNo => {
     const latest = await getOrder(orderNo);
     currentOrder.value = latest;
+    if (isXianyuRuntime && ['PENDING', 'PAYING'].includes(latest.status)) {
+      currentPayment.value = await get(`/xianyu/orders/${orderNo}/payment`, { credential: true });
+    }
     if (!isPaymentFlowFinished(latest)) {
       return;
     }
@@ -247,9 +300,12 @@ export function useShopPayment({
     pendingPaymentScene.value = '';
     await loadOrders();
     if (latest.status === 'DELIVERED') {
-      message.success(isPureDonationType(item.value?.type)
-        ? t('shop.paymentFlow.contributionComplete')
-        : t('shop.paymentFlow.serviceActivated'));
+      const successMessage = Number(latest.amount) === 0 && latest.couponCode
+        ? t('shop.paymentFlow.freeOrderComplete')
+        : (isPureDonationType(item.value?.type)
+            ? t('shop.paymentFlow.contributionComplete')
+            : t('shop.paymentFlow.serviceActivated'));
+      message.success(successMessage);
     } else if (latest.status === 'PAID') {
       message.success(t('shop.paymentFlow.paymentAwaitingManual'));
     } else if (latest.status === 'FAILED') {
@@ -300,6 +356,11 @@ export function useShopPayment({
   const checkout = async (extraPayload = {}) => {
     if (!user.value?.id) {
       store.rememberRedirect(location.pathname + location.search);
+      if (isXianyuRuntime) {
+        await authorizeXianyu(token => store.setToken(token));
+        await store.refreshUser();
+        return;
+      }
       router.push('/login');
       return;
     }
@@ -307,20 +368,34 @@ export function useShopPayment({
       return;
     }
 
-    if (!paymentMethodOptions.value.some(option => option.value === paymentMethod.value)) {
+    const discountResult = await coupon.resolveDiscountForOrder({
+      allowCoupon: String(paymentCurrency?.value || 'CNY').toUpperCase() !== 'USD'
+    });
+    if (!discountResult.ok) {
+      return;
+    }
+
+    const fullyDiscounted = Boolean(discountResult.couponCode || discountResult.offerToken)
+      && zeroAmountCheckout.value;
+    const externallySettled = Boolean(discountResult.offerToken && externalSettlementCheckout?.value);
+    if (isXianyuRuntime && (fullyDiscounted || externallySettled || discountResult.offerToken)) {
+      message.error('当前渠道暂不支持此结算方式');
+      return;
+    }
+    if (!fullyDiscounted && !externallySettled
+      && !paymentMethodOptions.value.some(option => option.value === paymentMethod.value)) {
       message.error(t('shop.paymentMethods.unavailable'));
       return;
     }
 
-    const method = parsePaymentMethod(paymentMethod.value);
-    paymentScene.value = resolvePaymentTradeType(method);
-
-    const couponResult = String(paymentCurrency?.value || 'CNY').toUpperCase() === 'USD'
-      ? { ok: true, couponCode: undefined }
-      : await coupon.resolveCouponCodeForOrder();
-    if (!couponResult.ok) {
-      return;
-    }
+    const method = externallySettled
+      ? { provider: 'external-confirmed', payType: 'external-confirmed' }
+      : (fullyDiscounted
+          ? { provider: 'coupon', payType: 'coupon' }
+          : parsePaymentMethod(paymentMethod.value));
+    paymentScene.value = externallySettled
+      ? 'external'
+      : (fullyDiscounted ? 'coupon' : resolvePaymentTradeType(method));
 
     payLoading.value = true;
     try {
@@ -328,7 +403,8 @@ export function useShopPayment({
         itemId: item.value.id,
         skuId: item.value.skuId,
         count: 1,
-        couponCode: couponResult.couponCode,
+        couponCode: discountResult.couponCode,
+        offerToken: discountResult.offerToken,
         properties: {},
         ...(orderAmountPayload ? orderAmountPayload() : {}),
         paymentProvider: method.provider,
@@ -341,17 +417,31 @@ export function useShopPayment({
       });
       currentOrder.value = res.order;
       currentPayment.value = res.payment;
-      pendingPaymentOrderNo.value = res.order.orderNo;
-      pendingPaymentScene.value = res.payment?.tradeType || paymentScene.value;
-      pendingPaymentMethod.value = paymentMethod.value;
       payModalVisible.value = true;
-      startPolling(res.order.orderNo);
+      if (isPaymentFlowFinished(res.order)) {
+        pendingPaymentOrderNo.value = '';
+        pendingPaymentScene.value = '';
+        pendingPaymentMethod.value = '';
+        await loadOrders();
+        if (res.order.status === 'FAILED') {
+          message.error(res.order.deliveryMessage || t('shop.paymentFlow.paymentOrDeliveryFailed'));
+        }
+      } else {
+        pendingPaymentOrderNo.value = res.order.orderNo;
+        pendingPaymentScene.value = res.payment?.tradeType || paymentScene.value;
+        pendingPaymentMethod.value = paymentMethod.value;
+        startPolling(res.order.orderNo);
+      }
       if (res.payment?.provider === 'stripe' && res.payment?.jumpUrl) {
         window.location.href = res.payment.jumpUrl;
       }
+      if (isXianyuRuntime && res.payment?.action === 'XIANYU_TRADE_PAY') {
+        await payXianyu(res.payment);
+        await refreshOrder(res.order.orderNo);
+      }
     } catch (e) {
-      if (coupon.isCouponFailure(e)) {
-        coupon.removeInvalidCoupon(e.message || t('shop.couponMessages.redemptionFailed'));
+      if (coupon.isDiscountFailure(e)) {
+        coupon.handleDiscountFailure(e);
         return;
       }
       message.error(e.message || t('shop.paymentFlow.paymentStartFailed'));
@@ -375,7 +465,15 @@ export function useShopPayment({
     clearPaymentState();
   };
 
-  const openPayLink = () => {
+  const openPayLink = async () => {
+    if (isXianyuRuntime) {
+      try {
+        await refreshOrder(currentOrder.value.orderNo);
+        await payXianyu(currentPayment.value);
+        await refreshOrder(currentOrder.value.orderNo);
+      } catch (error) { message.error(error.message); }
+      return;
+    }
     if (payLink.value) {
       if (currentPaymentProvider.value === 'stripe') {
         window.location.href = payLink.value;
@@ -455,7 +553,11 @@ export function useShopPayment({
     paymentScene,
     qrCode,
     payLink,
+    paymentActionReady,
     redirectPayment,
+    zeroAmountCheckout,
+    zeroAmountOrder,
+    externalSettlementOrder,
     checkoutTip,
     paymentFinished,
     paymentModalTitle,

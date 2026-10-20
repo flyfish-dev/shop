@@ -72,7 +72,10 @@ done
 docker build --platform linux/amd64 -t "${BUILDER_IMAGE}" - <<EOF
 FROM ${GRAAL_IMAGE} AS graal
 FROM ${ALINUX_IMAGE}
-RUN dnf install -y gcc gcc-c++ glibc-devel zlib-devel findutils tar gzip which make binutils && dnf clean all
+RUN dnf -y --setopt=retries=10 --setopt=timeout=300 --setopt=minrate=1 makecache --refresh \
+    && dnf -y --setopt=retries=10 --setopt=timeout=300 --setopt=minrate=1 install \
+        gcc gcc-c++ glibc-devel zlib-devel findutils tar gzip which make binutils \
+    && dnf clean all
 COPY --from=graal /usr/lib64/graalvm/graalvm-java25 /opt/graalvm
 ENV JAVA_HOME=/opt/graalvm
 ENV PATH=/opt/graalvm/bin:/opt/graalvm/lib/svm/bin:\${PATH}

@@ -20,6 +20,18 @@ import java.time.LocalDateTime;
 @Table("shop_order")
 public class ShopOrder extends AuditDomain {
 
+    @Column("sales_channel")
+    private group.flyfish.dev.xianyu.api.SalesChannel salesChannel;
+
+    @Column("channel_order_key")
+    private String channelOrderKey;
+
+    @Column("refund_state")
+    private String refundState;
+
+    @Column("refund_amount")
+    private BigDecimal refundAmount;
+
     @Property("订单号")
     @Column("order_no")
     private String orderNo;
@@ -88,6 +100,30 @@ public class ShopOrder extends AuditDomain {
     @Column("coupon_code")
     private String couponCode;
 
+    @Property("专享购买链接id")
+    @Column("offer_link_id")
+    private Long offerLinkId;
+
+    @Property("订单结算来源")
+    @Column("settlement_source")
+    private SettlementSource settlementSource;
+
+    @Property("合同确认编号")
+    @Column("external_contract_reference")
+    private String externalContractReference;
+
+    @Property("付款确认编号")
+    @Column("external_payment_reference")
+    private String externalPaymentReference;
+
+    @Property("外部结算确认备注")
+    @Column("external_confirmation_note")
+    private String externalConfirmationNote;
+
+    @Property("外部结算确认人")
+    @Column("external_confirmed_by")
+    private String externalConfirmedBy;
+
     @Property("外部订单号")
     @Column("outer_no")
     private String outerNo;
@@ -125,6 +161,14 @@ public class ShopOrder extends AuditDomain {
     public enum Status {
 
         PENDING, PAYING, PAID, DELIVERED, FAILED, CLOSED
+    }
+
+    /**
+     * 订单的资金结算来源，用于区分在线支付、优惠全额抵扣和管理员确认的外部付款。
+     */
+    public enum SettlementSource {
+
+        ONLINE_PAYMENT, COUPON, EXTERNAL_CONFIRMED
     }
 
     /**

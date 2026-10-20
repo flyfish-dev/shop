@@ -8,3 +8,10 @@ spring:
   http:
     codecs:
       preferred-json-mapper: jackson
+flyfish:
+  xianyu:
+    bridge:
+      enabled: ${XIANYU_BRIDGE_ENABLED:false}
+      data-flow-approved: ${XIANYU_DATA_FLOW_APPROVED:false}
+      secret: ${XIANYU_BRIDGE_SECRET:}
+    management-base-url: ${XIANYU_MANAGEMENT_BRIDGE_URL:}

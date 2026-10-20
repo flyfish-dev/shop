@@ -31,6 +31,11 @@ export function useShopItemModalSections(formData, licenseDeliveryEnabled) {
       fields: ['orderForm']
     },
     {
+      key: 'experience',
+      label: '交付体验',
+      fields: ['deliveryExperience']
+    },
+    {
       key: 'skus',
       label: 'SKU套餐',
       fields: ['skuMode', 'skus']

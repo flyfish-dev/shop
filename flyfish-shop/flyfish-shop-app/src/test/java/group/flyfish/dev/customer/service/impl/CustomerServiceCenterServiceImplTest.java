@@ -3,6 +3,8 @@ package group.flyfish.dev.customer.service.impl;
 import group.flyfish.dev.customer.domain.dto.CustomerMessageSendDto;
 import group.flyfish.dev.customer.domain.po.CustomerConversation;
 import group.flyfish.dev.customer.domain.po.CustomerMessage;
+import group.flyfish.dev.customer.notification.CustomerOfflineNotificationProperties;
+import group.flyfish.dev.customer.notification.CustomerOfflineNotificationService;
 import group.flyfish.dev.customer.repository.CustomerConversationRepository;
 import group.flyfish.dev.customer.repository.CustomerMessageRepository;
 import group.flyfish.dev.customer.service.CustomerPresenceRegistry;
@@ -28,13 +30,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class CustomerServiceCenterServiceImplTest {
@@ -208,6 +214,55 @@ class CustomerServiceCenterServiceImplTest {
                 .verifyComplete();
     }
 
+    @Test
+    void offlineAutoReplyIsPersistedOnceWithinCooldown() {
+        Fixture fixture = new Fixture();
+        fixture.releaseManagerPresence.run();
+        CustomerMessageSendDto first = new CustomerMessageSendDto();
+        first.setContent("有人在吗？");
+
+        StepVerifier.create(fixture.service.sendMyMessage(fixture.browserUser(), first))
+                .assertNext(detail -> {
+                    assertEquals(2, detail.getMessages().size());
+                    CustomerMessage autoReply = fixture.messages.get(1);
+                    assertEquals(CustomerMessage.Direction.OUTBOUND.name(), autoReply.getDirection());
+                    assertEquals(CustomerMessage.SenderRole.SYSTEM.name(), autoReply.getSenderRole());
+                    assertEquals(CustomerOfflineAutoReplyService.RELATED_TYPE, autoReply.getRelatedType());
+                    assertEquals(CustomerMessage.SendStatus.SENT.name(), autoReply.getSendStatus());
+                })
+                .verifyComplete();
+
+        CustomerMessageSendDto second = new CustomerMessageSendDto();
+        second.setContent("补充一下问题细节");
+        StepVerifier.create(fixture.service.sendMyMessage(fixture.browserUser(), second))
+                .assertNext(detail -> assertEquals(3, detail.getMessages().size()))
+                .verifyComplete();
+
+        long autoReplyCount = fixture.messages.stream()
+                .filter(message -> CustomerOfflineAutoReplyService.RELATED_TYPE.equals(message.getRelatedType()))
+                .count();
+        assertEquals(1, autoReplyCount);
+        assertEquals(2, fixture.conversations.get(0).getAdminUnreadCount());
+        assertEquals(1, fixture.conversations.get(0).getUserUnreadCount());
+        verify(fixture.offlineNotificationService, times(1))
+                .notifyIfOffline(eq(fixture.conversations.get(0)), any(CustomerMessage.class));
+    }
+
+    @Test
+    void managerPresenceTracksMultipleBrowserSessions() {
+        CustomerPresenceRegistry registry = new CustomerPresenceRegistry();
+        Runnable first = registry.registerManager();
+        Runnable second = registry.registerManager();
+
+        assertTrue(registry.isManagerOnline());
+        first.run();
+        assertTrue(registry.isManagerOnline());
+        first.run();
+        assertTrue(registry.isManagerOnline());
+        second.run();
+        assertFalse(registry.isManagerOnline());
+    }
+
     private static class Fixture {
 
         private final CustomerConversationRepository conversationRepository = mock(CustomerConversationRepository.class);
@@ -216,9 +271,17 @@ class CustomerServiceCenterServiceImplTest {
         private final SupportTicketService supportTicketService = mock(SupportTicketService.class);
         private final CustomerRealtimeNotifier realtimeNotifier = mock(CustomerRealtimeNotifier.class);
         private final CustomerPresenceRegistry presenceRegistry = new CustomerPresenceRegistry();
+        private final CustomerOfflineNotificationProperties offlineNotificationProperties =
+                new CustomerOfflineNotificationProperties();
+        private final CustomerOfflineNotificationService offlineNotificationService =
+                mock(CustomerOfflineNotificationService.class);
+        private final CustomerOfflineAutoReplyService offlineAutoReplyService = new CustomerOfflineAutoReplyService(
+                conversationRepository, messageRepository, presenceRegistry, realtimeNotifier,
+                offlineNotificationProperties, offlineNotificationService);
         private final CustomerServiceCenterServiceImpl service = new CustomerServiceCenterServiceImpl(
                 conversationRepository, messageRepository, authUserGateway, supportTicketService,
-                realtimeNotifier, presenceRegistry);
+                realtimeNotifier, presenceRegistry, offlineAutoReplyService);
+        private final Runnable releaseManagerPresence = presenceRegistry.registerManager();
         private final AtomicLong conversationIds = new AtomicLong(1);
         private final AtomicLong messageIds = new AtomicLong(1);
         private final List<CustomerConversation> conversations = new ArrayList<>();
@@ -228,6 +291,8 @@ class CustomerServiceCenterServiceImplTest {
         private Fixture() {
             when(authUserGateway.authorizationByOpenid(eq(OAuthType.WECHAT), eq("wechat-openid")))
                     .thenReturn(Mono.just(wechatOauth));
+            when(offlineNotificationService.notifyIfOffline(any(CustomerConversation.class),
+                    any(CustomerMessage.class))).thenReturn(Mono.empty());
             when(authUserGateway.authorizationsByUser(eq(100L), eq(OAuthType.WECHAT)))
                     .thenReturn(Flux.just(wechatOauth));
             when(authUserGateway.authorizationsByUser(eq(1L), eq(OAuthType.WECHAT)))
@@ -299,6 +364,17 @@ class CustomerServiceCenterServiceImplTest {
                         .sorted(Comparator.comparing(CustomerMessage::getCreateTime)
                                 .thenComparing(CustomerMessage::getId))
                         .toList()));
+            });
+            when(messageRepository.findLatestByRelatedType(anyLong(), anyString())).thenAnswer(invocation -> {
+                Long conversationId = invocation.getArgument(0);
+                String relatedType = invocation.getArgument(1);
+                return Flux.defer(() -> Flux.fromIterable(messages.stream()
+                                .filter(message -> conversationId.equals(message.getConversationId()))
+                                .filter(message -> relatedType.equals(message.getRelatedType()))
+                                .sorted(Comparator.comparing(CustomerMessage::getCreateTime).reversed()
+                                        .thenComparing(CustomerMessage::getId, Comparator.reverseOrder()))
+                                .toList()))
+                        .next();
             });
             when(messageRepository.markAdminRead(anyLong())).thenReturn(Mono.just(1));
             when(messageRepository.markUserRead(anyLong())).thenReturn(Mono.just(1));

@@ -1,0 +1,216 @@
+{
+  "provider": "Tinify",
+  "releaseFiles": [
+    "public/images/contact/customer-wechat.jpg"
+  ],
+  "files": {
+    "public/images/file-viewer.png": {
+      "sha256": "c4f19536555567e6671d1390723e860751c8f023994642989a06506e0a5992d1",
+      "originalBytes": 416044,
+      "bytes": 53015,
+      "tinifyBytes": 53015,
+      "width": 1000,
+      "height": 998
+    },
+    "public/images/shop/dwg-viewer-commercial-cover.webp": {
+      "sha256": "1df2dcd4f2dbcb8e5ede82e85c711ccfff8c0adabe624cab26c5d1f27f1f688e",
+      "originalBytes": 87388,
+      "bytes": 49828,
+      "tinifyBytes": 49828,
+      "width": 1024,
+      "height": 800
+    },
+    "public/images/shop/model-viewer-commercial-cover.webp": {
+      "sha256": "2f35e52cedd2b2a7a467a23f2116a0fdc31366ab6d75e7f210dcb74c5a90578b",
+      "originalBytes": 76184,
+      "bytes": 54776,
+      "tinifyBytes": 54776,
+      "width": 1024,
+      "height": 800
+    },
+    "public/images/shop/viewer-bundle-commercial-cover.webp": {
+      "sha256": "928ca617327ed7d48e589f7ebd393985506413f564e6fc153638acbd2a6fcf0d",
+      "originalBytes": 64278,
+      "bytes": 45390,
+      "tinifyBytes": 45390,
+      "width": 1024,
+      "height": 800
+    },
+    "public/images/shop/viewer-bundle-enterprise-cover.webp": {
+      "sha256": "e1b27e99b060696870b48a5cd4e5c312ba7d0db7d5ee397e752ca4050dd966c0",
+      "originalBytes": 92226,
+      "bytes": 64732,
+      "tinifyBytes": 64732,
+      "width": 1024,
+      "height": 800
+    },
+    "public/images/shop/word-editor-commercial-cover.png": {
+      "sha256": "5ca00dcb7b57c840426df397d5e2b34f31fdc173a36b8195925901a06d521d30",
+      "originalBytes": 577211,
+      "bytes": 526713,
+      "tinifyBytes": 526713,
+      "width": 1448,
+      "height": 1086
+    },
+    "public/images/shop/wps-viewer-commercial-cover-v2.webp": {
+      "sha256": "e711f9159b662c903ac08ff8c7b0762002f3136ea3fee3e338e624996a0e8b11",
+      "originalBytes": 17478,
+      "bytes": 12398,
+      "tinifyBytes": 12398,
+      "width": 1200,
+      "height": 675
+    },
+    "public/images/shop/wps-viewer-commercial-cover-v3.png": {
+      "sha256": "60597ad1213d6b6f7ef5fe698dd47b0c4f2d4dd277170d268f76661ffc4c42e3",
+      "originalBytes": 272484,
+      "bytes": 247733,
+      "tinifyBytes": 247733,
+      "width": 1024,
+      "height": 800
+    },
+    "public/images/shop/wps-viewer-commercial-cover.webp": {
+      "sha256": "e711f9159b662c903ac08ff8c7b0762002f3136ea3fee3e338e624996a0e8b11",
+      "originalBytes": 17478,
+      "bytes": 12398,
+      "tinifyBytes": 12398,
+      "width": 1200,
+      "height": 675
+    },
+    "src/assets/contact/telegram-qr.jpg": {
+      "sha256": "bd263e51f4105206b9f0daf974dd90b876163e212929061459a9bb600315f82f",
+      "originalBytes": 62524,
+      "bytes": 35007,
+      "tinifyBytes": 35007,
+      "width": 480,
+      "height": 480
+    },
+    "src/assets/contact/wechat-mp.jpg": {
+      "sha256": "1d48cdc0a16f7b0127182d211ada22288a3654053c9681c8be54880fbff2c479",
+      "originalBytes": 41106,
+      "bytes": 19913,
+      "tinifyBytes": 19913,
+      "width": 430,
+      "height": 430
+    },
+    "src/assets/contact/whatsapp-qr.jpg": {
+      "sha256": "b322e625b10177b33f52365051a70f14d3fcbf89c6a1a201fa10bf8a4354195c",
+      "originalBytes": 47374,
+      "bytes": 26702,
+      "tinifyBytes": 26702,
+      "width": 480,
+      "height": 480
+    },
+    "src/assets/flyfish-dev-logo-transparent.png": {
+      "sha256": "d46057d559d7a54a996c030039b9aaf34ec185b50e6d68ebf1cb3c664dd622a6",
+      "originalBytes": 26524,
+      "bytes": 25164,
+      "tinifyBytes": 25164,
+      "width": 512,
+      "height": 512
+    },
+    "src/assets/flyfish-dev-logo-white.jpg": {
+      "sha256": "6ede1d7b44eec2a60d0d90880ba7c096ea9217da2a961635d47deb41f450a9e1",
+      "originalBytes": 54011,
+      "bytes": 49371,
+      "tinifyBytes": 49371,
+      "width": 1254,
+      "height": 1254
+    },
+    "src/assets/icons/generate.png": {
+      "sha256": "84a68a2feb356a37069c726c75b4ce6845f556a6403fb6b1cc2bd808f7807d51",
+      "originalBytes": 1172,
+      "bytes": 763,
+      "tinifyBytes": 763,
+      "width": 160,
+      "height": 160
+    },
+    "src/assets/icons/launch.png": {
+      "sha256": "2721a26280ad96d5017f56c638e950d12a984506ab4dc5fe6e413f120ed9aa1d",
+      "originalBytes": 2998,
+      "bytes": 1294,
+      "tinifyBytes": 1294,
+      "width": 160,
+      "height": 160
+    },
+    "src/assets/icons/model.png": {
+      "sha256": "53def0bcd8b62d94421f78dae59d6017581089238b1809aefb5faf6afdc30079",
+      "originalBytes": 2770,
+      "bytes": 1525,
+      "tinifyBytes": 1525,
+      "width": 160,
+      "height": 160
+    },
+    "src/assets/icons/test.png": {
+      "sha256": "c751b107336f4f5d35ba1a0119f47612df7658e2ef6b7643bd512346d055bdee",
+      "originalBytes": 3383,
+      "bytes": 1575,
+      "tinifyBytes": 1575,
+      "width": 162,
+      "height": 160
+    },
+    "src/assets/logo.png": {
+      "sha256": "d46057d559d7a54a996c030039b9aaf34ec185b50e6d68ebf1cb3c664dd622a6",
+      "originalBytes": 26524,
+      "bytes": 25164,
+      "tinifyBytes": 25164,
+      "width": 512,
+      "height": 512
+    },
+    "src/assets/shop/default-digital-download.webp": {
+      "sha256": "9a0fb875b08dbfef9ce82c20678c2705e6a00c6c51c1cd73987dd634299eba17",
+      "originalBytes": 30368,
+      "bytes": 16450,
+      "tinifyBytes": 16450,
+      "width": 1024,
+      "height": 800
+    },
+    "src/assets/shop/default-generic.webp": {
+      "sha256": "b61ef78af2e5e3e4ce09b6c6268d5bcbb0c9704da36bbd1233d8f14979a83600",
+      "originalBytes": 32540,
+      "bytes": 17320,
+      "tinifyBytes": 17320,
+      "width": 1024,
+      "height": 800
+    },
+    "src/assets/shop/default-git-access.webp": {
+      "sha256": "e3c5fd6b350097f6b2f0aeef53796c2d424408c595287f45da658f01d8c7b285",
+      "originalBytes": 36704,
+      "bytes": 19852,
+      "tinifyBytes": 19852,
+      "width": 1024,
+      "height": 800
+    },
+    "src/assets/shop/default-license.webp": {
+      "sha256": "61f51cd2aa6f0c2f6cbea55841ca97525d086bcff5c94a2503ca4f25285b3dce",
+      "originalBytes": 29664,
+      "bytes": 15546,
+      "tinifyBytes": 15546,
+      "width": 1024,
+      "height": 800
+    },
+    "src/assets/shop/default-service-package.webp": {
+      "sha256": "ebc9953549c00e2a7c840bfd6b8453c747f2136c2252fc6031ffef333ec85731",
+      "originalBytes": 35632,
+      "bytes": 19276,
+      "tinifyBytes": 19276,
+      "width": 1024,
+      "height": 800
+    },
+    "src/assets/shop/flyfish-shop-logo.png": {
+      "sha256": "29f7668911e83a1dbee4426ee82df8676b9a7e7ac278740327e0db3e36cf86e9",
+      "originalBytes": 19181,
+      "bytes": 16366,
+      "tinifyBytes": 16366,
+      "width": 512,
+      "height": 512
+    },
+    "src/assets/shop/storefront-hero.webp": {
+      "sha256": "f1eded5367e10f53eb23319dc7405268ac8ba6b83704047ba7ea7cbe0a90e6d7",
+      "originalBytes": 77384,
+      "bytes": 54336,
+      "tinifyBytes": 54336,
+      "width": 1920,
+      "height": 640
+    }
+  }
+}

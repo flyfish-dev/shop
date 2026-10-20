@@ -4,9 +4,24 @@ import group.flyfish.dev.shop.converter.ShopItemParamValue;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GitRepositoryAccessParamValueTest {
+
+    @Test
+    void retainsCatalogRedirectDuringParameterRoundTrip() {
+        GitRepositoryAccessParamValue value = ShopItemParamValue.gitRepositoryAccess("""
+                {"provider":"github","owner":"flyfish-dev","repo":"viewer",
+                 "catalogMigration":"catalog-v1",
+                 "catalogRedirect":{"itemId":12,"skuId":5,"skuIds":{"9":6}}}
+                """);
+        GitRepositoryAccessParamValue restored = ShopItemParamValue.gitRepositoryAccess(value.toJSON());
+
+        assertEquals("catalog-v1", restored.getCatalogMigration());
+        assertEquals(value.getCatalogRedirect(), restored.getCatalogRedirect());
+        assertEquals(12L, restored.getCatalogRedirect().getItemId());
+    }
 
     @Test
     void parsesNestedLegacyJson() {
@@ -78,5 +93,44 @@ class GitRepositoryAccessParamValueTest {
         assertEquals("pull", value.getRepositories().getFirst().getPermission());
         assertEquals("gitea", value.getRepositories().get(1).getProvider());
         assertEquals("read", value.getRepositories().get(1).getPermission());
+    }
+
+    @Test
+    void keepsDeliveryExperienceForRepositoryAndLicenseCompositeDelivery() {
+        GitRepositoryAccessParamValue value = ShopItemParamValue.gitRepositoryAccess("""
+                {
+                  "deliveryActions":["GIT_REPOSITORY_ACCESS","LICENSE"],
+                  "provider":"github",
+                  "repositories":[
+                    {"repositoryId":59,"provider":"github","owner":"flyfish-dev","repo":"office-render-demo","permission":"pull"}
+                  ],
+                  "licenseDelivery":{
+                    "licenseKind":"runtime-license",
+                    "edition":"enterprise",
+                    "allowedOrigins":["https://shop.example.com"],
+                    "maintenanceAgreement":{"enabled":true,"required":true,"contractIds":[3]}
+                  },
+                  "deliveryExperience":{
+                    "enabled":true,
+                    "title":"从 Office 综合 Demo 开始",
+                    "titleEn":"Start with the Integrated Office Demo",
+                    "links":[{
+                      "title":"打开 Office 综合 Demo 仓库",
+                      "url":"https://github.com/flyfish-dev/office-render-demo",
+                      "kind":"REPOSITORY",
+                      "primary":true
+                    }]
+                  }
+                }
+                """);
+
+        assertTrue(value.deliversLicense());
+        assertNotNull(value.getLicenseDelivery().getMaintenanceAgreement());
+        assertNotNull(value.getDeliveryExperience());
+        assertTrue(value.getDeliveryExperience().hasLinks());
+
+        GitRepositoryAccessParamValue reparsed = ShopItemParamValue.gitRepositoryAccess(value.toJSON());
+        assertEquals("从 Office 综合 Demo 开始", reparsed.getDeliveryExperience().getTitle());
+        assertEquals("office-render-demo", reparsed.getRepositories().getFirst().getRepo());
     }
 }

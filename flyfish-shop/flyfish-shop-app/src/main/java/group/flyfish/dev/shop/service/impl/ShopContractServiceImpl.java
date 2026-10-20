@@ -25,6 +25,7 @@ import group.flyfish.dev.shop.repository.ShopContractSignatureRepository;
 import group.flyfish.dev.shop.repository.ShopItemContractRepository;
 import group.flyfish.dev.shop.repository.ShopItemSkuContractRepository;
 import group.flyfish.dev.shop.service.ShopContractService;
+import group.flyfish.dev.shop.service.support.ShopContractLocalization;
 import group.flyfish.dev.shop.support.ShopAuthorizationUtils;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
@@ -42,6 +43,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -59,6 +61,7 @@ public class ShopContractServiceImpl implements ShopContractService {
     private final ShopItemSkuContractRepository shopItemSkuContractRepository;
     private final ShopContractSignatureRepository shopContractSignatureRepository;
     private final UploadService uploadService;
+    private final ShopContractLocalization shopContractLocalization;
 
     @Override
     public Flux<ShopContractVo> listContracts() {
@@ -80,6 +83,7 @@ public class ShopContractServiceImpl implements ShopContractService {
         contract.setType(dto.getType());
         contract.setDescription(StringUtils.trimToNull(dto.getDescription()));
         contract.setTags(joinTags(dto.getTags()));
+        contract.setI18n(shopContractLocalization.serialize(dto.getI18n()));
         contract.setEnabled(dto.getEnabled() == null || dto.getEnabled());
         contract.setSort(dto.getSort() == null ? 0 : dto.getSort());
         return shopContractRepository.save(contract).flatMap(this::toVoAsync);
@@ -103,6 +107,9 @@ public class ShopContractServiceImpl implements ShopContractService {
                     if (dto.getTags() != null) {
                         contract.setTags(joinTags(dto.getTags()));
                     }
+                    if (dto.getI18n() != null) {
+                        contract.setI18n(shopContractLocalization.serialize(dto.getI18n()));
+                    }
                     if (dto.getEnabled() != null) {
                         contract.setEnabled(dto.getEnabled());
                     }
@@ -125,11 +132,22 @@ public class ShopContractServiceImpl implements ShopContractService {
 
     @Override
     @Transactional
-    public Mono<ShopContractFileVo> uploadContractFile(Long contractId, FilePart file) {
+    public Mono<ShopContractFileVo> uploadContractFile(Long contractId, String locale, String documentKey,
+                                                       FilePart file) {
         return requireContract(contractId)
                 .then(uploadService.upload(file))
-                .map(metadata -> toFile(contractId, metadata))
-                .flatMap(shopContractFileRepository::save)
+                .flatMap(metadata -> shopContractFileRepository.findAllByContractId(contractId).collectList()
+                        .flatMap(existing -> {
+                            String normalizedLocale = shopContractLocalization.normalizeLocale(locale);
+                            String normalizedKey = shopContractLocalization.normalizeDocumentKey(
+                                    documentKey, metadata.getOriginalFilename());
+                            int version = shopContractLocalization.nextVersion(
+                                    existing, normalizedKey, normalizedLocale);
+                            ShopContractFile contractFile = toFile(
+                                    contractId, normalizedLocale, normalizedKey, version, metadata);
+                            return retirePreviousVersion(existing, normalizedKey, version)
+                                    .then(shopContractFileRepository.save(contractFile));
+                        }))
                 .map(this::toFileVo);
     }
 
@@ -137,19 +155,41 @@ public class ShopContractServiceImpl implements ShopContractService {
     @Transactional
     public Mono<ShopContractFileVo> updateContractFile(Long contractId, Long fileId, ShopContractFileUpdateDto dto) {
         return findContractFile(contractId, fileId)
-                .map(file -> {
-                    if (StringUtils.isNotBlank(dto.getFileName())) {
-                        file.setFileName(StringUtils.trim(dto.getFileName()));
-                    }
-                    if (dto.getEnabled() != null) {
-                        file.setEnabled(dto.getEnabled());
-                    }
-                    if (dto.getSort() != null) {
-                        file.setSort(dto.getSort());
-                    }
-                    return file;
-                })
-                .flatMap(shopContractFileRepository::save)
+                .flatMap(file -> shopContractFileRepository.findAllByContractId(contractId).collectList()
+                        .flatMap(existing -> {
+                            String originalKey = shopContractLocalization.documentKey(file);
+                            String originalLocale = shopContractLocalization.normalizeLocale(file.getLocale());
+                            if (StringUtils.isNotBlank(dto.getFileName())) {
+                                file.setFileName(StringUtils.trim(dto.getFileName()));
+                            }
+                            if (dto.getDocumentKey() != null) {
+                                file.setDocumentKey(shopContractLocalization.normalizeDocumentKey(
+                                        dto.getDocumentKey(), file.getFileName()));
+                            }
+                            if (dto.getLocale() != null) {
+                                file.setLocale(shopContractLocalization.normalizeLocale(dto.getLocale()));
+                            }
+                            if (dto.getEnabled() != null) {
+                                file.setEnabled(dto.getEnabled());
+                            }
+                            if (dto.getSort() != null) {
+                                file.setSort(dto.getSort());
+                            }
+                            boolean moved = !Objects.equals(originalKey, shopContractLocalization.documentKey(file))
+                                    || !Objects.equals(originalLocale,
+                                    shopContractLocalization.normalizeLocale(file.getLocale()));
+                            if (moved) {
+                                List<ShopContractFile> others = existing.stream()
+                                        .filter(candidate -> !Objects.equals(candidate.getId(), file.getId()))
+                                        .toList();
+                                file.setFileVersion(shopContractLocalization.nextVersion(
+                                        others, shopContractLocalization.documentKey(file), file.getLocale()));
+                            }
+                            return retirePreviousVersion(existing, shopContractLocalization.documentKey(file),
+                                    shopContractLocalization.fileVersion(file))
+                                    .then(disableConflictingVariant(existing, file))
+                                    .then(shopContractFileRepository.save(file));
+                        }))
                 .map(this::toFileVo);
     }
 
@@ -235,14 +275,27 @@ public class ShopContractServiceImpl implements ShopContractService {
 
     @Override
     public Flux<ShopContractAgreementVo> getItemAgreements(Long itemId, Long skuId) {
-        return getContractIds(itemId, skuId)
+        return getItemAgreements(itemId, skuId, List.of());
+    }
+
+    @Override
+    public Flux<ShopContractAgreementVo> getItemAgreements(Long itemId, Long skuId,
+                                                           List<Long> additionalContractIds) {
+        return getItemAgreements(itemId, skuId, additionalContractIds, ShopContractLocalization.DEFAULT_LOCALE);
+    }
+
+    @Override
+    public Flux<ShopContractAgreementVo> getItemAgreements(Long itemId, Long skuId,
+                                                           List<Long> additionalContractIds, String locale) {
+        return getContractIds(itemId, skuId, additionalContractIds)
                 .flatMapMany(contractIds -> shopContractRepository.findEnabledByIds(contractIds).collectList()
                         .flatMapMany(contracts -> Flux.fromIterable(contracts)
                                 .concatMap(contract -> shopContractFileRepository.findEnabledByContractId(contract.getId())
-                                        .map(this::toFileVo)
                                         .collectList()
+                                        .map(files -> shopContractLocalization.selectLocaleVariants(files, locale))
                                         .filter(files -> !files.isEmpty())
-                                        .map(files -> toAgreementVo(contract, files)))));
+                                        .map(files -> files.stream().map(this::toFileVo).toList())
+                                        .map(files -> toAgreementVo(contract, files, locale)))));
     }
 
     @Override
@@ -256,9 +309,18 @@ public class ShopContractServiceImpl implements ShopContractService {
     @Transactional
     public Mono<ShopContractSignatureProgressVo> agreeFile(Long itemId, Long skuId, ShopContractSignDto dto,
                                                            PortalUserVo buyer, ServerWebExchange exchange) {
+        return agreeFile(itemId, skuId, List.of(), dto, buyer, exchange);
+    }
+
+    @Override
+    @Transactional
+    public Mono<ShopContractSignatureProgressVo> agreeFile(Long itemId, Long skuId,
+                                                           List<Long> additionalContractIds,
+                                                           ShopContractSignDto dto,
+                                                           PortalUserVo buyer, ServerWebExchange exchange) {
         ShopAuthorizationUtils.requireLogin(buyer);
         String signToken = StringUtils.defaultIfBlank(dto.getSignToken(), IdGenerators.uuid32());
-        return requireAgreementFile(itemId, skuId, dto.getContractId(), dto.getFileId())
+        return requireAgreementFile(itemId, skuId, additionalContractIds, dto.getContractId(), dto.getFileId())
                 .flatMap(pair -> shopContractSignatureRepository
                         .findSignedFile(signToken, buyer.getId(), itemId, skuId, dto.getFileId())
                         .switchIfEmpty(Mono.defer(() -> createSignature(signToken, itemId, skuId, buyer, pair.contract(),
@@ -271,7 +333,7 @@ public class ShopContractServiceImpl implements ShopContractService {
                             signature.setUserAgent(userAgent(exchange));
                             return shopContractSignatureRepository.save(signature);
                         }))
-                .then(progress(itemId, skuId, buyer.getId(), signToken));
+                .then(progress(itemId, skuId, additionalContractIds, buyer.getId(), signToken));
     }
 
     @Override
@@ -281,24 +343,24 @@ public class ShopContractServiceImpl implements ShopContractService {
 
     @Override
     public Mono<Void> requireSigned(Long itemId, Long skuId, PortalUserVo buyer, String signToken) {
+        return requireSigned(itemId, skuId, List.of(), buyer, signToken);
+    }
+
+    @Override
+    public Mono<Void> requireSigned(Long itemId, Long skuId, List<Long> additionalContractIds,
+                                    PortalUserVo buyer, String signToken) {
         ShopAuthorizationUtils.requireLogin(buyer);
-        return getItemAgreementFiles(itemId, skuId).collectList().flatMap(files -> {
+        return getItemAgreementFiles(itemId, skuId, additionalContractIds).collectList().flatMap(files -> {
             if (files.isEmpty()) {
                 return Mono.empty();
             }
             if (StringUtils.isBlank(signToken)) {
                 return Mono.error(new BusinessException("CONTRACT_SIGNATURE_REQUIRED", "请先阅读并同意合同后再付款"));
             }
-            Set<Long> requiredFileIds = files.stream()
-                    .map(AgreementFile::file)
-                    .map(ShopContractFile::getId)
-                    .collect(Collectors.toCollection(LinkedHashSet::new));
             return shopContractSignatureRepository.findAgreedByToken(signToken, buyer.getId(), itemId, skuId)
-                    .map(ShopContractSignature::getContractFileId)
-                    .filter(requiredFileIds::contains)
-                    .distinct()
-                    .count()
-                    .flatMap(agreedCount -> agreedCount >= requiredFileIds.size()
+                    .collectList()
+                    .map(signatures -> agreementProgress(files, signatures))
+                    .flatMap(state -> state.completed()
                             ? Mono.empty()
                             : Mono.error(new BusinessException("CONTRACT_SIGNATURE_REQUIRED", "请先阅读并同意全部合同后再付款")));
         });
@@ -335,8 +397,9 @@ public class ShopContractServiceImpl implements ShopContractService {
                 .switchIfEmpty(Mono.error(new BusinessException("CONTRACT_FILE_NOT_FOUND", "合同文件不存在")));
     }
 
-    private Mono<AgreementFile> requireAgreementFile(Long itemId, Long skuId, Long contractId, Long fileId) {
-        return getItemAgreementFiles(itemId, skuId)
+    private Mono<AgreementFile> requireAgreementFile(Long itemId, Long skuId, List<Long> additionalContractIds,
+                                                     Long contractId, Long fileId) {
+        return getItemAgreementFiles(itemId, skuId, additionalContractIds)
                 .filter(file -> Objects.equals(contractId, file.contract().getId())
                         && Objects.equals(fileId, file.file().getId()))
                 .next()
@@ -344,24 +407,42 @@ public class ShopContractServiceImpl implements ShopContractService {
     }
 
     private Flux<AgreementFile> getItemAgreementFiles(Long itemId, Long skuId) {
-        return getContractIds(itemId, skuId)
+        return getItemAgreementFiles(itemId, skuId, List.of());
+    }
+
+    private Flux<AgreementFile> getItemAgreementFiles(Long itemId, Long skuId, List<Long> additionalContractIds) {
+        return getContractIds(itemId, skuId, additionalContractIds)
                 .flatMapMany(contractIds -> {
                     if (contractIds.isEmpty()) {
                         return Flux.empty();
                     }
                     return shopContractRepository.findEnabledByIds(contractIds)
                             .flatMap(contract -> shopContractFileRepository.findEnabledByContractId(contract.getId())
+                                    .collectList()
+                                    .flatMapMany(files -> Flux.fromIterable(
+                                            shopContractLocalization.currentVariants(files)))
                                     .map(file -> new AgreementFile(contract, file)));
                 });
     }
 
     private Mono<List<Long>> getContractIds(Long itemId, Long skuId) {
-        return skuId == null ? getItemContractIds(itemId) : getSkuContractIds(skuId);
+        return getContractIds(itemId, skuId, List.of());
+    }
+
+    private Mono<List<Long>> getContractIds(Long itemId, Long skuId, List<Long> additionalContractIds) {
+        Mono<List<Long>> configured = skuId == null ? getItemContractIds(itemId) : getSkuContractIds(skuId);
+        return configured.map(contractIds -> {
+            Set<Long> merged = new LinkedHashSet<>(contractIds);
+            merged.addAll(normalizeIds(additionalContractIds));
+            return new java.util.ArrayList<>(merged);
+        });
     }
 
     private Mono<ShopContractSignature> createSignature(String signToken, Long itemId, Long skuId, PortalUserVo buyer,
                                                         ShopContract contract, ShopContractFile file,
                                                         Integer readPercent, ServerWebExchange exchange) {
+        ShopContractLocalization.LocalizedContract localized = shopContractLocalization.localize(
+                contract, file.getLocale());
         ShopContractSignature signature = new ShopContractSignature();
         signature.setSignToken(signToken);
         signature.setItemId(itemId);
@@ -369,10 +450,14 @@ public class ShopContractServiceImpl implements ShopContractService {
         signature.setBuyerId(buyer.getId());
         signature.setContractId(contract.getId());
         signature.setContractFileId(file.getId());
-        signature.setContractName(contract.getName());
+        signature.setContractName(localized.name());
         signature.setContractType(contract.getType() == null ? null : contract.getType().name());
+        signature.setContractLocale(shopContractLocalization.normalizeLocale(file.getLocale()));
+        signature.setDocumentKey(shopContractLocalization.documentKey(file));
         signature.setFileName(file.getFileName());
         signature.setFileUrl(file.getFileUrl());
+        signature.setFileHash(file.getFileHash());
+        signature.setFileVersion(shopContractLocalization.fileVersion(file));
         signature.setReadPercent(normalizeReadPercent(readPercent));
         signature.setStatus(ShopContractSignature.Status.AGREED);
         signature.setAgreedTime(LocalDateTime.now());
@@ -381,32 +466,33 @@ public class ShopContractServiceImpl implements ShopContractService {
         return Mono.just(signature);
     }
 
-    private Mono<ShopContractSignatureProgressVo> progress(Long itemId, Long skuId, Long buyerId, String signToken) {
-        return getItemAgreementFiles(itemId, skuId).collectList()
+    private Mono<ShopContractSignatureProgressVo> progress(Long itemId, Long skuId,
+                                                           List<Long> additionalContractIds,
+                                                           Long buyerId, String signToken) {
+        return getItemAgreementFiles(itemId, skuId, additionalContractIds).collectList()
                 .zipWith(shopContractSignatureRepository.findAgreedByToken(signToken, buyerId, itemId, skuId)
-                        .map(ShopContractSignature::getContractFileId)
-                        .distinct()
                         .collectList())
                 .map(tuple -> {
-                    Set<Long> requiredIds = tuple.getT1().stream()
-                            .map(AgreementFile::file)
-                            .map(ShopContractFile::getId)
-                            .collect(Collectors.toSet());
-                    long agreed = tuple.getT2().stream().filter(requiredIds::contains).count();
+                    AgreementProgress state = agreementProgress(tuple.getT1(), tuple.getT2());
                     ShopContractSignatureProgressVo vo = new ShopContractSignatureProgressVo();
                     vo.setSignToken(signToken);
-                    vo.setTotalCount(requiredIds.size());
-                    vo.setAgreedCount((int) agreed);
-                    vo.setCompleted(agreed >= requiredIds.size());
+                    vo.setTotalCount(state.totalCount());
+                    vo.setAgreedCount(state.agreedCount());
+                    vo.setCompleted(state.completed());
                     return vo;
                 });
     }
 
-    private ShopContractFile toFile(Long contractId, FileMetadata metadata) {
+    private ShopContractFile toFile(Long contractId, String locale, String documentKey, int version,
+                                    FileMetadata metadata) {
         ShopContractFile file = new ShopContractFile();
         file.setContractId(contractId);
+        file.setDocumentKey(documentKey);
+        file.setLocale(locale);
         file.setFileName(metadata.getOriginalFilename());
         file.setFileUrl(metadata.getUrl());
+        file.setFileHash(metadata.getHash());
+        file.setFileVersion(version);
         file.setContentType(metadata.getContentType());
         file.setFileSize(metadata.getSize());
         file.setSort(0);
@@ -426,6 +512,7 @@ public class ShopContractServiceImpl implements ShopContractService {
                     vo.setTypeName(contract.getType() == null ? null : contract.getType().getTitle());
                     vo.setDescription(contract.getDescription());
                     vo.setTags(splitTags(contract.getTags()));
+                    vo.setI18n(shopContractLocalization.deserialize(contract.getI18n()));
                     vo.setEnabled(contract.getEnabled());
                     vo.setSort(contract.getSort());
                     vo.setFiles(files);
@@ -435,14 +522,17 @@ public class ShopContractServiceImpl implements ShopContractService {
                 });
     }
 
-    private ShopContractAgreementVo toAgreementVo(ShopContract contract, List<ShopContractFileVo> files) {
+    private ShopContractAgreementVo toAgreementVo(ShopContract contract, List<ShopContractFileVo> files,
+                                                  String locale) {
+        ShopContractLocalization.LocalizedContract localized = shopContractLocalization.localize(contract, locale);
         ShopContractAgreementVo vo = new ShopContractAgreementVo();
         vo.setId(contract.getId());
-        vo.setName(contract.getName());
+        vo.setName(localized.name());
         vo.setType(contract.getType() == null ? null : contract.getType().name());
-        vo.setTypeName(contract.getType() == null ? null : contract.getType().getTitle());
-        vo.setDescription(contract.getDescription());
-        vo.setTags(splitTags(contract.getTags()));
+        vo.setTypeName(localized.typeName());
+        vo.setDescription(localized.description());
+        vo.setTags(localized.tags());
+        vo.setLocale(localized.locale());
         vo.setFiles(files);
         return vo;
     }
@@ -451,8 +541,12 @@ public class ShopContractServiceImpl implements ShopContractService {
         ShopContractFileVo vo = new ShopContractFileVo();
         vo.setId(file.getId());
         vo.setContractId(file.getContractId());
+        vo.setDocumentKey(shopContractLocalization.documentKey(file));
+        vo.setLocale(shopContractLocalization.normalizeLocale(file.getLocale()));
         vo.setFileName(file.getFileName());
         vo.setFileUrl(file.getFileUrl());
+        vo.setFileHash(file.getFileHash());
+        vo.setFileVersion(shopContractLocalization.fileVersion(file));
         vo.setContentType(file.getContentType());
         vo.setFileSize(file.getFileSize());
         vo.setSort(file.getSort());
@@ -472,8 +566,12 @@ public class ShopContractServiceImpl implements ShopContractService {
         vo.setContractFileId(signature.getContractFileId());
         vo.setContractName(signature.getContractName());
         vo.setContractType(signature.getContractType());
+        vo.setContractLocale(signature.getContractLocale());
+        vo.setDocumentKey(signature.getDocumentKey());
         vo.setFileName(signature.getFileName());
         vo.setFileUrl(signature.getFileUrl());
+        vo.setFileHash(signature.getFileHash());
+        vo.setFileVersion(signature.getFileVersion());
         vo.setReadPercent(signature.getReadPercent());
         vo.setStatus(signature.getStatus() == null ? null : signature.getStatus().name());
         vo.setAgreedTime(signature.getAgreedTime());
@@ -481,6 +579,77 @@ public class ShopContractServiceImpl implements ShopContractService {
         vo.setUserAgent(signature.getUserAgent());
         vo.setCreateTime(signature.getCreateTime());
         return vo;
+    }
+
+    private Mono<Void> retirePreviousVersion(List<ShopContractFile> files, String documentKey, int version) {
+        return Flux.fromIterable(files)
+                .filter(file -> Boolean.TRUE.equals(file.getEnabled()))
+                .filter(file -> Objects.equals(documentKey, shopContractLocalization.documentKey(file)))
+                .filter(file -> shopContractLocalization.fileVersion(file) < version)
+                .concatMap(file -> {
+                    file.setEnabled(false);
+                    return shopContractFileRepository.save(file);
+                })
+                .then();
+    }
+
+    private Mono<Void> disableConflictingVariant(List<ShopContractFile> files, ShopContractFile target) {
+        if (!Boolean.TRUE.equals(target.getEnabled())) {
+            return Mono.empty();
+        }
+        String targetKey = shopContractLocalization.documentKey(target);
+        String targetLocale = shopContractLocalization.normalizeLocale(target.getLocale());
+        int targetVersion = shopContractLocalization.fileVersion(target);
+        return Flux.fromIterable(files)
+                .filter(file -> !Objects.equals(file.getId(), target.getId()))
+                .filter(file -> Boolean.TRUE.equals(file.getEnabled()))
+                .filter(file -> Objects.equals(targetKey, shopContractLocalization.documentKey(file)))
+                .filter(file -> targetVersion == shopContractLocalization.fileVersion(file))
+                .filter(file -> Objects.equals(targetLocale,
+                        shopContractLocalization.normalizeLocale(file.getLocale())))
+                .concatMap(file -> {
+                    file.setEnabled(false);
+                    return shopContractFileRepository.save(file);
+                })
+                .then();
+    }
+
+    private AgreementProgress agreementProgress(List<AgreementFile> files,
+                                                List<ShopContractSignature> signatures) {
+        Map<Long, AgreementDocument> documentsByFileId = files.stream()
+                .collect(Collectors.toMap(
+                        agreement -> agreement.file().getId(),
+                        this::agreementDocument,
+                        (first, ignored) -> first
+                ));
+        Set<AgreementDocument> required = new LinkedHashSet<>(documentsByFileId.values());
+        Set<AgreementDocument> agreed = signatures.stream()
+                .map(signature -> signatureDocument(signature, documentsByFileId))
+                .filter(Objects::nonNull)
+                .filter(required::contains)
+                .collect(Collectors.toSet());
+        return new AgreementProgress(required.size(), agreed.size(), agreed.containsAll(required));
+    }
+
+    private AgreementDocument agreementDocument(AgreementFile agreement) {
+        ShopContractFile file = agreement.file();
+        return new AgreementDocument(
+                agreement.contract().getId(),
+                shopContractLocalization.documentKey(file),
+                shopContractLocalization.fileVersion(file)
+        );
+    }
+
+    private AgreementDocument signatureDocument(ShopContractSignature signature,
+                                                Map<Long, AgreementDocument> documentsByFileId) {
+        if (StringUtils.isBlank(signature.getDocumentKey())) {
+            return documentsByFileId.get(signature.getContractFileId());
+        }
+        return new AgreementDocument(
+                signature.getContractId(),
+                signature.getDocumentKey(),
+                signature.getFileVersion() == null ? 1 : signature.getFileVersion()
+        );
     }
 
     private String joinTags(Collection<String> tags) {
@@ -536,5 +705,11 @@ public class ShopContractServiceImpl implements ShopContractService {
     }
 
     private record AgreementFile(ShopContract contract, ShopContractFile file) {
+    }
+
+    private record AgreementDocument(Long contractId, String documentKey, int version) {
+    }
+
+    private record AgreementProgress(int totalCount, int agreedCount, boolean completed) {
     }
 }

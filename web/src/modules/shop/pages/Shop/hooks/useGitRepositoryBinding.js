@@ -12,6 +12,7 @@ import { parseGitRepositoryAccessParams, normalizeGitProvider } from '@/modules/
 import { isGitRepositoryAccessType } from '@/modules/shop/utils/shopCovers.js';
 import { prepareGitBinding } from '../apis/api.js';
 import { useI18n } from 'vue-i18n';
+import { isXianyuRuntime } from '@/modules/xianyu/runtime.js';
 
 const uniqueProviders = params => {
   const providers = (params.repositories || [])
@@ -103,6 +104,10 @@ export function useGitRepositoryBinding({ item, user, store, router }) {
   ));
 
   const authorize = async () => {
+    if (isXianyuRuntime) {
+      router.push('/account/channel-link');
+      return;
+    }
     store.rememberRedirect(location.pathname + location.search);
     if (!user.value?.id) {
       router.push('/login');

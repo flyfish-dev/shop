@@ -8,6 +8,7 @@ target
 **/target
 web/node_modules
 web/dist
+web/dist-docker
 node_modules
 dist
 

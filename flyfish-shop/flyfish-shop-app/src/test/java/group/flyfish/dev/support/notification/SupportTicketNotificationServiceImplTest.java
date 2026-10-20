@@ -44,6 +44,21 @@ class SupportTicketNotificationServiceImplTest {
     }
 
     @Test
+    void systemFollowUpNotifiesOnlyMaintainers() {
+        Fixture fixture = new Fixture();
+        fixture.seedCustomer(true, true);
+        fixture.seedMaintainer(true, true);
+
+        StepVerifier.create(fixture.service.systemFollowUpCreated(fixture.ticket(), fixture.message()))
+                .verifyComplete();
+
+        verify(fixture.mailNotifier).send(argThat(recipients -> contains(recipients, "admin@example.com")), any());
+        verify(fixture.wechatNotifier).send(argThat(recipients -> contains(recipients, "wechat-admin-openid")), any());
+        verify(fixture.mailNotifier, never()).send(argThat(recipients -> contains(recipients, "customer@example.com")), any());
+        verify(fixture.wechatNotifier, never()).send(argThat(recipients -> contains(recipients, "wechat-customer-openid")), any());
+    }
+
+    @Test
     void adminReplySkipsUserChannelsWhenUserHasNoEmailAndNoWechatBinding() {
         Fixture fixture = new Fixture();
         fixture.seedCustomer(false, false);

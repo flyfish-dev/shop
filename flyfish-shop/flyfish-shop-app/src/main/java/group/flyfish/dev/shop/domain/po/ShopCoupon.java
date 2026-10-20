@@ -24,6 +24,17 @@ public class ShopCoupon extends AuditDomain {
     @Property("优惠券名称")
     private String name;
 
+    @Property("优惠券来源")
+    private Source source;
+
+    @Property("限定商品id")
+    @Column("item_id")
+    private Long itemId;
+
+    @Property("限定SKU id")
+    @Column("sku_id")
+    private Long skuId;
+
     @Property("优惠类型")
     private Type type;
 
@@ -62,5 +73,14 @@ public class ShopCoupon extends AuditDomain {
 
         DISCOUNT,
         REDUCTION
+    }
+
+    /**
+     * 优惠券来源。系统专享链接券不出现在普通优惠券管理列表中。
+     */
+    public enum Source {
+
+        MANUAL,
+        OFFER_LINK
     }
 }

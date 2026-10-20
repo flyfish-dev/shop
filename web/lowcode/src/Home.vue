@@ -1,12 +1,6 @@
 <template>
   <div class="home-wrapper">
     <a-spin :spinning="loading">
-      <market-entry
-        v-if="hasShop"
-        :name="shopEntryName"
-        :path="shopEntryPath"
-      />
-
       <div class="module-wrapper">
         <a-row :gutter="[20, 20]">
           <a-col v-for="button in moduleCards" :key="button.name" :lg="12" :xs="24">
@@ -37,12 +31,9 @@ import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from '@/router/use';
 import { message } from 'ant-design-vue';
-import useClientStore from '@/modules/auth/store/client.js';
 import { usePortalCapabilities } from '@/modules/portal/usePortalCapabilities.js';
 
-const shopIcon = new URL('@/assets/logo.png', import.meta.url);
-const MarketEntry = defineAsyncComponent(() => import('@/modules/shop/components/MarketEntry.vue'));
-const LowcodeWorkbench = defineAsyncComponent(() => import('@/modules/lowcode/components/LowcodeWorkbench.vue'));
+const LowcodeWorkbench = defineAsyncComponent(() => import('@lowcode/components/LowcodeWorkbench.vue'));
 const lowcodeModuleI18nKeys = {
   'model-design': 'modelDesign',
   'code-generate': 'codeGenerate',
@@ -53,22 +44,20 @@ const lowcodeModuleI18nKeys = {
 export default {
   name: 'IndexHome',
   components: {
-    MarketEntry,
     LowcodeWorkbench
   },
   setup() {
     const router = useRouter();
-    const store = useClientStore();
     const { t } = useI18n();
     const loading = ref(false);
     const lowcodeModules = ref([]);
-    const { hasLowcode, hasShop, shopEntryName, shopEntryPath, loadPortalCapabilities } = usePortalCapabilities();
+    const { hasLowcode, loadPortalCapabilities } = usePortalCapabilities();
 
     const loadLowcodeModules = async () => {
       if (!hasLowcode.value || lowcodeModules.value.length > 0) {
         return;
       }
-      const { lowcodeNavItems } = await import('@/modules/lowcode/nav.js');
+      const { lowcodeNavItems } = await import('@lowcode/nav.js');
       lowcodeModules.value = lowcodeNavItems;
     };
     const lowcodeModuleText = (item, field) => {
@@ -81,14 +70,7 @@ export default {
         name: lowcodeModuleText(item, 'name'),
         desc: lowcodeModuleText(item, 'desc'),
         path: `/${item.code}`
-      })) : []),
-      ...(hasShop.value ? [{
-        name: t('nav.market'),
-        code: 'shop',
-        desc: t('home.shopDesc'),
-        icon: shopIcon,
-        path: shopEntryPath.value
-      }] : [])
+      })) : [])
     ]);
 
     const loadHome = async () => {
@@ -105,19 +87,7 @@ export default {
       }
     };
 
-    onMounted(() => {
-      const target = store.consumeRedirect('');
-      if (target
-        && target.startsWith('/')
-        && target !== '/'
-        && target !== '/login'
-        && !target.startsWith('/oauth/')
-        && target !== router.currentRoute.value) {
-        router.replace(target);
-        return;
-      }
-      loadHome();
-    });
+    onMounted(loadHome);
 
     return {
       router,
@@ -125,9 +95,6 @@ export default {
       loading,
       moduleCards,
       hasLowcode,
-      hasShop,
-      shopEntryName,
-      shopEntryPath,
       moduleDesc: button => button.desc,
       goModule: button => {
         if (button.status === 'later') {

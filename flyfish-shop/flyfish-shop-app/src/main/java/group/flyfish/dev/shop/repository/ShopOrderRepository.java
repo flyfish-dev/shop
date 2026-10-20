@@ -18,6 +18,50 @@ import java.time.LocalDateTime;
  */
 public interface ShopOrderRepository extends DefaultReactiveRepository<ShopOrder> {
 
+    default Mono<ShopOrder> findByChannelOrderKey(String key) { return findOneBy("channel_order_key", key); }
+
+    @Modifying
+    @Query("""
+        UPDATE shop_order SET paid_time=CURRENT_TIMESTAMP,status='PAID',delivery_status='WAITING',
+          transaction_code=:transaction,expire_time=NULL,update_time=CURRENT_TIMESTAMP
+        WHERE order_no=:orderNo AND payment_provider='xianyu' AND paid_time IS NULL
+          AND status IN ('PENDING','PAYING','CLOSED') AND amount=:amount AND currency='CNY'
+        """)
+    Mono<Integer> confirmXianyuPaid(String orderNo, java.math.BigDecimal amount, String transaction);
+
+    @Modifying
+    @Query("""
+        UPDATE shop_order SET delivery_status='PROCESSING',update_time=CURRENT_TIMESTAMP
+        WHERE order_no=:orderNo AND payment_provider='xianyu' AND paid_time IS NOT NULL
+          AND delivery_status IN ('WAITING','FAILED')
+          AND (refund_state IS NULL OR refund_state IN ('NONE','CLOSED','REJECTED'))
+          AND COALESCE(refund_amount,0)=0
+        """)
+    Mono<Integer> claimXianyuDelivery(String orderNo);
+
+    @Modifying
+    @Query("""
+        UPDATE shop_order SET status=:state,delivery_status=:delivery,delivery_message=:message,update_time=CURRENT_TIMESTAMP
+        WHERE order_no=:orderNo AND payment_provider='xianyu' AND paid_time IS NOT NULL
+          AND (:requireActive = false OR ((refund_state IS NULL OR refund_state IN ('NONE','CLOSED','REJECTED')) AND COALESCE(refund_amount,0)=0))
+        """)
+    Mono<Integer> updateXianyuDelivery(String orderNo,String state,String delivery,String message,boolean requireActive);
+
+    @Modifying
+    @Query("""
+        UPDATE shop_order SET
+          refund_state=CASE WHEN :revision>COALESCE(channel_refund_revision,0)
+            OR (:revision=COALESCE(channel_refund_revision,0)
+              AND CASE :state WHEN 'REFUNDED' THEN 4 WHEN 'PARTIAL' THEN 3 WHEN 'PROCESSING' THEN 2 WHEN 'PENDING' THEN 1 ELSE 0 END
+                >= CASE refund_state WHEN 'REFUNDED' THEN 4 WHEN 'PARTIAL' THEN 3 WHEN 'PROCESSING' THEN 2 WHEN 'PENDING' THEN 1 ELSE 0 END)
+            THEN :state ELSE refund_state END,
+          refund_amount=GREATEST(COALESCE(refund_amount,0),:amount),
+          channel_refund_revision=GREATEST(COALESCE(channel_refund_revision,0),:revision)
+        WHERE order_no=:orderNo AND channel_order_key=:key AND payment_provider='xianyu'
+          AND :revision>0 AND :amount>=0 AND :amount<=amount
+        """)
+    Mono<Integer> projectXianyuRefund(String orderNo,String key,String state,java.math.BigDecimal amount,long revision);
+
     default Mono<ShopOrder> findByOrderNo(String orderNo) {
         return findOneBy("order_no", orderNo);
     }
@@ -67,6 +111,7 @@ public interface ShopOrderRepository extends DefaultReactiveRepository<ShopOrder
                 update_time = CURRENT_TIMESTAMP
             WHERE is_delete = false
               AND status IN ('PENDING', 'PAYING')
+              AND (payment_provider IS NULL OR payment_provider <> 'xianyu')
               AND expire_time <= :now
             """)
     Mono<Integer> closeExpiredUnpaidOrders(LocalDateTime now, String message);

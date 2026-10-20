@@ -30,8 +30,11 @@ user:
       - /shops/managements/**
 
 shop:
+  offer-link:
+    portal-base-url: ${SHOP_OFFER_LINK_PORTAL_BASE_URL:https://shop.example.com}
   pricing:
     cny-per-usd: ${SHOP_PRICING_CNY_PER_USD:6.78}
+    usd-settlement-buffer-rate: ${SHOP_PRICING_USD_SETTLEMENT_BUFFER_RATE:0.05}
   payment:
     h5zhifu:
       enabled: ${H5ZHIFU_ENABLED:false}
@@ -64,3 +67,23 @@ support:
       enabled: ${SUPPORT_NOTIFICATION_WECHAT_ENABLED:false}
       admin-openids: ${SUPPORT_NOTIFICATION_WECHAT_ADMIN_OPENIDS:}
       maintainer-gitea-openid: ${SUPPORT_NOTIFICATION_MAINTAINER_GITEA_OPENID:}
+
+customer:
+  service:
+    offline:
+      notification:
+        enabled: ${CUSTOMER_OFFLINE_NOTIFICATION_ENABLED:false}
+        cooldown: ${CUSTOMER_OFFLINE_NOTIFICATION_COOLDOWN:8h}
+        portal-base-url: ${CUSTOMER_OFFLINE_NOTIFICATION_PORTAL_BASE_URL:https://shop.example.com}
+        mail:
+          enabled: ${CUSTOMER_OFFLINE_NOTIFICATION_MAIL_ENABLED:false}
+          from: ${CUSTOMER_OFFLINE_NOTIFICATION_MAIL_FROM:${SUPPORT_NOTIFICATION_MAIL_FROM:${FROM:}}}
+          recipients: ${CUSTOMER_OFFLINE_NOTIFICATION_MAIL_RECIPIENTS:${SUPPORT_NOTIFICATION_MAIL_ADMIN_RECIPIENTS:${SUPPORT_ADMIN_EMAIL:${FROM:}}}}
+        webhook:
+          enabled: ${CUSTOMER_OFFLINE_NOTIFICATION_WEBHOOK_ENABLED:false}
+          urls: ${CUSTOMER_OFFLINE_NOTIFICATION_WEBHOOK_URLS:}
+          secret: ${CUSTOMER_OFFLINE_NOTIFICATION_WEBHOOK_SECRET:}
+          timeout: ${CUSTOMER_OFFLINE_NOTIFICATION_WEBHOOK_TIMEOUT:5s}
+          max-retries: ${CUSTOMER_OFFLINE_NOTIFICATION_WEBHOOK_MAX_RETRIES:1}
+          retry-backoff: ${CUSTOMER_OFFLINE_NOTIFICATION_WEBHOOK_RETRY_BACKOFF:500ms}
+          allow-insecure-http: ${CUSTOMER_OFFLINE_NOTIFICATION_WEBHOOK_ALLOW_HTTP:false}

@@ -24,6 +24,12 @@ public class ShopOrderDelivery extends AuditDomain {
     private String orderNo;
 
     /**
+     * 订单内交付组件标识。用于组合商品分别保存多套许可证。
+     */
+    @Column("component_key")
+    private String componentKey;
+
+    /**
      * 商品 ID。
      */
     @Column("item_id")
@@ -57,6 +63,11 @@ public class ShopOrderDelivery extends AuditDomain {
     private String attachments;
 
     /**
+     * 结构化交付元数据 JSON，例如支付成功后的运行体验入口。
+     */
+    private String metadata;
+
+    /**
      * 授权编号，授权许可类商品使用。
      */
     @Column("license_no")
@@ -70,6 +81,7 @@ public class ShopOrderDelivery extends AuditDomain {
 
     public enum DeliveryType {
         DIGITAL,
-        LICENSE
+        LICENSE,
+        EXPERIENCE
     }
 }

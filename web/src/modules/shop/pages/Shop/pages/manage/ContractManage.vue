@@ -24,6 +24,11 @@ const contractTypeOptions = [
   { label: '其他合同', value: 'CUSTOM' }
 ];
 
+const contractLocaleOptions = [
+  { label: '简体中文', value: 'zh-CN' },
+  { label: 'English', value: 'en-US' }
+];
+
 const loading = ref(false);
 const signatureLoading = ref(false);
 const contracts = ref([]);
@@ -37,9 +42,17 @@ const formData = reactive({
   type: 'SOFTWARE_LICENSE',
   description: '',
   tags: [],
+  i18n: {
+    'en-US': {
+      name: '',
+      description: '',
+      tags: []
+    }
+  },
   enabled: true,
   sort: 0
 });
+const uploadContexts = reactive({});
 
 const columns = [
   { title: '合同名称', dataIndex: 'name' },
@@ -56,6 +69,8 @@ const signatureColumns = [
   { title: '用户ID', dataIndex: 'buyerId', width: 100 },
   { title: '合同', dataIndex: 'contractName' },
   { title: '文件', dataIndex: 'fileName' },
+  { title: '语言', dataIndex: 'contractLocale', width: 92 },
+  { title: '版本', dataIndex: 'fileVersion', width: 72 },
   { title: '阅读', dataIndex: 'readPercent', width: 80 },
   { title: '状态', dataIndex: 'status', width: 90 },
   { title: '时间', dataIndex: 'agreedTime', width: 180 }
@@ -68,6 +83,13 @@ const resetForm = () => {
     type: 'SOFTWARE_LICENSE',
     description: '',
     tags: [],
+    i18n: {
+      'en-US': {
+        name: '',
+        description: '',
+        tags: []
+      }
+    },
     enabled: true,
     sort: 0
   });
@@ -79,6 +101,14 @@ const loadContracts = async () => {
     contracts.value = await getContracts();
   } finally {
     loading.value = false;
+  }
+};
+
+const changeUploadLocale = (contract, locale) => {
+  const context = uploadContext(contract);
+  context.locale = locale;
+  if (locale === 'en-US' && !context.documentKey) {
+    context.documentKey = documentOptions(contract, false)[0]?.value || '';
   }
 };
 
@@ -103,6 +133,13 @@ const openEdit = record => {
     type: record.type || 'SOFTWARE_LICENSE',
     description: record.description || '',
     tags: record.tags || [],
+    i18n: {
+      'en-US': {
+        name: record.i18n?.['en-US']?.name || '',
+        description: record.i18n?.['en-US']?.description || '',
+        tags: record.i18n?.['en-US']?.tags || []
+      }
+    },
     enabled: record.enabled !== false,
     sort: record.sort || 0
   });
@@ -150,9 +187,16 @@ const removeContract = record => {
 
 const uploadFile = contract => async ({ file, onSuccess, onError }) => {
   try {
+    const context = uploadContext(contract);
+    if (context.locale === 'en-US' && !context.documentKey) {
+      throw new Error('上传英文版本前，请选择它对应的中文文档');
+    }
     const data = new FormData();
     data.append('file', file);
-    const result = await uploadContractFile(contract.id, data);
+    const result = await uploadContractFile(contract.id, data, {
+      locale: context.locale,
+      ...(context.documentKey ? { documentKey: context.documentKey } : {})
+    });
     onSuccess(result);
     message.success('合同文件已上传');
     await loadContracts();
@@ -161,6 +205,32 @@ const uploadFile = contract => async ({ file, onSuccess, onError }) => {
     message.error(e.message || '文件上传失败');
   }
 };
+
+const uploadContext = contract => {
+  if (!uploadContexts[contract.id]) {
+    uploadContexts[contract.id] = {
+      locale: 'zh-CN',
+      documentKey: ''
+    };
+  }
+  return uploadContexts[contract.id];
+};
+
+const documentOptions = (contract, includeNew = true) => {
+  const documents = new Map();
+  (contract.files || []).forEach(file => {
+    if (file.documentKey && !documents.has(file.documentKey)) {
+      documents.set(file.documentKey, {
+        label: `${file.fileName} · ${file.documentKey}`,
+        value: file.documentKey
+      });
+    }
+  });
+  const options = [...documents.values()];
+  return includeNew ? [{ label: '新建独立文档', value: '' }, ...options] : options;
+};
+
+const localeLabel = locale => contractLocaleOptions.find(option => option.value === locale)?.label || locale;
 
 const toggleFile = async (contract, file) => {
   await updateContractFile(contract.id, file.id, {
@@ -232,12 +302,31 @@ onMounted(() => {
           </template>
           <template #expandedRowRender="{ record }">
             <div class="file-panel">
-              <a-upload :show-upload-list="false" :custom-request="uploadFile(record)">
-                <a-button size="small">
-                  <upload-outlined />
-                  上传合同文件
-                </a-button>
-              </a-upload>
+              <div class="file-upload-bar">
+                <a-segmented
+                  :value="uploadContext(record).locale"
+                  :options="contractLocaleOptions"
+                  @change="value => changeUploadLocale(record, value)"
+                />
+                <a-select
+                  v-model:value="uploadContext(record).documentKey"
+                  class="document-selector"
+                  :options="documentOptions(record, uploadContext(record).locale !== 'en-US')"
+                  :placeholder="uploadContext(record).locale === 'en-US' ? '选择对应的中文文档' : '新建或更新文档'"
+                />
+                <a-upload :show-upload-list="false" :custom-request="uploadFile(record)">
+                  <a-button type="primary">
+                    <upload-outlined />
+                    上传{{ localeLabel(uploadContext(record).locale) }}文件
+                  </a-button>
+                </a-upload>
+              </div>
+              <a-alert
+                v-if="uploadContext(record).locale === 'en-US'"
+                type="info"
+                show-icon
+                message="英文文件必须关联对应的中文文档，客户只会签署当前语言版本。"
+              />
               <a-list :data-source="record.files || []" size="small">
                 <template #renderItem="{ item: file }">
                   <a-list-item>
@@ -249,7 +338,14 @@ onMounted(() => {
                         <a :href="file.fileUrl" target="_blank" rel="noreferrer">{{ file.fileName }}</a>
                       </template>
                       <template #description>
-                        {{ file.contentType || '文件' }} · {{ file.fileSize || 0 }} bytes
+                        <a-space wrap :size="6">
+                          <a-tag :color="file.locale === 'en-US' ? 'blue' : 'green'">
+                            {{ localeLabel(file.locale) }}
+                          </a-tag>
+                          <a-tag>v{{ file.fileVersion || 1 }}</a-tag>
+                          <span>{{ file.contentType || '文件' }} · {{ file.fileSize || 0 }} bytes</span>
+                          <span class="document-key">{{ file.documentKey }}</span>
+                        </a-space>
                       </template>
                     </a-list-item-meta>
                     <a-space>
@@ -283,6 +379,14 @@ onMounted(() => {
             <template v-if="column.dataIndex === 'readPercent'">
               {{ record.readPercent || 0 }}%
             </template>
+            <template v-else-if="column.dataIndex === 'contractLocale'">
+              <a-tag :color="record.contractLocale === 'en-US' ? 'blue' : 'green'">
+                {{ localeLabel(record.contractLocale) }}
+              </a-tag>
+            </template>
+            <template v-else-if="column.dataIndex === 'fileVersion'">
+              v{{ record.fileVersion || 1 }}
+            </template>
             <template v-else-if="column.dataIndex === 'status'">
               <a-tag color="green">{{ record.status === 'BOUND' ? '已绑定订单' : '已同意' }}</a-tag>
             </template>
@@ -299,18 +403,36 @@ onMounted(() => {
       @cancel="modalVisible = false"
     >
       <a-form ref="formRef" :model="formData" layout="vertical">
-        <a-form-item label="合同名称" name="name" :rules="[{ required: true, message: '请输入合同名称' }]">
-          <a-input v-model:value="formData.name" />
-        </a-form-item>
         <a-form-item label="合同类型" name="type" :rules="[{ required: true, message: '请选择合同类型' }]">
           <a-select v-model:value="formData.type" :options="contractTypeOptions" />
         </a-form-item>
-        <a-form-item label="描述" name="description">
-          <a-textarea v-model:value="formData.description" :auto-size="{ minRows: 3, maxRows: 6 }" />
-        </a-form-item>
-        <a-form-item label="标签" name="tags">
-          <a-select v-model:value="formData.tags" mode="tags" />
-        </a-form-item>
+        <a-tabs size="small" class="locale-form-tabs">
+          <a-tab-pane key="zh-CN" tab="简体中文">
+            <a-form-item label="合同名称" name="name" :rules="[{ required: true, message: '请输入合同名称' }]">
+              <a-input v-model:value="formData.name" />
+            </a-form-item>
+            <a-form-item label="描述" name="description">
+              <a-textarea v-model:value="formData.description" :auto-size="{ minRows: 3, maxRows: 6 }" />
+            </a-form-item>
+            <a-form-item label="标签" name="tags">
+              <a-select v-model:value="formData.tags" mode="tags" />
+            </a-form-item>
+          </a-tab-pane>
+          <a-tab-pane key="en-US" tab="English">
+            <a-form-item label="Contract name">
+              <a-input v-model:value="formData.i18n['en-US'].name" />
+            </a-form-item>
+            <a-form-item label="Description">
+              <a-textarea
+                v-model:value="formData.i18n['en-US'].description"
+                :auto-size="{ minRows: 3, maxRows: 6 }"
+              />
+            </a-form-item>
+            <a-form-item label="Tags">
+              <a-select v-model:value="formData.i18n['en-US'].tags" mode="tags" />
+            </a-form-item>
+          </a-tab-pane>
+        </a-tabs>
         <a-row :gutter="16">
           <a-col :span="12">
             <a-form-item label="排序" name="sort">
@@ -354,8 +476,45 @@ onMounted(() => {
   background: #fbfdff;
 }
 
+.file-upload-bar {
+  display: grid;
+  grid-template-columns: auto minmax(240px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.document-selector {
+  min-width: 0;
+}
+
+.document-key {
+  color: #8c9aaa;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.locale-form-tabs {
+  margin-top: 4px;
+}
+
 .file-icon {
   color: #33a204;
   font-size: 22px;
+}
+
+@media (max-width: 720px) {
+  .contract-manage {
+    padding: 12px;
+  }
+
+  .file-upload-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .document-selector,
+  .file-upload-bar :deep(.ant-upload),
+  .file-upload-bar :deep(.ant-btn) {
+    width: 100%;
+  }
 }
 </style>

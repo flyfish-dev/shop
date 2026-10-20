@@ -19,6 +19,13 @@ public class ShopContractFile extends AuditDomain {
     @Column("contract_id")
     private Long contractId;
 
+    @Property("逻辑文档标识")
+    @Column("document_key")
+    private String documentKey;
+
+    @Property("合同文件语言")
+    private String locale;
+
     @Property("文件名称")
     @Column("file_name")
     private String fileName;
@@ -26,6 +33,14 @@ public class ShopContractFile extends AuditDomain {
     @Property("文件地址")
     @Column("file_url")
     private String fileUrl;
+
+    @Property("文件SHA-256")
+    @Column("file_hash")
+    private String fileHash;
+
+    @Property("逻辑文档版本")
+    @Column("file_version")
+    private Integer fileVersion;
 
     @Property("文件类型")
     @Column("content_type")

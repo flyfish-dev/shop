@@ -54,6 +54,28 @@ public class PortalUserServiceImpl implements PortalUserService {
     private final TokenService tokenService;
     private final OAuthProfileEnrichmentService oAuthProfileEnrichmentService;
 
+    @Override
+    public Mono<UserToken> registerOrLoginXianyuSubject(String subject) {
+        validateXianyuSubject(subject);
+        String snapshot = JacksonUtils.toJson(Map.of("nickname", "飞鱼用户"));
+        return findUserByAuthorization(OAuthType.XIANYU, subject)
+                .switchIfEmpty(Mono.defer(() -> createUserWithAuthorization(OAuthType.XIANYU, subject,
+                        FunNicknameGenerator.generate(subject), snapshot)))
+                .flatMap(this::getToken);
+    }
+
+    @Override
+    public Mono<OAuthBindPlan> prepareBindXianyuSubject(String subject, Long userId, String ticket) {
+        validateXianyuSubject(subject);
+        return prepareBindAuthorization(userId, OAuthType.XIANYU, subject,
+                JacksonUtils.toJson(Map.of("nickname", "飞鱼用户")), ticket, "/account/profile");
+    }
+
+    private void validateXianyuSubject(String subject) {
+        if (subject == null || !subject.matches("[a-f0-9-]{36}"))
+            throw new BusinessException("XIANYU_SUBJECT_INVALID", "渠道身份校验失败");
+    }
+
     /**
      * 使用微信注册
      *

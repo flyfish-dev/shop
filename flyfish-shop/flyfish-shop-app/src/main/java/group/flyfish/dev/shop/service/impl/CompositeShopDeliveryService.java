@@ -10,6 +10,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.util.stream.Stream;
 
 /**
  * 商品交付分发器。
@@ -17,9 +18,15 @@ import java.util.List;
 public class CompositeShopDeliveryService implements ShopDeliveryService {
 
     private final List<ShopDeliveryHandler> handlers;
+    private final group.flyfish.dev.shop.xianyu.DeliveryTaskLedger ledger;
 
     public CompositeShopDeliveryService(List<ShopDeliveryHandler> handlers) {
+        this(handlers, null);
+    }
+
+    public CompositeShopDeliveryService(List<ShopDeliveryHandler> handlers, group.flyfish.dev.shop.xianyu.DeliveryTaskLedger ledger) {
         this.handlers = handlers == null ? List.of() : List.copyOf(handlers);
+        this.ledger = ledger;
     }
 
     @Override
@@ -30,11 +37,34 @@ public class CompositeShopDeliveryService implements ShopDeliveryService {
         if (matchedHandlers.isEmpty()) {
             return Mono.just(DeliveryResult.failed("该商品类型未实现自动交付"));
         }
-        return Flux.fromIterable(matchedHandlers)
-                .concatMap(handler -> handler.deliver(order, item, buyer)
+        List<ShopDeliveryHandler> coreHandlers = matchedHandlers.stream()
+                .filter(handler -> handler.stage() == ShopDeliveryHandler.Stage.CORE)
+                .toList();
+        if (coreHandlers.isEmpty()) {
+            return Mono.just(DeliveryResult.failed("该商品未配置核心自动交付动作"));
+        }
+        List<ShopDeliveryHandler> afterSuccessHandlers = matchedHandlers.stream()
+                .filter(handler -> handler.stage() == ShopDeliveryHandler.Stage.AFTER_SUCCESS)
+                .toList();
+        return execute(coreHandlers, order, item, buyer)
+                .flatMap(coreResults -> {
+                    DeliveryResult coreResult = mergeResults(coreResults);
+                    if (!coreResult.isSuccess() || afterSuccessHandlers.isEmpty()) {
+                        return Mono.just(coreResult);
+                    }
+                    return execute(afterSuccessHandlers, order, item, buyer)
+                            .map(afterResults -> mergeResults(Stream.concat(
+                                    coreResults.stream(), afterResults.stream()).toList()));
+                });
+    }
+
+    private Mono<List<DeliveryResult>> execute(List<ShopDeliveryHandler> selectedHandlers,
+                                               ShopOrder order, ShopItem item, PortalUserVo buyer) {
+        return Flux.fromIterable(selectedHandlers)
+                .concatMap(handler -> (ledger == null ? handler.deliver(order, item, buyer)
+                        : ledger.run(order, "action:" + org.springframework.aop.support.AopUtils.getTargetClass(handler).getSimpleName(), handler.recoverySafe(), () -> handler.deliver(order, item, buyer)))
                         .onErrorResume(e -> Mono.just(DeliveryResult.failed(e.getMessage()))))
-                .collectList()
-                .map(this::mergeResults);
+                .collectList();
     }
 
     private DeliveryResult mergeResults(List<DeliveryResult> results) {

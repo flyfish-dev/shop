@@ -19,10 +19,13 @@ import {
   isDonationType
 } from '@/modules/shop/utils/shopCovers.js';
 import {
+  DEFAULT_DWG_LICENSE_FEATURES,
+  DEFAULT_MODEL_LICENSE_FEATURES,
   DEFAULT_OFFICE_LICENSE_FEATURES,
   DEFAULT_VIEWER_BRAND_STATEMENT_FEATURES,
   DELIVERY_ACTION,
   DELIVERY_ACTION_OPTIONS,
+  LICENSE_PRODUCT,
   LICENSE_PRODUCT_OPTIONS,
   OFFICE_LICENSE_KIND,
   OFFICE_LICENSE_KIND_OPTIONS,
@@ -30,6 +33,7 @@ import {
   OFFICE_LICENSE_FEATURE_OPTIONS,
   SHOP_TYPE_OPTIONS,
   VIEWER_BRAND_REMOVAL_REMARK,
+  defaultLicenseFeaturesForProduct,
   defaultDeliveryActionsForType,
   defaultDeliveryModeForType,
   deliveryModeOptionsForType,
@@ -55,6 +59,14 @@ import {
   defaultShopItemI18n,
   normalizeShopItemI18n
 } from '@/modules/shop/utils/shopI18n.js';
+import { useCommercialLicenseConfiguration } from '../hooks/useCommercialLicenseConfiguration.js';
+import ShopDeliveryExperienceEditor from '../components/ShopDeliveryExperienceEditor.vue';
+import {
+  compactDeliveryExperience,
+  defaultDeliveryExperience,
+  normalizeDeliveryExperience,
+  parseDeliveryExperience
+} from '../hooks/useDeliveryExperienceConfiguration.js';
 
 const GIT_REPOSITORY_ACCESS = 'GIT_REPOSITORY_ACCESS';
 const ShopMarkdownEditor = defineAsyncComponent(() => import('../components/ShopMarkdownEditor.vue'));
@@ -124,6 +136,7 @@ const formData = ref({
   deliveryMode: defaultDeliveryModeForType(GIT_REPOSITORY_ACCESS),
   deliveryActions: defaultDeliveryActionsForType(GIT_REPOSITORY_ACCESS),
   orderForm: defaultOrderFormDraft(),
+  deliveryExperience: defaultDeliveryExperience(),
   extraParamsText: '',
   tags: [],
   i18n: defaultShopItemI18n(),
@@ -143,11 +156,24 @@ const formData = ref({
     product: 'license-product',
     edition: 'commercial',
     holder: '',
+    deploymentMode: 'specific',
     allowedOrigins: [],
     features: [...DEFAULT_OFFICE_LICENSE_FEATURES],
-    maxDeployments: 1,
+    maxDeployments: 5,
     commercialUse: true,
     validDays: null,
+    maintenanceAgreement: {
+      enabled: false,
+      required: true,
+      contractIds: []
+    },
+    licenseRenewal: {
+      enabled: false,
+      annualPrice: 199,
+      maxYears: 10,
+      eligibleEditions: ['commercial', 'enterprise'],
+      contractIds: []
+    },
     remark: ''
   }
 });
@@ -156,7 +182,7 @@ const repositoryLoading = ref(false);
 const repositoryOptions = ref([]);
 const repositoryProvider = ref('github');
 const activeSkuKey = ref('');
-const pricing = ref({ cnyPerUsd: 6.78 });
+const pricing = ref({ cnyPerUsd: 6.78, usdSettlementBufferRate: 0.05 });
 
 const groups = ref([]);
 const contractOptions = ref([]);
@@ -187,14 +213,39 @@ const licenseKindOptions = OFFICE_LICENSE_KIND_OPTIONS;
 const licenseProductOptions = LICENSE_PRODUCT_OPTIONS;
 const licenseEditionOptions = OFFICE_LICENSE_EDITION_OPTIONS;
 const brandRemovalFeatureSet = new Set(DEFAULT_VIEWER_BRAND_STATEMENT_FEATURES);
+const dwgFeatureSet = new Set(DEFAULT_DWG_LICENSE_FEATURES);
+const modelFeatureSet = new Set(DEFAULT_MODEL_LICENSE_FEATURES);
 const isBrandRemovalLicense = license => license?.licenseKind === OFFICE_LICENSE_KIND.BRAND_REMOVAL;
 const brandRemovalSelected = computed(() => isBrandRemovalLicense(formData.value.licenseDelivery));
-const licenseFeatureOptionsFor = license => (
-  isBrandRemovalLicense(license)
-    ? OFFICE_LICENSE_FEATURE_OPTIONS.filter(option => brandRemovalFeatureSet.has(option.value))
-    : OFFICE_LICENSE_FEATURE_OPTIONS.filter(option => !brandRemovalFeatureSet.has(option.value))
-);
+const licenseFeatureOptionsFor = license => {
+  if (isBrandRemovalLicense(license)) {
+    return OFFICE_LICENSE_FEATURE_OPTIONS.filter(option => brandRemovalFeatureSet.has(option.value));
+  }
+  if (license?.product === LICENSE_PRODUCT.DWG_VIEWER) {
+    return OFFICE_LICENSE_FEATURE_OPTIONS.filter(option => dwgFeatureSet.has(option.value));
+  }
+  if (license?.product === LICENSE_PRODUCT.MODEL_VIEWER) {
+    return OFFICE_LICENSE_FEATURE_OPTIONS.filter(option => modelFeatureSet.has(option.value));
+  }
+  return OFFICE_LICENSE_FEATURE_OPTIONS.filter(option => (
+    !brandRemovalFeatureSet.has(option.value)
+    && !dwgFeatureSet.has(option.value)
+    && !modelFeatureSet.has(option.value)
+  ));
+};
 const licenseFeatureOptions = computed(() => licenseFeatureOptionsFor(formData.value.licenseDelivery));
+const handleLicenseProductChange = license => {
+  license.features = defaultLicenseFeaturesForProduct(license?.product);
+};
+const {
+  commercialDeploymentModeOptions,
+  commercialSaasOrigin,
+  updateCommercialSaasOrigin,
+  updateCommercialSpecificOrigins,
+  updateOtherEditionOrigins,
+  handleCommercialDeploymentModeChange,
+  applyLicenseEditionDefaults
+} = useCommercialLicenseConfiguration();
 const priceLabel = computed(() => isDonationType(formData.value.type) ? '打赏起始金额' : '商品价格');
 const usdPriceModeOptions = [
   { label: '自动换算', value: 'AUTO' },
@@ -204,18 +255,17 @@ const toPositiveNumber = value => {
   const amount = Number(value);
   return Number.isFinite(amount) && amount > 0 ? amount : 0;
 };
-const convertedUsdPrice = (cnyPrice, donation = false) => {
+const convertedUsdPrice = cnyPrice => {
   const rate = toPositiveNumber(pricing.value.cnyPerUsd) || 6.78;
-  const converted = toPositiveNumber(cnyPrice) / rate;
-  return Math.max(donation ? 1 : 0.5, Math.round(converted * 100) / 100);
+  const bufferRate = Math.max(0, Number(pricing.value.usdSettlementBufferRate ?? 0.05));
+  const converted = (toPositiveNumber(cnyPrice) / rate) * (1 + bufferRate);
+  return Math.max(1, Math.round(converted));
 };
-const formatUsd = value => `$${toPositiveNumber(value).toFixed(2)}`;
-const automaticUsdPrice = computed(() => convertedUsdPrice(
-  formData.value.price,
-  isDonationType(formData.value.type)
-));
+const normalizeCatalogUsdPrice = value => Math.max(1, Math.round(toPositiveNumber(value)));
+const formatUsd = value => `$${normalizeCatalogUsdPrice(value)}`;
+const automaticUsdPrice = computed(() => convertedUsdPrice(formData.value.price));
 const displayedUsdPrice = computed(() => formData.value.usdPriceMode === 'MANUAL'
-  ? Math.max(isDonationType(formData.value.type) ? 1 : 0, toPositiveNumber(formData.value.usdPrice))
+  ? normalizeCatalogUsdPrice(formData.value.usdPrice)
   : automaticUsdPrice.value);
 const skuModeOptions = [
   { label: '单 SKU', value: 'SINGLE' },
@@ -235,7 +285,8 @@ const orderFormFieldTypeOptions = [
 ];
 const orderFormTargetOptions = [
   { label: '仅记录到订单', value: '' },
-  { label: '写入授权域名', value: 'license.allowedOrigins' }
+  { label: '写入授权域名', value: 'license.allowedOrigins' },
+  { label: '写入部署模式', value: 'license.deploymentMode' }
 ];
 const formRules = {
   name: [{ required: true, message: '请输入商品名称' }],
@@ -271,6 +322,7 @@ const defaults = () => ({
   deliveryMode: defaultDeliveryModeForType(GIT_REPOSITORY_ACCESS),
   deliveryActions: defaultDeliveryActionsForType(GIT_REPOSITORY_ACCESS),
   orderForm: defaultOrderFormDraft(),
+  deliveryExperience: defaultDeliveryExperience(),
   extraParamsText: '',
   tags: [],
   i18n: defaultShopItemI18n(),
@@ -290,11 +342,24 @@ const defaults = () => ({
     product: 'license-product',
     edition: 'commercial',
     holder: '',
+    deploymentMode: 'specific',
     allowedOrigins: [],
     features: [...DEFAULT_OFFICE_LICENSE_FEATURES],
-    maxDeployments: 1,
+    maxDeployments: 5,
     commercialUse: true,
     validDays: null,
+    maintenanceAgreement: {
+      enabled: false,
+      required: true,
+      contractIds: []
+    },
+    licenseRenewal: {
+      enabled: false,
+      annualPrice: 199,
+      maxYears: 10,
+      eligibleEditions: ['commercial', 'enterprise'],
+      contractIds: []
+    },
     remark: ''
   }
 });
@@ -323,6 +388,9 @@ const normalizeOrderFormField = field => ({
   help: field?.help || '',
   maxLength: Number(field?.maxLength || 256),
   maxItems: Number(field?.maxItems || 0) || null,
+  visibleWhen: field?.visibleWhen?.key && field?.visibleWhen?.value !== undefined
+    ? { key: String(field.visibleWhen.key), value: field.visibleWhen.value }
+    : null,
   options: Array.isArray(field?.options) ? field.options : []
 });
 
@@ -355,6 +423,55 @@ const deploymentOriginOrderForm = () => ({
     maxLength: 256,
     options: []
   }]
+});
+
+const commercialDeploymentOriginOrderForm = () => ({
+  enabled: true,
+  title: '商业授权部署信息',
+  description: '具体域名模式最多支持 5 个域名或 IP；SaaS 模式仅支持一个 HTTPS 泛域名。',
+  fields: [
+    {
+      key: 'deploymentMode',
+      label: '部署模式',
+      type: 'select',
+      required: true,
+      target: 'license.deploymentMode',
+      placeholder: '请选择部署模式',
+      help: '',
+      maxLength: 32,
+      options: [
+        { value: 'specific', label: '具体域名 / IP' },
+        { value: 'saas', label: 'SaaS 泛域名' }
+      ]
+    },
+    {
+      key: 'origins',
+      label: '授权域名 / IP',
+      type: 'textarea',
+      required: true,
+      target: 'license.allowedOrigins',
+      normalize: 'origin',
+      placeholder: 'https://app.example.com\nhttp://192.168.1.10:8080',
+      help: '每行一个完整 origin，必须以 http:// 或 https:// 开头，最多 5 个。',
+      maxLength: 2048,
+      maxItems: 5,
+      visibleWhen: { key: 'deploymentMode', value: 'specific' },
+      options: []
+    },
+    {
+      key: 'saasOrigin',
+      label: 'SaaS 泛域名',
+      type: 'url',
+      required: true,
+      target: 'license.allowedOrigins',
+      normalize: 'origin',
+      placeholder: 'https://*.example.com',
+      help: '仅允许一个 HTTPS 泛域名，覆盖该主域名下的租户子域名。',
+      maxLength: 256,
+      visibleWhen: { key: 'deploymentMode', value: 'saas' },
+      options: []
+    }
+  ]
 });
 
 const multiDeploymentOriginOrderForm = (maxOrigins = 5) => ({
@@ -452,6 +569,12 @@ const compactOrderForm = value => {
     if (maxItems > 0) {
       normalized.maxItems = maxItems;
     }
+    if (field.visibleWhen?.key && field.visibleWhen?.value !== undefined) {
+      normalized.visibleWhen = {
+        key: String(field.visibleWhen.key).trim(),
+        value: field.visibleWhen.value
+      };
+    }
     if (field.type === 'checkbox' && field.requiredValue !== undefined) {
       normalized.requiredValue = field.requiredValue;
     }
@@ -486,21 +609,39 @@ const parseDigitalDeliveryParams = params => ({
   ...parseParams(params)
 });
 
-const parseLicenseDeliveryParams = params => ({
-  licenseKind: OFFICE_LICENSE_KIND.RUNTIME,
-  licenseName: '',
-  scope: '',
-  product: 'license-product',
-  edition: 'commercial',
-  holder: '',
-  allowedOrigins: [],
-  features: [...DEFAULT_OFFICE_LICENSE_FEATURES],
-  maxDeployments: 1,
-  commercialUse: true,
-  validDays: null,
-  remark: '',
-  ...parseParams(params)
-});
+const parseLicenseDeliveryParams = params => {
+  const parsed = parseParams(params);
+  return {
+    licenseKind: OFFICE_LICENSE_KIND.RUNTIME,
+    licenseName: '',
+    scope: '',
+    product: 'office-preview',
+    edition: 'commercial',
+    holder: '',
+    deploymentMode: 'specific',
+    allowedOrigins: [],
+    features: [...DEFAULT_OFFICE_LICENSE_FEATURES],
+    maxDeployments: 5,
+    commercialUse: true,
+    validDays: null,
+    remark: '',
+    ...parsed,
+    maintenanceAgreement: {
+      enabled: false,
+      required: true,
+      contractIds: [],
+      ...(parsed.maintenanceAgreement || {})
+    },
+    licenseRenewal: {
+      enabled: false,
+      annualPrice: 199,
+      maxYears: 10,
+      eligibleEditions: ['commercial', 'enterprise'],
+      contractIds: [],
+      ...(parsed.licenseRenewal || {})
+    }
+  };
+};
 
 const knownParamKeys = new Set([
   'provider',
@@ -511,6 +652,7 @@ const knownParamKeys = new Set([
   'repo',
   'deliveryActions',
   'orderForm',
+  'deliveryExperience',
   'licenseDelivery',
   'title',
   'content',
@@ -526,6 +668,8 @@ const knownParamKeys = new Set([
   'maxDeployments',
   'commercialUse',
   'validDays',
+  'maintenanceAgreement',
+  'licenseRenewal',
   'remark'
 ]);
 
@@ -576,13 +720,13 @@ const skuPanelPrice = sku => {
   }
   const usd = sku?.usdPriceMode === 'MANUAL'
     ? toPositiveNumber(sku?.usdPrice)
-    : convertedUsdPrice(price, isDonationType(sku?.type));
+    : convertedUsdPrice(price);
   return `¥${price.toFixed(2)} / ${formatUsd(usd)}`;
 };
 
 const skuDisplayedUsdPrice = sku => sku?.usdPriceMode === 'MANUAL'
-  ? Math.max(isDonationType(sku?.type) ? 1 : 0, toPositiveNumber(sku?.usdPrice))
-  : convertedUsdPrice(sku?.price, isDonationType(sku?.type));
+  ? normalizeCatalogUsdPrice(sku?.usdPrice)
+  : convertedUsdPrice(sku?.price);
 
 const skuTypeLabel = sku => itemTypes.find(option => option.value === sku?.type)?.label || sku?.type || '商品';
 
@@ -651,6 +795,7 @@ const normalizeParamDraft = params => {
     digitalDelivery: parseDigitalDeliveryParams(parsedParams),
     licenseDelivery: parseLicenseDeliveryParams(nestedLicenseParams),
     orderForm: normalizeOrderFormDraft(parsedParams.orderForm),
+    deliveryExperience: parseDeliveryExperience(parsedParams),
     extraParamsText: stringifyExtraParams(parsedParams)
   };
 };
@@ -674,6 +819,7 @@ const normalizeSkuDraft = sku => {
     digitalDelivery: parseDigitalDeliveryParams(sku?.digitalDelivery || paramDraft.digitalDelivery),
     licenseDelivery: parseLicenseDeliveryParams(sku?.licenseDelivery || paramDraft.licenseDelivery),
     orderForm: normalizeOrderFormDraft(sku?.orderForm || paramDraft.orderForm),
+    deliveryExperience: normalizeDeliveryExperience(sku?.deliveryExperience || paramDraft.deliveryExperience),
     extraParamsText: typeof sku?.extraParamsText === 'string' ? sku.extraParamsText : paramDraft.extraParamsText,
     tags: Array.isArray(sku?.tags) ? sku.tags : [],
     sort: sku?.sort ?? 0,
@@ -724,15 +870,18 @@ const toLicenseDeliveryParams = value => {
   const brandRemoval = licenseKind === OFFICE_LICENSE_KIND.BRAND_REMOVAL;
   const rawFeatures = Array.isArray(value?.features) && value.features.length
     ? value.features
-    : (brandRemoval ? [...DEFAULT_VIEWER_BRAND_STATEMENT_FEATURES] : [...DEFAULT_OFFICE_LICENSE_FEATURES]);
+    : (brandRemoval
+      ? [...DEFAULT_VIEWER_BRAND_STATEMENT_FEATURES]
+      : defaultLicenseFeaturesForProduct(value?.product));
   const brandRemovalFeatures = rawFeatures.filter(feature => brandRemovalFeatureSet.has(feature));
   return {
     licenseKind,
     licenseName: value?.licenseName || (brandRemoval ? VIEWER_BRAND_REMOVAL_LICENSE_NAME : formData.value.name) || '飞鱼小铺授权许可',
     scope: value?.scope || (brandRemoval ? VIEWER_BRAND_REMOVAL_SCOPE : `product:${formData.value.name || 'flyfish'}`),
-    product: value?.product || (brandRemoval ? 'file-viewer' : 'license-product'),
+    product: value?.product || (brandRemoval ? LICENSE_PRODUCT.FILE_VIEWER : LICENSE_PRODUCT.OFFICE_PREVIEW),
     edition: value?.edition || 'commercial',
     holder: value?.holder || value?.licenseName || (brandRemoval ? 'Flyfish Viewer' : formData.value.name) || '授权用户',
+    deploymentMode: value?.deploymentMode || 'specific',
     allowedOrigins: brandRemoval
       ? []
       : (Array.isArray(value?.allowedOrigins)
@@ -744,17 +893,49 @@ const toLicenseDeliveryParams = value => {
     maxDeployments: Number(value?.maxDeployments || 1),
     commercialUse: value?.edition === 'personal' ? false : value?.commercialUse !== false,
     validDays: value?.validDays || null,
+    maintenanceAgreement: ['commercial', 'enterprise'].includes(value?.edition)
+      && value?.maintenanceAgreement?.enabled
+      ? {
+          enabled: true,
+          required: value.maintenanceAgreement.required !== false,
+          contractIds: (value.maintenanceAgreement.contractIds || []).map(Number).filter(Boolean)
+        }
+      : null,
+    licenseRenewal: value?.licenseRenewal?.enabled
+      ? {
+          enabled: true,
+          annualPrice: Number(value.licenseRenewal.annualPrice || 199),
+          maxYears: Number(value.licenseRenewal.maxYears || 10),
+          eligibleEditions: (value.licenseRenewal.eligibleEditions || ['commercial', 'enterprise'])
+            .filter(edition => ['commercial', 'enterprise'].includes(edition)),
+          contractIds: (value.licenseRenewal.contractIds || []).map(Number).filter(Boolean)
+        }
+      : null,
     remark: value?.remark || (brandRemoval ? VIEWER_BRAND_REMOVAL_REMARK : '')
   };
 };
 
-const buildParamsPayload = ({ type, deliveryActions, repositoryAccess, digitalDelivery, licenseDelivery, orderForm, extraParamsText }, label) => {
+const buildParamsPayload = ({
+  type,
+  deliveryActions,
+  repositoryAccess,
+  digitalDelivery,
+  licenseDelivery,
+  orderForm,
+  deliveryExperience,
+  extraParamsText
+}, label) => {
   const extraParams = parseExtraParamsText(extraParamsText, `${label || '商品'}的扩展参数`);
   const normalizedActions = normalizeDeliveryActionsForType(type, deliveryActions);
   const orderFormConfig = compactOrderForm(orderForm);
+  const experienceConfig = compactDeliveryExperience(deliveryExperience);
+  const sharedParams = {
+    ...extraParams,
+    ...(experienceConfig ? { deliveryExperience: experienceConfig } : {})
+  };
   if (isGitRepositoryAccessType(type)) {
     return {
-      ...extraParams,
+      ...sharedParams,
       ...toGitRepositoryAccessParams(repositoryAccess),
       deliveryActions: normalizedActions,
       ...(orderFormConfig ? { orderForm: orderFormConfig } : {}),
@@ -765,20 +946,20 @@ const buildParamsPayload = ({ type, deliveryActions, repositoryAccess, digitalDe
   }
   if (isDigitalDownloadType(type)) {
     return {
-      ...extraParams,
+      ...sharedParams,
       ...toDigitalDeliveryParams(digitalDelivery),
       ...(orderFormConfig ? { orderForm: orderFormConfig } : {})
     };
   }
   if (isLicenseType(type)) {
     return {
-      ...extraParams,
+      ...sharedParams,
       ...toLicenseDeliveryParams(licenseDelivery),
       deliveryActions: normalizedActions,
       ...(orderFormConfig ? { orderForm: orderFormConfig } : {})
     };
   }
-  return Object.keys(extraParams).length ? extraParams : null;
+  return Object.keys(sharedParams).length ? sharedParams : null;
 };
 
 const skuParamsPayload = (sku, skuName) => {
@@ -795,6 +976,7 @@ const skuParamsPayload = (sku, skuName) => {
     digitalDelivery: sku.digitalDelivery,
     licenseDelivery: sku.licenseDelivery,
     orderForm: sku.orderForm,
+    deliveryExperience: sku.deliveryExperience,
     extraParamsText: sku.extraParamsText
   }, skuName);
 };
@@ -813,6 +995,7 @@ const seedSkuFromCurrent = overrides => normalizeSkuDraft({
   digitalDelivery: formData.value.digitalDelivery,
   licenseDelivery: formData.value.licenseDelivery,
   orderForm: formData.value.orderForm,
+  deliveryExperience: formData.value.deliveryExperience,
   extraParamsText: formData.value.extraParamsText,
   tags: formData.value.tags || [],
   enabled: true,
@@ -896,6 +1079,7 @@ const syncSkuParamsFromCurrent = index => {
   sku.digitalDelivery = parseDigitalDeliveryParams(formData.value.digitalDelivery);
   sku.licenseDelivery = parseLicenseDeliveryParams(formData.value.licenseDelivery);
   sku.orderForm = normalizeOrderFormDraft(formData.value.orderForm);
+  sku.deliveryExperience = normalizeDeliveryExperience(formData.value.deliveryExperience);
   sku.extraParamsText = formData.value.extraParamsText || '';
 };
 
@@ -929,7 +1113,7 @@ const normalizeSkusForSubmit = skus => {
       throw error;
     }
     const params = paramsPayload ? JSON.stringify(paramsPayload) : null;
-    const usdPrice = sku.usdPriceMode === 'MANUAL' ? Number(sku.usdPrice) : null;
+    const usdPrice = sku.usdPriceMode === 'MANUAL' ? normalizeCatalogUsdPrice(sku.usdPrice) : null;
     if (sku.usdPriceMode === 'MANUAL' && (!Number.isFinite(usdPrice) || usdPrice <= 0)) {
       expandSkuPanelAt(index);
       throw new Error(`${name} 的美元价格不正确`);
@@ -1177,7 +1361,9 @@ const removeOrderFormField = (orderForm, index) => {
 };
 
 const applyDeploymentOriginOrderForm = target => {
-  target.orderForm = deploymentOriginOrderForm();
+  target.orderForm = target?.licenseDelivery?.edition === 'commercial'
+    ? commercialDeploymentOriginOrderForm()
+    : deploymentOriginOrderForm();
 };
 
 const applyViewerBrandRemovalLicenseDefaults = license => {
@@ -1270,18 +1456,7 @@ watch(() => formData.value.type, type => {
 });
 
 watch(() => formData.value.licenseDelivery.edition, edition => {
-  if (edition === 'personal') {
-    formData.value.licenseDelivery.commercialUse = false;
-    formData.value.licenseDelivery.maxDeployments = 1;
-  } else if (edition === 'commercial') {
-    formData.value.licenseDelivery.commercialUse = true;
-    formData.value.licenseDelivery.maxDeployments = 1;
-  } else if (edition === 'enterprise') {
-    formData.value.licenseDelivery.commercialUse = true;
-    if (!formData.value.licenseDelivery.maxDeployments || formData.value.licenseDelivery.maxDeployments < 1) {
-      formData.value.licenseDelivery.maxDeployments = 1;
-    }
-  }
+  applyLicenseEditionDefaults(formData.value.licenseDelivery, edition);
 });
 
 watch(() => formData.value.licenseDelivery.licenseKind, licenseKind => {
@@ -1324,7 +1499,7 @@ const loadPricing = async () => {
       pricing.value = value;
     }
   } catch {
-    pricing.value = { cnyPerUsd: 6.78 };
+    pricing.value = { cnyPerUsd: 6.78, usdSettlementBufferRate: 0.05 };
   }
 };
 
@@ -1341,6 +1516,7 @@ const loadItemDetail = async (id) => {
       deliveryMode: normalizeDeliveryModeForType(detail.type, detail.deliveryMode),
       deliveryActions: parseDeliveryActions(detail.type, detail, parsedParams),
       orderForm: normalizeOrderFormDraft(parsedParams.orderForm),
+      deliveryExperience: parseDeliveryExperience(parsedParams),
       extraParamsText: stringifyExtraParams(parsedParams),
       enabled: detail.enabled !== false,
       pinned: detail.pinned === true,
@@ -1368,7 +1544,7 @@ const loadItemDetail = async (id) => {
       })) : []
     };
     if (toPositiveNumber(detail.cnyPerUsd)) {
-      pricing.value = { cnyPerUsd: detail.cnyPerUsd };
+      pricing.value = { ...pricing.value, cnyPerUsd: detail.cnyPerUsd };
     }
     repositoryProvider.value = selectedRepositories.value[0]?.provider || formData.value.repositoryAccess.provider || 'github';
     repositoryOptions.value = selectedRepositories.value.map(repository => toRepositoryOption({
@@ -1425,6 +1601,7 @@ const handleOk = async () => {
       licenseDelivery,
       deliveryActions,
       orderForm,
+      deliveryExperience,
       extraParamsText,
       skuMode,
       skus,
@@ -1459,10 +1636,14 @@ const handleOk = async () => {
         digitalDelivery,
         licenseDelivery,
         orderForm,
+        deliveryExperience,
         extraParamsText
       }, '商品');
     } catch (error) {
-      activeSection.value = String(error.message || '').includes('扩展参数') ? 'delivery' : 'orderForm';
+      const errorMessage = String(error.message || '');
+      activeSection.value = errorMessage.includes('交付体验')
+        ? 'experience'
+        : (errorMessage.includes('扩展参数') ? 'delivery' : 'orderForm');
       message.error(error.message || '交付配置异常');
       return;
     }
@@ -1481,7 +1662,7 @@ const handleOk = async () => {
 
     emit('save', {
       ...rest,
-      usdPrice: usdPriceMode === 'MANUAL' ? Number(rest.usdPrice) : null,
+      usdPrice: usdPriceMode === 'MANUAL' ? normalizeCatalogUsdPrice(rest.usdPrice) : null,
       usdPriceAutomatic: usdPriceMode !== 'MANUAL',
       skuMode: skuMode === 'MULTI' ? 'MULTI' : 'SINGLE',
       skus: skuMode === 'MULTI' ? normalizedSkus : [],
@@ -1681,9 +1862,9 @@ const handleChange = ({ file, fileList }) => {
               <a-input-number
                 v-if="formData.usdPriceMode === 'MANUAL'"
                 v-model:value="formData.usdPrice"
-                :min="isDonationType(formData.type) ? 1 : 0.01"
-                :precision="2"
-                :step="0.01"
+                :min="1"
+                :precision="0"
+                :step="1"
                 addon-before="$"
               />
               <div v-else class="usd-price-preview">
@@ -1743,6 +1924,10 @@ const handleChange = ({ file, fileList }) => {
           />
         </a-collapse-panel>
       </a-collapse>
+
+      <section v-show="activeSection === 'experience'" class="delivery-config">
+        <shop-delivery-experience-editor v-model:value="formData.deliveryExperience" />
+      </section>
 
       <section v-show="activeSection === 'orderForm'" class="delivery-config">
         <div class="config-toolbar">
@@ -1989,9 +2174,9 @@ const handleChange = ({ file, fileList }) => {
                 <a-input-number
                   v-if="sku.usdPriceMode === 'MANUAL'"
                   v-model:value="sku.usdPrice"
-                  :min="isDonationType(sku.type) ? 1 : 0.01"
-                  :precision="2"
-                  :step="0.01"
+                  :min="1"
+                  :precision="0"
+                  :step="1"
                   addon-before="$"
                 />
                 <strong v-else>{{ formatUsd(skuDisplayedUsdPrice(sku)) }}</strong>
@@ -2187,12 +2372,17 @@ const handleChange = ({ file, fileList }) => {
                         <a-select
                           v-model:value="sku.licenseDelivery.product"
                           :options="licenseProductOptions"
+                          @change="() => handleLicenseProductChange(sku.licenseDelivery)"
                         />
                       </a-form-item>
                     </a-col>
                     <a-col :xs="24" :md="8">
                       <a-form-item label="授权套餐">
-                        <a-select v-model:value="sku.licenseDelivery.edition" :options="licenseEditionOptions" />
+                        <a-select
+                          v-model:value="sku.licenseDelivery.edition"
+                          :options="licenseEditionOptions"
+                          @change="edition => applyLicenseEditionDefaults(sku.licenseDelivery, edition)"
+                        />
                       </a-form-item>
                     </a-col>
                   </a-row>
@@ -2207,6 +2397,7 @@ const handleChange = ({ file, fileList }) => {
                         <a-input-number
                           v-model:value="sku.licenseDelivery.maxDeployments"
                           :min="1"
+                          :disabled="sku.licenseDelivery.edition !== 'enterprise'"
                           style="width: 100%"
                         />
                       </a-form-item>
@@ -2233,14 +2424,121 @@ const handleChange = ({ file, fileList }) => {
                       </a-form-item>
                     </a-col>
                   </a-row>
-                  <a-form-item v-if="!isBrandRemovalLicense(sku.licenseDelivery)" label="授权域名">
-                    <a-select
-                      v-model:value="sku.licenseDelivery.allowedOrigins"
-                      mode="tags"
-                      placeholder="默认值，可由下单信息覆盖"
-                      :token-separators="[',', '，', '\\n', ' ']"
+                  <a-form-item
+                    v-if="sku.licenseDelivery.edition === 'commercial' && !isBrandRemovalLicense(sku.licenseDelivery)"
+                    label="部署模式"
+                  >
+                    <a-segmented
+                      v-model:value="sku.licenseDelivery.deploymentMode"
+                      :options="commercialDeploymentModeOptions"
+                      @change="mode => handleCommercialDeploymentModeChange(sku.licenseDelivery, mode)"
                     />
                   </a-form-item>
+                  <a-form-item
+                    v-if="sku.licenseDelivery.edition === 'commercial'
+                      && sku.licenseDelivery.deploymentMode === 'saas'
+                      && !isBrandRemovalLicense(sku.licenseDelivery)"
+                    label="SaaS 泛域名"
+                  >
+                    <a-input
+                      :value="commercialSaasOrigin(sku.licenseDelivery)"
+                      placeholder="https://*.example.com"
+                      @update:value="value => updateCommercialSaasOrigin(sku.licenseDelivery, value)"
+                    />
+                  </a-form-item>
+                  <a-form-item
+                    v-else-if="!isBrandRemovalLicense(sku.licenseDelivery)"
+                    label="授权域名"
+                  >
+                    <a-select
+                      :value="sku.licenseDelivery.allowedOrigins"
+                      mode="tags"
+                      :placeholder="sku.licenseDelivery.edition === 'commercial'
+                        ? '最多 5 个具体域名或 IP，可由下单信息覆盖'
+                        : '默认值，可由下单信息覆盖'"
+                      :token-separators="[',', '，', '\\n', ' ']"
+                      @update:value="values => sku.licenseDelivery.edition === 'commercial'
+                        ? updateCommercialSpecificOrigins(sku.licenseDelivery, values)
+                        : updateOtherEditionOrigins(sku.licenseDelivery, values)"
+                    />
+                  </a-form-item>
+                  <div v-if="!isBrandRemovalLicense(sku.licenseDelivery)" class="nested-config maintenance-config">
+                    <div class="config-toolbar compact">
+                      <strong>首购年度维护协议</strong>
+                      <a-switch
+                        v-model:checked="sku.licenseDelivery.maintenanceAgreement.enabled"
+                        :checkedValue="true"
+                        :unCheckedValue="false"
+                        checked-children="需确认"
+                        un-checked-children="关闭"
+                      />
+                    </div>
+                    <a-row v-if="sku.licenseDelivery.maintenanceAgreement.enabled" :gutter="12">
+                      <a-col :xs="24" :md="8">
+                        <a-form-item label="购买前必须确认">
+                          <a-switch
+                            v-model:checked="sku.licenseDelivery.maintenanceAgreement.required"
+                            checked-children="必须"
+                            un-checked-children="可选"
+                          />
+                        </a-form-item>
+                      </a-col>
+                      <a-col :xs="24" :md="16">
+                        <a-form-item label="维护协议">
+                          <a-select
+                            v-model:value="sku.licenseDelivery.maintenanceAgreement.contractIds"
+                            mode="multiple"
+                            :options="contractOptions"
+                            :loading="contractLoading"
+                            :max-tag-count="'responsive'"
+                          />
+                        </a-form-item>
+                      </a-col>
+                    </a-row>
+                  </div>
+                  <div v-if="!isBrandRemovalLicense(sku.licenseDelivery)" class="nested-config maintenance-config">
+                    <div class="config-toolbar compact">
+                      <strong>服务与代码更新续费 SKU</strong>
+                      <a-switch
+                        v-model:checked="sku.licenseDelivery.licenseRenewal.enabled"
+                        checked-children="续费"
+                        un-checked-children="普通"
+                      />
+                    </div>
+                    <a-row v-if="sku.licenseDelivery.licenseRenewal.enabled" :gutter="12">
+                      <a-col :xs="24" :md="6">
+                        <a-form-item label="每年价格（CNY）">
+                          <a-input-number
+                            v-model:value="sku.licenseDelivery.licenseRenewal.annualPrice"
+                            :min="0.01"
+                            :precision="2"
+                            style="width: 100%"
+                          />
+                        </a-form-item>
+                      </a-col>
+                      <a-col :xs="24" :md="6">
+                        <a-form-item label="单次最多年数">
+                          <a-input-number
+                            v-model:value="sku.licenseDelivery.licenseRenewal.maxYears"
+                            :min="1"
+                            :max="20"
+                            style="width: 100%"
+                          />
+                        </a-form-item>
+                      </a-col>
+                      <a-col :xs="24" :md="12">
+                        <a-form-item label="续费协议">
+                          <a-select
+                            v-model:value="sku.licenseDelivery.licenseRenewal.contractIds"
+                            mode="multiple"
+                            :options="contractOptions"
+                            :loading="contractLoading"
+                            :max-tag-count="'responsive'"
+                          />
+                        </a-form-item>
+                      </a-col>
+                    </a-row>
+                  </div>
                   <a-form-item label="授权功能">
                     <a-checkbox-group
                       v-model:value="sku.licenseDelivery.features"
@@ -2343,6 +2641,10 @@ const handleChange = ({ file, fileList }) => {
                       </a-row>
                     </article>
                   </template>
+                </div>
+
+                <div class="nested-config">
+                  <shop-delivery-experience-editor v-model:value="sku.deliveryExperience" />
                 </div>
 
                 <a-collapse v-if="sku.extraParamsText" ghost class="advanced-json">
@@ -2559,6 +2861,7 @@ const handleChange = ({ file, fileList }) => {
               <a-select
                 v-model:value="formData.licenseDelivery.product"
                 :options="licenseProductOptions"
+                @change="() => handleLicenseProductChange(formData.licenseDelivery)"
               />
             </a-form-item>
           </a-col>
@@ -2579,16 +2882,46 @@ const handleChange = ({ file, fileList }) => {
           </a-col>
         </a-row>
         <a-form-item
-          v-if="!brandRemovalSelected"
+          v-if="formData.licenseDelivery.edition === 'commercial' && !brandRemovalSelected"
+          label="部署模式"
+          :name="['licenseDelivery', 'deploymentMode']"
+        >
+          <a-segmented
+            v-model:value="formData.licenseDelivery.deploymentMode"
+            :options="commercialDeploymentModeOptions"
+            @change="mode => handleCommercialDeploymentModeChange(formData.licenseDelivery, mode)"
+          />
+        </a-form-item>
+        <a-form-item
+          v-if="formData.licenseDelivery.edition === 'commercial'
+            && formData.licenseDelivery.deploymentMode === 'saas'
+            && !brandRemovalSelected"
+          label="SaaS 泛域名"
+          :name="['licenseDelivery', 'allowedOrigins']"
+          required
+        >
+          <a-input
+            :value="commercialSaasOrigin(formData.licenseDelivery)"
+            placeholder="https://*.example.com"
+            @update:value="value => updateCommercialSaasOrigin(formData.licenseDelivery, value)"
+          />
+        </a-form-item>
+        <a-form-item
+          v-else-if="!brandRemovalSelected"
           label="授权域名"
           :name="['licenseDelivery', 'allowedOrigins']"
           required
         >
           <a-select
-            v-model:value="formData.licenseDelivery.allowedOrigins"
+            :value="formData.licenseDelivery.allowedOrigins"
             mode="tags"
-            placeholder="例如 https://demo.example.com 或 https://*.example.com"
+            :placeholder="formData.licenseDelivery.edition === 'commercial'
+              ? '最多 5 个具体域名或 IP，例如 https://app.example.com'
+              : '例如 https://demo.example.com、https://*.example.com；企业分发可填 *'"
             :token-separators="[',', '，', '\\n', ' ']"
+            @update:value="values => formData.licenseDelivery.edition === 'commercial'
+              ? updateCommercialSpecificOrigins(formData.licenseDelivery, values)
+              : updateOtherEditionOrigins(formData.licenseDelivery, values)"
           />
         </a-form-item>
         <a-form-item label="授权功能" :name="['licenseDelivery', 'features']">
@@ -2642,6 +2975,83 @@ const handleChange = ({ file, fileList }) => {
             </a-form-item>
           </a-col>
         </a-row>
+        <div v-if="!brandRemovalSelected" class="nested-config maintenance-config">
+          <div class="config-toolbar compact">
+            <strong>首购年度维护协议</strong>
+            <a-switch
+              v-model:checked="formData.licenseDelivery.maintenanceAgreement.enabled"
+              :checkedValue="true"
+              :unCheckedValue="false"
+              checked-children="需确认"
+              un-checked-children="关闭"
+            />
+          </div>
+          <a-row v-if="formData.licenseDelivery.maintenanceAgreement.enabled" :gutter="12">
+            <a-col :xs="24" :md="8">
+              <a-form-item label="购买前必须确认">
+                <a-switch
+                  v-model:checked="formData.licenseDelivery.maintenanceAgreement.required"
+                  checked-children="必须"
+                  un-checked-children="可选"
+                />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :md="16">
+              <a-form-item label="维护协议">
+                <a-select
+                  v-model:value="formData.licenseDelivery.maintenanceAgreement.contractIds"
+                  mode="multiple"
+                  :options="contractOptions"
+                  :loading="contractLoading"
+                  :max-tag-count="'responsive'"
+                />
+              </a-form-item>
+            </a-col>
+          </a-row>
+        </div>
+        <div v-if="!brandRemovalSelected" class="nested-config maintenance-config">
+          <div class="config-toolbar compact">
+            <strong>服务与代码更新续费 SKU</strong>
+            <a-switch
+              v-model:checked="formData.licenseDelivery.licenseRenewal.enabled"
+              checked-children="续费"
+              un-checked-children="普通"
+            />
+          </div>
+          <a-row v-if="formData.licenseDelivery.licenseRenewal.enabled" :gutter="12">
+            <a-col :xs="24" :md="6">
+              <a-form-item label="每年价格（CNY）">
+                <a-input-number
+                  v-model:value="formData.licenseDelivery.licenseRenewal.annualPrice"
+                  :min="0.01"
+                  :precision="2"
+                  style="width: 100%"
+                />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :md="6">
+              <a-form-item label="单次最多年数">
+                <a-input-number
+                  v-model:value="formData.licenseDelivery.licenseRenewal.maxYears"
+                  :min="1"
+                  :max="20"
+                  style="width: 100%"
+                />
+              </a-form-item>
+            </a-col>
+            <a-col :xs="24" :md="12">
+              <a-form-item label="续费协议">
+                <a-select
+                  v-model:value="formData.licenseDelivery.licenseRenewal.contractIds"
+                  mode="multiple"
+                  :options="contractOptions"
+                  :loading="contractLoading"
+                  :max-tag-count="'responsive'"
+                />
+              </a-form-item>
+            </a-col>
+          </a-row>
+        </div>
         <a-form-item label="授权说明" :name="['licenseDelivery', 'remark']">
           <a-input v-model:value="formData.licenseDelivery.remark" />
         </a-form-item>

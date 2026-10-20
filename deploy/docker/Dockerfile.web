@@ -1,17 +1,19 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:20-alpine AS web-builder
+FROM node:24-alpine AS web-builder
 
 WORKDIR /workspace/web
 COPY web/package*.json ./
 RUN npm ci
 
 COPY web/ ./
-RUN npm run build
+RUN npm run build:docker \
+    && npm run build:lowcode:docker
 
 FROM nginx:1.27-alpine
 
 COPY deploy/docker/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=web-builder /workspace/web/dist /usr/share/nginx/html
+COPY --from=web-builder /workspace/web/dist-docker/ /usr/share/nginx/html/
+COPY --from=web-builder /workspace/web/lowcode/dist/ /usr/share/nginx/html/lowcode/
 
 EXPOSE 80

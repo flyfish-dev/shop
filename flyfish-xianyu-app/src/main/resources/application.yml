@@ -1,0 +1,45 @@
+server:
+  port: ${FLYFISH_XIANYU_PORT:10083}
+spring:
+  http:
+    codecs:
+      max-in-memory-size: 12MB
+  config:
+    import:
+      - classpath:/config/flyfish-common.yml
+  r2dbc:
+    url: ${XIANYU_DATABASE_URL:r2dbc:h2:mem:///xianyu;MODE=MySQL;DB_CLOSE_DELAY=-1}
+    username: ${XIANYU_DATABASE_USER:sa}
+    password: ${XIANYU_DATABASE_PASSWORD:}
+flyfish:
+  xianyu:
+    bridge:
+      enabled: ${XIANYU_BRIDGE_ENABLED:false}
+      data-flow-approved: ${XIANYU_DATA_FLOW_APPROVED:false}
+      secret: ${XIANYU_BRIDGE_SECRET:}
+    tower-deployment: ${XIANYU_TOWER_DEPLOYMENT:false}
+    data-flow-approved: ${XIANYU_DATA_FLOW_APPROVED:false}
+    sales-enabled: ${XIANYU_SALES_ENABLED:false}
+    processing-enabled: ${XIANYU_PROCESSING_ENABLED:false}
+    miniapp-enabled: ${XIANYU_MINIAPP_ENABLED:false}
+    encryption-key: ${XIANYU_ENCRYPTION_KEY:}
+    bridge-secret: ${XIANYU_BRIDGE_SECRET:}
+    shop-base-url: ${XIANYU_SHOP_BRIDGE_URL:http://127.0.0.1:10082}
+    auth-base-url: ${XIANYU_AUTH_BRIDGE_URL:http://127.0.0.1:10080}
+    generic-item-id: ${XIANYU_GENERIC_ITEM_ID:}
+    business-code: ${XIANYU_BUSINESS_CODE:}
+    virtual-item-code: ${XIANYU_VIRTUAL_ITEM_CODE:}
+    miniapp-seller: ${XIANYU_MINIAPP_SELLER:}
+    native-seller: ${XIANYU_NATIVE_SELLER:}
+    miniapp-entry-url: ${XIANYU_MINIAPP_ENTRY_URL:}
+    allowed-origins: ${XIANYU_ALLOWED_ORIGINS:}
+    applications:
+      commerce:
+        app-key: ${XIANYU_COMMERCE_APP_KEY:}
+        app-secret: ${XIANYU_COMMERCE_APP_SECRET:}
+      buyer:
+        app-key: ${XIANYU_BUYER_APP_KEY:}
+        app-secret: ${XIANYU_BUYER_APP_SECRET:}
+      seller:
+        app-key: ${XIANYU_SELLER_APP_KEY:}
+        app-secret: ${XIANYU_SELLER_APP_SECRET:}

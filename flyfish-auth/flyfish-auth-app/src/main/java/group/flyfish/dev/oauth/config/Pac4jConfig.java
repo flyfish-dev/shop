@@ -5,11 +5,13 @@ import group.flyfish.dev.oauth.vender.gitee.GiteeClient;
 import group.flyfish.dev.oauth.vender.github.GithubClient;
 import group.flyfish.dev.oauth.vender.google.GoogleOAuthClient;
 import group.flyfish.dev.oauth.vender.microsoft.MicrosoftClient;
+import com.github.scribejava.core.httpclient.jdk.JDKHttpClientConfig;
 import org.apache.commons.lang3.StringUtils;
 import org.pac4j.core.client.Client;
 import org.pac4j.core.client.Clients;
 import org.pac4j.core.config.Config;
 import org.pac4j.core.matching.matcher.PathMatcher;
+import org.pac4j.oauth.client.OAuth20Client;
 import org.pac4j.springframework.context.SpringWebfluxSessionStoreFactory;
 import org.pac4j.springframework.context.SpringWebfluxWebContextFactory;
 import org.pac4j.springframework.web.CallbackController;
@@ -21,6 +23,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.web.server.WebFilter;
 
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -53,22 +57,25 @@ public class Pac4jConfig {
         List<Client> oauthClients = new ArrayList<>();
 
         if (StringUtils.isNoneBlank(gitea.getClientId(), gitea.getClientSecret())) {
-            oauthClients.add(new GiteaClient(gitea.getClientId(), gitea.getClientSecret()));
+            oauthClients.add(configureHttpClient(
+                    new GiteaClient(gitea.getClientId(), gitea.getClientSecret()), properties, false));
         }
         if (StringUtils.isNoneBlank(gitee.getClientId(), gitee.getClientSecret())) {
-            oauthClients.add(new GiteeClient(gitee.getClientId(), gitee.getClientSecret(), gitee.getScope()));
+            oauthClients.add(configureHttpClient(
+                    new GiteeClient(gitee.getClientId(), gitee.getClientSecret(), gitee.getScope()), properties, false));
         }
         if (StringUtils.isNoneBlank(github.getClientId(), github.getClientSecret())) {
-            oauthClients.add(new GithubClient(github.getClientId(), github.getClientSecret(), github.getScope()));
+            oauthClients.add(configureHttpClient(
+                    new GithubClient(github.getClientId(), github.getClientSecret(), github.getScope()), properties, true));
         }
         if (StringUtils.isNoneBlank(google.getClientId(), google.getClientSecret())) {
             GoogleOAuthClient googleClient = new GoogleOAuthClient(google.getClientId(), google.getClientSecret());
             googleClient.setName("Google2Client");
-            oauthClients.add(googleClient);
+            oauthClients.add(configureHttpClient(googleClient, properties, true));
         }
         if (StringUtils.isNoneBlank(microsoft.getClientId(), microsoft.getClientSecret())) {
-            oauthClients.add(new MicrosoftClient(microsoft.getClientId(), microsoft.getClientSecret(),
-                    microsoft.getScope()));
+            oauthClients.add(configureHttpClient(new MicrosoftClient(microsoft.getClientId(),
+                    microsoft.getClientSecret(), microsoft.getScope()), properties, true));
         }
 
         final Clients clients = new Clients(properties.getCallbackUrl(), oauthClients);
@@ -84,13 +91,37 @@ public class Pac4jConfig {
         return config;
     }
 
+    /**
+     * 为 pac4j/Scribe 显式配置超时和可选代理。
+     *
+     * <p>Native Image 不保证运行时 {@code https.proxyHost} 会被 Scribe 的 URLConnection 实现采用，
+     * 因此必须在客户端初始化前设置 {@link JDKHttpClientConfig}。授权码是一次性的，不能依赖应用层
+     * 盲目重试；将境外平台请求放到稳定出站链路，比重复消费授权码更可靠。</p>
+     */
+    static <T extends OAuth20Client> T configureHttpClient(T client, OAuthProperties properties,
+                                                            boolean useEgressProxy) {
+        OAuthProperties.EgressProxy proxyProperties = properties.getEgressProxy();
+        JDKHttpClientConfig httpClientConfig = JDKHttpClientConfig.defaultConfig()
+                .withConnectTimeout(Math.toIntExact(proxyProperties.getConnectTimeout().toMillis()))
+                .withReadTimeout(Math.toIntExact(proxyProperties.getReadTimeout().toMillis()))
+                .withFollowRedirects(true);
+        if (useEgressProxy && proxyProperties.isEnabled()) {
+            InetSocketAddress address = InetSocketAddress.createUnresolved(
+                    proxyProperties.getHost(), proxyProperties.getPort());
+            httpClientConfig.withProxy(new Proxy(Proxy.Type.HTTP, address));
+        }
+        client.getConfiguration().setHttpClientConfig(httpClientConfig);
+        return client;
+    }
+
     @Bean
     public WebFilter giteaFilter(Config config, OAuthProperties properties) {
         OAuthProperties.Gitea gitea = properties.getGitea();
         if (!StringUtils.isNoneBlank(gitea.getClientId(), gitea.getClientSecret())) {
             return (exchange, chain) -> chain.filter(exchange);
         }
-        return SecurityFilter.build(config, "GiteaClient", new PathMatcher().includePath("/oauth/gitea"));
+        return SecurityFilter.build(config, "GiteaClient",
+                new PathMatcher().includePath("/oauth/authorize/gitea"));
     }
 
     @Bean
@@ -99,7 +130,8 @@ public class Pac4jConfig {
         if (!StringUtils.isNoneBlank(gitee.getClientId(), gitee.getClientSecret())) {
             return (exchange, chain) -> chain.filter(exchange);
         }
-        return SecurityFilter.build(config, "GiteeClient", new PathMatcher().includePath("/oauth/gitee"));
+        return SecurityFilter.build(config, "GiteeClient",
+                new PathMatcher().includePath("/oauth/authorize/gitee"));
     }
 
     @Bean
@@ -108,7 +140,8 @@ public class Pac4jConfig {
         if (!StringUtils.isNoneBlank(github.getClientId(), github.getClientSecret())) {
             return (exchange, chain) -> chain.filter(exchange);
         }
-        return SecurityFilter.build(config, "GithubClient", new PathMatcher().includePath("/oauth/github"));
+        return SecurityFilter.build(config, "GithubClient",
+                new PathMatcher().includePath("/oauth/authorize/github"));
     }
 
     @Bean
@@ -117,7 +150,8 @@ public class Pac4jConfig {
         if (!StringUtils.isNoneBlank(google.getClientId(), google.getClientSecret())) {
             return (exchange, chain) -> chain.filter(exchange);
         }
-        return SecurityFilter.build(config, "Google2Client", new PathMatcher().includePath("/oauth/google"));
+        return SecurityFilter.build(config, "Google2Client",
+                new PathMatcher().includePath("/oauth/authorize/google"));
     }
 
     @Bean
@@ -126,6 +160,7 @@ public class Pac4jConfig {
         if (!StringUtils.isNoneBlank(microsoft.getClientId(), microsoft.getClientSecret())) {
             return (exchange, chain) -> chain.filter(exchange);
         }
-        return SecurityFilter.build(config, "MicrosoftClient", new PathMatcher().includePath("/oauth/microsoft"));
+        return SecurityFilter.build(config, "MicrosoftClient",
+                new PathMatcher().includePath("/oauth/authorize/microsoft"));
     }
 }

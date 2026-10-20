@@ -17,6 +17,7 @@
     </properties>
 
     <dependencies>
+        <dependency><groupId>group.flyfish</groupId><artifactId>flyfish-xianyu-api</artifactId><version>${project.version}</version></dependency>
         <dependency>
             <groupId>group.flyfish</groupId>
             <artifactId>flyfish-portal-api</artifactId>

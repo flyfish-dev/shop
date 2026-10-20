@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Min;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 合同更新参数。
@@ -19,6 +20,8 @@ public class ShopContractUpdateDto {
     private String description;
 
     private List<String> tags;
+
+    private Map<String, ShopContractI18nDto> i18n;
 
     private Boolean enabled;
 

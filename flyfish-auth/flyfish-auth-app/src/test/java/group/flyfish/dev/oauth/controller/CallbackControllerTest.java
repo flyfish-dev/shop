@@ -13,9 +13,12 @@ import group.flyfish.dev.user.service.TokenBlockStore;
 import group.flyfish.dev.user.service.impl.TokenProvider;
 import org.junit.jupiter.api.Test;
 import org.pac4j.core.config.Config;
+import org.pac4j.core.engine.CallbackLogic;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
+import org.springframework.web.reactive.result.view.RedirectView;
 import org.springframework.web.reactive.result.view.Rendering;
 import reactor.core.publisher.Mono;
 
@@ -27,6 +30,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -72,6 +76,57 @@ class CallbackControllerTest {
         assertEquals(Boolean.TRUE, providers.get("wechat"));
         assertEquals(Boolean.TRUE, providers.get("email"));
         assertEquals(Boolean.FALSE, providers.get("github"));
+    }
+
+    @Test
+    void oauthStartClearsStaleProfileBeforeEnteringProviderFilter() {
+        OAuthSessionService oauthSessionService = mock(OAuthSessionService.class);
+        CallbackController controller = new CallbackController(mock(Config.class), new Pac4jProperties(),
+                new OAuthProperties(), new JwtProperties(), mock(PortalUserService.class),
+                new TokenProvider(new JwtProperties(), mock(TokenBlockStore.class)),
+                oauthSessionService, new EmailMagicLinkProperties());
+        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/oauth/github"));
+
+        Rendering rendering = controller.startProvider("github", exchange);
+
+        RedirectView redirectView = (RedirectView) rendering.view();
+        assertEquals("/oauth/authorize/github", redirectView.getUrl());
+        verify(oauthSessionService).clearProfiles(exchange);
+    }
+
+    @Test
+    void completedProviderAuthorizationContinuesToJwtExchange() {
+        CallbackController controller = new CallbackController(mock(Config.class), new Pac4jProperties(),
+                new OAuthProperties(), new JwtProperties(), mock(PortalUserService.class),
+                new TokenProvider(new JwtProperties(), mock(TokenBlockStore.class)),
+                mock(OAuthSessionService.class), new EmailMagicLinkProperties());
+
+        Rendering rendering = controller.completeProviderAuthorization("github");
+
+        RedirectView redirectView = (RedirectView) rendering.view();
+        assertEquals("/oauth/redirect", redirectView.getUrl());
+    }
+
+    @Test
+    void failedOAuthCallbackInvalidatesHandshakeSessionBeforeRedirecting() {
+        CallbackLogic callbackLogic = mock(CallbackLogic.class);
+        when(callbackLogic.perform(any(), any(), any(), any(), any()))
+                .thenReturn(Mono.error(new IllegalStateException("provider unavailable")));
+        Config config = new Config().setCallbackLogic(callbackLogic);
+        OAuthSessionService oauthSessionService = mock(OAuthSessionService.class);
+        when(oauthSessionService.invalidate(any())).thenReturn(Mono.empty());
+        CallbackController controller = new CallbackController(config, new Pac4jProperties(),
+                new OAuthProperties(), new JwtProperties(), mock(PortalUserService.class),
+                new TokenProvider(new JwtProperties(), mock(TokenBlockStore.class)),
+                oauthSessionService, new EmailMagicLinkProperties());
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/oauth/callback?code=expired&state=stale"));
+
+        controller.callback(exchange).block();
+
+        verify(oauthSessionService).invalidate(exchange);
+        assertEquals(HttpStatus.FOUND, exchange.getResponse().getStatusCode());
+        assertEquals("/login?oauth=failed", exchange.getResponse().getHeaders().getLocation().toString());
     }
 
     @Test

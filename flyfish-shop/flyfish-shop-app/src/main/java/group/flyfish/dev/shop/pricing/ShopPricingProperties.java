@@ -14,4 +14,7 @@ public class ShopPricingProperties {
 
     @DecimalMin(value = "0.01")
     private BigDecimal cnyPerUsd = new BigDecimal("6.78");
+
+    @DecimalMin(value = "0.00")
+    private BigDecimal usdSettlementBufferRate = new BigDecimal("0.05");
 }

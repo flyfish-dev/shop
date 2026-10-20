@@ -1,5 +1,6 @@
 const ORDER_FORM_KEY = 'orderForm';
 const LICENSE_ALLOWED_ORIGINS_TARGET = 'license.allowedOrigins';
+const SAAS_ORIGIN_PATTERN = /^https:\/\/\*\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?::\d{1,5})?$/i;
 
 const normalizeLocale = locale => {
   const value = String(locale || '').replace('_', '-').toLowerCase();
@@ -25,6 +26,7 @@ const builtInEnglishCopy = (raw, t) => {
   const fields = Array.isArray(raw?.fields) ? raw.fields : [];
   const keys = new Set(fields.map(field => field?.key).filter(Boolean));
   const originField = fields.find(field => field?.target === LICENSE_ALLOWED_ORIGINS_TARGET);
+  const deploymentModeField = fields.find(field => field?.target === 'license.deploymentMode');
   const multiOrigin = Number(originField?.maxItems || 0) > 1 || originField?.type === 'textarea';
   const fieldCopy = {};
 
@@ -92,6 +94,47 @@ const builtInEnglishCopy = (raw, t) => {
   if (keys.has('attributionAcknowledgement')) {
     fieldCopy.attributionAcknowledgement = {
       label: translatedText(t, 'shop.orderForm.localized.attributionAcknowledgement')
+    };
+  }
+
+  if (deploymentModeField) {
+    fieldCopy[deploymentModeField.key] = {
+      label: translatedText(t, 'shop.orderForm.localized.deploymentMode', {}, deploymentModeField.label),
+      placeholder: translatedText(
+        t,
+        'shop.orderForm.localized.deploymentModePlaceholder',
+        {},
+        deploymentModeField.placeholder
+      ),
+      options: [
+        {
+          value: 'specific',
+          label: translatedText(t, 'shop.orderForm.localized.specificMode', {}, 'Specific Origins / IPs')
+        },
+        {
+          value: 'saas',
+          label: translatedText(t, 'shop.orderForm.localized.saasMode', {}, 'SaaS Wildcard Origin')
+        }
+      ]
+    };
+    if (keys.has('origins')) {
+      const field = fields.find(item => item.key === 'origins');
+      fieldCopy.origins = {
+        label: translatedText(t, 'shop.orderForm.localized.specificOrigins', {}, field?.label),
+        help: translatedText(t, 'shop.orderForm.localized.specificOriginsHelp', {}, field?.help)
+      };
+    }
+    if (keys.has('saasOrigin')) {
+      const field = fields.find(item => item.key === 'saasOrigin');
+      fieldCopy.saasOrigin = {
+        label: translatedText(t, 'shop.orderForm.localized.saasOrigin', {}, field?.label),
+        help: translatedText(t, 'shop.orderForm.localized.saasOriginHelp', {}, field?.help)
+      };
+    }
+    return {
+      title: translatedText(t, 'shop.orderForm.localized.commercialTitle', {}, raw?.title),
+      description: translatedText(t, 'shop.orderForm.localized.commercialDescription', {}, raw?.description),
+      fields: fieldCopy
     };
   }
 
@@ -166,6 +209,9 @@ const normalizeField = (field, localized = {}) => {
     help: localized.help || field?.help || '',
     maxLength: Number(field?.maxLength || 512),
     maxItems: Number(field?.maxItems || 0) || null,
+    visibleWhen: field?.visibleWhen?.key && field?.visibleWhen?.value !== undefined
+      ? { key: String(field.visibleWhen.key), value: field.visibleWhen.value }
+      : null,
     options: Array.isArray(field?.options)
       ? field.options
         .filter(option => option?.value !== undefined)
@@ -201,7 +247,9 @@ export const parseShopOrderFormConfig = (params, options = {}) => {
 export const defaultOrderFormValues = config => {
   const values = {};
   (config?.fields || []).forEach(field => {
-    values[field.key] = field.type === 'checkbox' ? false : undefined;
+    values[field.key] = field.type === 'checkbox'
+      ? false
+      : (field.type === 'select' ? field.options?.[0]?.value : undefined);
   });
   return values;
 };
@@ -220,9 +268,27 @@ const parseHttpUrl = (value, label, t) => {
   }
 };
 
+const normalizeSaasOrigin = (value, label, t) => {
+  const normalized = String(value || '').trim().replace(/\/+$/, '').toLowerCase();
+  if (!SAAS_ORIGIN_PATTERN.test(normalized)) {
+    return {
+      error: errorText(
+        t,
+        'shop.orderForm.invalidSaasOrigin',
+        { label },
+        `${label}必须为 https://*.example.com 形式`
+      )
+    };
+  }
+  return { value: normalized };
+};
+
 const shouldNormalizeOrigin = field => field.normalize === 'origin' || field.target === LICENSE_ALLOWED_ORIGINS_TARGET;
 
 const normalizeUrlValue = (value, field, t) => {
+  if (shouldNormalizeOrigin(field) && String(value || '').includes('*')) {
+    return normalizeSaasOrigin(value, field.label, t);
+  }
   const parsed = parseHttpUrl(value, field.label, t);
   if (parsed.error) {
     return parsed;
@@ -311,6 +377,9 @@ export const normalizeOrderFormValues = (config, rawValues, t) => {
   }
   const values = {};
   for (const field of config.fields) {
+    if (!isOrderFormFieldVisible(field, rawValues)) {
+      continue;
+    }
     const result = normalizeFieldValue(rawValues?.[field.key], field, t);
     if (result.error) {
       return { ok: false, message: result.error };
@@ -320,6 +389,13 @@ export const normalizeOrderFormValues = (config, rawValues, t) => {
     }
   }
   return { ok: true, values };
+};
+
+export const isOrderFormFieldVisible = (field, values) => {
+  if (!field?.visibleWhen) {
+    return true;
+  }
+  return String(values?.[field.visibleWhen.key] ?? '') === String(field.visibleWhen.value);
 };
 
 export const buildOrderFormProperties = values => ({

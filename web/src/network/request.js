@@ -1,6 +1,8 @@
 import useClientStore from '@/modules/auth/store/client.js';
 import { getCurrentLocale } from '@/i18n/index.js';
 import { stringify } from 'qs';
+import { isXianyuRuntime, resolveApiUrl, authorizeXianyu } from '@/modules/xianyu/runtime.js';
+import { applicationPath } from '@/runtime/application.js';
 
 /**
  * 处理请求选项
@@ -71,12 +73,17 @@ export async function request(url, rawOptions = {}) {
     if (options.params) {
       url += `?${stringify(options.params)}`;
     }
-    const response = await fetch(url, options);
+    const response = await fetch(resolveApiUrl(url), options);
     if (response.status === 401) {
       store.clearAuth();
       if (authRedirect) {
         store.rememberRedirect();
-        window.location.replace('/login');
+        if (isXianyuRuntime) {
+          await authorizeXianyu(token => store.setToken(token));
+          await store.refreshUser();
+        } else {
+          window.location.replace(applicationPath('/login'));
+        }
       }
       throw new Error('请先登录');
     }

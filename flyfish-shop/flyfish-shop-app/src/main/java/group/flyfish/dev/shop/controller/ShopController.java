@@ -6,6 +6,7 @@ import group.flyfish.dev.common.bean.page.PageResult;
 import group.flyfish.dev.shop.domain.dto.ShopCouponApplyDto;
 import group.flyfish.dev.shop.domain.dto.ShopContractSignDto;
 import group.flyfish.dev.shop.domain.dto.ShopOrderDto;
+import group.flyfish.dev.shop.domain.dto.ShopOfferLinkPreviewDto;
 import group.flyfish.dev.shop.domain.po.Shop;
 import group.flyfish.dev.shop.domain.qo.ShopItemGroupListQo;
 import group.flyfish.dev.shop.domain.qo.ShopItemListQo;
@@ -16,15 +17,20 @@ import group.flyfish.dev.shop.domain.vo.ShopContractSignatureProgressVo;
 import group.flyfish.dev.shop.domain.vo.ShopItemDetailVo;
 import group.flyfish.dev.shop.domain.vo.ShopItemGroupListVo;
 import group.flyfish.dev.shop.domain.vo.ShopItemListVo;
+import group.flyfish.dev.shop.domain.vo.ShopLicenseRenewalEligibilityVo;
 import group.flyfish.dev.shop.domain.vo.ShopOrderCreateVo;
 import group.flyfish.dev.shop.domain.vo.ShopOrderDeliveryDownloadVo;
 import group.flyfish.dev.shop.domain.vo.ShopOrderDeliveryExtractVo;
 import group.flyfish.dev.shop.domain.vo.ShopOrderVo;
+import group.flyfish.dev.shop.domain.vo.ShopOfferLinkPreviewVo;
 import group.flyfish.dev.shop.domain.vo.ShopPurchaseAvailabilityVo;
 import group.flyfish.dev.shop.domain.vo.ShopPricingVo;
 import group.flyfish.dev.shop.pricing.ShopPricingService;
+import group.flyfish.dev.shop.license.LicenseMaintenanceAgreementService;
+import group.flyfish.dev.shop.license.LicenseRenewalService;
 import group.flyfish.dev.shop.service.ShopService;
 import group.flyfish.dev.shop.service.ShopOrderService;
+import group.flyfish.dev.shop.service.ShopOfferLinkService;
 import group.flyfish.dev.shop.service.support.h5zhifu.bean.H5ZhiFuNotifyDto;
 import group.flyfish.dev.auth.api.user.PortalUserVo;
 import group.flyfish.dev.shop.service.ShopContractService;
@@ -42,6 +48,7 @@ import reactor.core.publisher.Mono;
 
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -57,8 +64,11 @@ public class ShopController {
 
     private final ShopService shopService;
     private final ShopOrderService shopOrderService;
+    private final ShopOfferLinkService shopOfferLinkService;
     private final ShopContractService shopContractService;
     private final ShopPricingService shopPricingService;
+    private final LicenseMaintenanceAgreementService licenseMaintenanceAgreementService;
+    private final LicenseRenewalService licenseRenewalService;
 
     /**
      * 获取当前店铺
@@ -113,8 +123,18 @@ public class ShopController {
      */
     @GetMapping("items/{id}/contracts")
     public Mono<Result<List<ShopContractAgreementVo>>> getShopItemContracts(@PathVariable("id") Long id,
-                                                                            @RequestParam(required = false) Long skuId) {
-        return shopContractService.getItemAgreements(id, skuId).collectList().map(Result::ok);
+                                                                            @RequestParam(required = false) Long skuId,
+                                                                            @RequestParam(required = false) String locale,
+                                                                            @RequestParam(defaultValue = "false")
+                                                                            boolean maintenanceAgreement) {
+        return Mono.zip(
+                        licenseMaintenanceAgreementService.resolve(id, skuId, maintenanceAgreement),
+                        licenseRenewalService.renewalContractIds(id, skuId))
+                .flatMap(result -> shopContractService
+                        .getItemAgreements(id, skuId,
+                                contractIds(result.getT1().acceptedContractIds(), result.getT2()), locale)
+                        .collectList())
+                .map(Result::ok);
     }
 
     /**
@@ -123,10 +143,29 @@ public class ShopController {
     @PostMapping("items/{id}/contracts/signatures")
     public Mono<Result<ShopContractSignatureProgressVo>> agreeContractFile(@PathVariable("id") Long id,
                                                                            @RequestParam(required = false) Long skuId,
+                                                                           @RequestParam(defaultValue = "false")
+                                                                           boolean maintenanceAgreement,
                                                                            @Valid @RequestBody ShopContractSignDto dto,
                                                                            @CurrentUser PortalUserVo user,
                                                                            ServerWebExchange exchange) {
-        return shopContractService.agreeFile(id, skuId, dto, user, exchange).map(Result::ok);
+        return Mono.zip(
+                        licenseMaintenanceAgreementService.resolve(id, skuId, maintenanceAgreement),
+                        licenseRenewalService.renewalContractIds(id, skuId))
+                .flatMap(result -> shopContractService.agreeFile(
+                        id, skuId, contractIds(result.getT1().acceptedContractIds(), result.getT2()),
+                        dto, user, exchange))
+                .map(Result::ok);
+    }
+
+    /**
+     * 查询当前用户可用于续费的已有许可证和建议生效日期。
+     */
+    @GetMapping("items/{id}/license-renewal")
+    public Mono<Result<ShopLicenseRenewalEligibilityVo>> getLicenseRenewalEligibility(
+            @PathVariable("id") Long id,
+            @RequestParam(required = false) Long skuId,
+            @CurrentUser PortalUserVo user) {
+        return licenseRenewalService.getEligibility(id, skuId, user).map(Result::ok);
     }
 
     /**
@@ -168,6 +207,18 @@ public class ShopController {
     }
 
     /**
+     * 公开试算专享购买链接。响应不包含内部优惠券编码或可复用凭据。
+     */
+    @PostMapping("offer-links/preview")
+    public Mono<Result<ShopOfferLinkPreviewVo>> previewOfferLink(
+            @Valid @RequestBody ShopOfferLinkPreviewDto dto,
+            @CurrentUser PortalUserVo user) {
+        Long buyerId = user != null && user.getId() != null && user.getId() > 0
+                ? user.getId() : null;
+        return shopOfferLinkService.preview(dto, buyerId).map(Result::ok);
+    }
+
+    /**
      * 查询当前用户订单
      */
     @GetMapping("orders")
@@ -191,6 +242,13 @@ public class ShopController {
         return shopOrderService.getOrder(user, orderNo).map(Result::ok);
     }
 
+    private List<Long> contractIds(List<Long> first, List<Long> second) {
+        LinkedHashSet<Long> ids = new LinkedHashSet<>();
+        ids.addAll(first == null ? List.of() : first);
+        ids.addAll(second == null ? List.of() : second);
+        return List.copyOf(ids);
+    }
+
     /**
      * 提取数字商品或授权许可的交付内容。
      */
@@ -207,8 +265,9 @@ public class ShopController {
     @GetMapping("orders/{orderNo}/delivery/files/{fileCode}")
     public Mono<ResponseEntity<byte[]>> downloadDeliveryFile(@PathVariable String orderNo,
                                                              @PathVariable String fileCode,
+                                                             @RequestParam(required = false) String licenseNo,
                                                              @CurrentUser PortalUserVo user) {
-        return shopOrderService.downloadDeliveryFile(user, orderNo, fileCode)
+        return shopOrderService.downloadDeliveryFile(user, orderNo, fileCode, licenseNo)
                 .map(this::deliveryFileResponse);
     }
 

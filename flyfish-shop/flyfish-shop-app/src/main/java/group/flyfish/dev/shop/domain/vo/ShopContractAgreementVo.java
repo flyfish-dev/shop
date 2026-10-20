@@ -22,5 +22,7 @@ public class ShopContractAgreementVo {
 
     private List<String> tags;
 
+    private String locale;
+
     private List<ShopContractFileVo> files;
 }

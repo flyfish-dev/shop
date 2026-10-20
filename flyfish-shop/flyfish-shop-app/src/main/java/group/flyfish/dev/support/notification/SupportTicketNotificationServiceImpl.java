@@ -46,6 +46,16 @@ public class SupportTicketNotificationServiceImpl implements SupportTicketNotifi
     }
 
     @Override
+    public Mono<Void> systemFollowUpCreated(SupportTicket ticket, SupportTicketMessage message) {
+        if (!properties.isEnabled()) {
+            return Mono.empty();
+        }
+        return findUser(ticket.getCreatorId())
+                .flatMap(optional -> notifyAdmins(messageFactory.adminTicketCreated(ticket, message, optional.orElse(null))))
+                .onErrorResume(this::ignoreUnexpectedError);
+    }
+
+    @Override
     public Mono<Void> userReplied(SupportTicket ticket, SupportTicketMessage message) {
         if (!properties.isEnabled()) {
             return Mono.empty();

@@ -10,4 +10,6 @@ import java.math.BigDecimal;
 public class ShopPricingVo {
 
     private BigDecimal cnyPerUsd;
+
+    private BigDecimal usdSettlementBufferRate;
 }

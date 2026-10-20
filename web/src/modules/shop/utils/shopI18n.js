@@ -1,4 +1,5 @@
 import { normalizeLocale } from '@/i18n/index.js';
+import { normalizeShopTags } from './shopTags.js';
 
 export const SHOP_ITEM_I18N_LOCALES = ['en-US'];
 
@@ -51,7 +52,7 @@ export function resolveLocalizedShopItem(item, locale) {
   return {
     ...item,
     name: localized.name || item.name,
-    tags: localized.tags?.length ? localized.tags : item.tags,
+    tags: normalizeShopTags(localized.tags?.length ? localized.tags : item.tags),
     description: localized.description || item.description,
     originalName: item.name,
     originalTags: item.tags,
